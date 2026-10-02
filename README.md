@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. Reviews of text and of PDFs work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans and replies. The skill that lets Claude ask for a review of a document it generated is next.
+Status: early development. Reviews of text and of PDFs work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans, replies and generated documents. Capturing text from other apps (hotkey, Services, drag and drop, Share) is next.
 
 ## Building
 
@@ -102,6 +102,8 @@ ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-
 Known limitation: Claude Code 2.1.287 ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
 
 **Replies.** Type `/annotate-last` to correct Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude rewrites the reply from your marks. Only you can start it: Claude never opens a review of its own reply by itself.
+
+**Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Annotator, as a PDF when it generated one. Your feedback goes back to Claude, which applies it to the source and regenerates the document. You can also just say "let me review it".
 
 Without the plugin, `annotator install` adds the same hook to `~/.claude/settings.json` (it edits only that entry and keeps a backup), and `annotator uninstall` removes it.
 

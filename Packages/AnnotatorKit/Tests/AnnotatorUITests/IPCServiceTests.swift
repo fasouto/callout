@@ -82,6 +82,42 @@ struct IPCServiceTests {
         #expect(harness.pasteboard.string(forType: .string) == nil)
     }
 
+    /// The whole path a generated document takes: a PDF sent by path, marked on
+    /// its page, and the feedback returned to the tool that is waiting.
+    @Test func aPDFSentByPathComesBackAsFeedback() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let path = try makePDF(pages: [["Ada Lovelace", "Passionate, results-driven builder of engines."]])
+        let request = ReviewRequest(
+            content: .file(path: path), origin: .agentRequest,
+            metadata: ReviewMetadata(title: "cv.pdf"), reply: .stdout, modes: [.feedback]
+        )
+        let client = try SocketClient(path: harness.path)
+        let window = try await open(request, with: client, in: harness)
+        #expect(window.session.isPDF)
+
+        let page = try #require(window.session.pageTexts.first)
+        let range = (page as NSString).range(of: "Passionate, results-driven")
+        let anchor = Anchor.make(inPage: page, page: 1, span: TextSpan(range.location, NSMaxRange(range)))
+        window.session.addMark(.delete, anchor: anchor, note: "generic")
+        window.finish(.feedback)
+
+        guard case .result(let result) = try client.receive(timeout: 2) else {
+            Issue.record("expected a result")
+            return
+        }
+        #expect(result.feedback == """
+        ## Feedback on cv.pdf
+
+        Apply these changes to the source this document was generated from, then regenerate it.
+
+        ### 1. Delete (page 1)
+        > Passionate, results-driven
+        Reason: generic
+
+        """)
+    }
+
     @Test func applyingEditsReturnsTheText() async throws {
         let harness = try Harness()
         defer { harness.tearDown() }
