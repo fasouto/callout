@@ -85,7 +85,9 @@ It needs Annotator.app in `/Applications` or `~/Applications`. To use a copy els
 ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-dir ./plugin
 ```
 
-**Plans.** When Claude finishes a plan, it opens in Annotator instead of waiting in the terminal dialog. *Approve* (`⌘⇧↩`) approves the plan and switches Claude Code to accept-edits mode. *Send Feedback* (`⌘↩`) sends your marks back and Claude revises the plan. `Esc` closes the window and leaves Claude Code's own dialog. If the app is missing or quits, you get that dialog as well.
+**Plans.** When Claude finishes a plan, it opens in Annotator before the terminal dialog. *Send Feedback* (`⌘↩`) sends your marks back and Claude revises the plan. *Approve* (`⌘⇧↩`) approves the plan and asks Claude Code to switch to accept-edits mode. `Esc` closes the window and leaves Claude Code's own dialog. If the app is missing or quits, you get that dialog as well.
+
+Known limitation: Claude Code 2.1.287 ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
 
 Without the plugin, `annotator install` adds the same hook to `~/.claude/settings.json` (it edits only that entry and keeps a backup), and `annotator uninstall` removes it.
 
