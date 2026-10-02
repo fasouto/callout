@@ -6,6 +6,8 @@ import AppKit
 /// letters trigger mark actions instead of typing.
 final class AnnotationTextView: NSTextView {
     var onMarkKey: ((MarkKind) -> Void)?
+    /// S opens the picker of reusable comments.
+    var onSnippetKey: (() -> Void)?
     var onDeleteKey: (() -> Void)?
     var onReturnKey: (() -> Void)?
     /// Tab moves to the next mark, Shift-Tab to the previous one.
@@ -24,6 +26,10 @@ final class AnnotationTextView: NSTextView {
         if modifiers.isEmpty || modifiers == .shift,
            let key = event.charactersIgnoringModifiers, let kind = MarkKind(key: key) {
             onMarkKey?(kind)
+            return
+        }
+        if modifiers.isEmpty || modifiers == .shift, event.charactersIgnoringModifiers?.lowercased() == "s" {
+            onSnippetKey?()
             return
         }
         switch event.keyCode {

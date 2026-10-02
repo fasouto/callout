@@ -19,9 +19,19 @@ public enum AnnotatorApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let coordinator = ReviewCoordinator(store: try? Store(path: Store.defaultPath))
+    private let store: Store?
+    private let coordinator: ReviewCoordinator
     private lazy var capture = CaptureController(coordinator: coordinator)
-    private lazy var settings = SettingsWindow(showOnboarding: { [weak self] in self?.capture.showOnboarding() })
+    private lazy var settings = SettingsWindow(store: store, showOnboarding: { [weak self] in self?.capture.showOnboarding() })
+    private lazy var history = HistoryWindow(store: store)
+
+    override init() {
+        // Without its database the app still reviews; it only forgets.
+        store = try? Store(path: Store.defaultPath)
+        coordinator = ReviewCoordinator(store: store)
+        super.init()
+    }
+
     private var statusItem: StatusItemController?
     private var ipc: IPCService?
 
@@ -47,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             markUpSelection: { [weak self] in self?.capture.captureSelection() },
             reviewClipboard: { [weak self] in self?.capture.reviewClipboard() },
             openFile: { [weak self] url in self?.capture.review(file: url, origin: .fileDrop) },
+            showHistory: { [weak self] in self?.history.show() },
             showSettings: { [weak self] in self?.settings.show() }
         ))
 

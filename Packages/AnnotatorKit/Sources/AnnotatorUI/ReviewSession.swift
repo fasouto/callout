@@ -1,4 +1,5 @@
 import AnnotatorCore
+import AnnotatorStore
 import Foundation
 import Observation
 import PDFKit
@@ -47,6 +48,10 @@ final class ReviewSession {
     private(set) var documentFocusToken = 0
     /// Whether the document has a selection that marks can be applied to.
     var selection = SelectionState.none
+    /// The reusable comments on offer, loaded when the picker is first asked for.
+    @ObservationIgnored var loadSnippets: () -> [Snippet] = { [] }
+    /// For comments that came from a snippet, which one: the history remembers it.
+    @ObservationIgnored private(set) var snippetUses: [UUID: Int64] = [:]
     /// The window's undo manager, so ⌘Z takes back marks.
     @ObservationIgnored weak var undoManager: UndoManager?
     /// A mark that was added to be written and has nothing written yet, with the
@@ -191,6 +196,16 @@ final class ReviewSession {
         statusMessage = nil
         selectedMarkID = mark.id
         marksChanged()
+        return mark
+    }
+
+    /// Comments on text with a reusable comment.
+    @discardableResult
+    func addComment(from snippet: Snippet, anchor: Anchor?) -> Mark? {
+        guard let mark = place(.comment, anchor: anchor, text: nil, note: snippet.text, undoName: MarkKind.comment.label) else {
+            return nil
+        }
+        snippetUses[mark.id] = snippet.id
         return mark
     }
 

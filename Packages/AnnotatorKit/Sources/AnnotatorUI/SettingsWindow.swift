@@ -1,25 +1,34 @@
+import AnnotatorStore
 import AppKit
 import SwiftUI
 
 @MainActor
 final class SettingsWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private let store: Store?
     private let showOnboarding: () -> Void
 
-    init(showOnboarding: @escaping () -> Void) {
+    init(store: Store?, showOnboarding: @escaping () -> Void) {
+        self.store = store
         self.showOnboarding = showOnboarding
     }
 
     func show() {
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 300),
+                contentRect: NSRect(x: 0, y: 0, width: 520, height: 460),
                 styleMask: [.titled, .closable], backing: .buffered, defer: false
             )
             window.title = "Annotator Settings"
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SettingsView(showOnboarding: showOnboarding))
+            window.contentView = NSHostingView(rootView: TabView {
+                SettingsView(showOnboarding: showOnboarding)
+                    .tabItem { Label("General", systemImage: "gearshape") }
+                SnippetSettings(store: store)
+                    .tabItem { Label("Saved Comments", systemImage: "text.badge.plus") }
+            }
+            .frame(width: 520, height: 460))
             window.center()
             self.window = window
         }

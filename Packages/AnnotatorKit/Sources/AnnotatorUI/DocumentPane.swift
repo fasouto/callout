@@ -62,7 +62,11 @@ struct DocumentPane: NSViewRepresentable {
         private var shownFocusToken = 0
         private var isRestyling = false
         private var laidOutWidth: CGFloat = -1
-        private lazy var toolbar = SelectionToolbar { [weak self] kind in self?.perform(kind) }
+        private lazy var toolbar = SelectionToolbar(
+            perform: { [weak self] kind in self?.perform(kind) },
+            pickSnippet: { [weak self] in self?.pickSnippet() }
+        )
+        private let snippetPicker = SnippetPickerPopover()
 
         init(session: ReviewSession, onCancel: @escaping () -> Void) {
             self.session = session
@@ -95,6 +99,7 @@ struct DocumentPane: NSViewRepresentable {
             textView.setAccessibilityLabel("Document")
 
             textView.onMarkKey = { [weak self] kind in self?.perform(kind) }
+            textView.onSnippetKey = { [weak self] in self?.pickSnippet() }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onReturnKey = { [weak self] in self?.editSelectedMark() }
             textView.onTabKey = { [weak self] forward in self?.session.selectMark(offsetBy: forward ? 1 : -1) }
@@ -290,6 +295,25 @@ struct DocumentPane: NSViewRepresentable {
                 session.addMarkToWrite(kind, span: span)
             case .insert:
                 break
+            }
+        }
+
+        /// Comments on the selection with a reusable comment chosen from the picker.
+        func pickSnippet() {
+            guard let selection = Range(textView.selectedRange()), !selection.isEmpty,
+                  let span = session.sourceSpan(forView: selection) else {
+                session.statusMessage = "Select some text of the document first."
+                NSSound.beep()
+                return
+            }
+            toolbar.hide()
+            let rect = textView.rect(forCharacterRange: NSRange(selection)) ?? textView.visibleRect
+            snippetPicker.show(
+                snippets: session.loadSnippets(), preferred: .preferred(for: session.request), relativeTo: rect, of: textView
+            ) { [weak self] snippet in
+                guard let self else { return }
+                if let snippet { self.session.addComment(from: snippet, anchor: Anchor.make(in: self.session.source, span: span)) }
+                self.textView.window?.makeFirstResponder(self.textView)
             }
         }
 

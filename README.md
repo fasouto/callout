@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. Reviews of text and of PDFs work end to end, from Claude Code (plans with their changes between versions, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share). Reusable comments and history are next.
+Status: early development, feature-complete for a first version. Reviews of text and of PDFs work end to end, from Claude Code (plans with their changes between versions, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share), with saved comments and a searchable history.
 
 ## Building
 
@@ -52,6 +52,7 @@ The document is a page; your notes go in its margin, beside the lines they refer
 | `I` | Add text at the caret, or after the selection |
 | `C` | Comment on it |
 | `K` | Keep it: do not change this |
+| `S` | Comment with one of your saved comments |
 
 A PDF takes the same marks: select text on the page and press the same keys. Marks are drawn on the page but never saved into the file, and a PDF only gives feedback, since the source to edit is whatever the PDF was generated from. To add text, select the words it goes after and press `I`.
 
@@ -66,6 +67,10 @@ Replacements, insertions and comments open a note in the margin with the keyboar
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
+
+**Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `S` on a selection to pick one; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
+
+**History.** Every finished review is kept: what was reviewed, each mark, and what went back. *History…* in the menu-bar menu lists them, searchable by title, text, feedback and overall comment. It all stays on this Mac, in `~/Library/Application Support/Annotator/annotator.sqlite`.
 
 ## From any app
 
@@ -133,7 +138,7 @@ App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
   Sources/AnnotatorCore/    contract, marks, formatter, apply-edits, markdown source mapping
   Sources/AnnotatorIPC/     the socket protocol between the app and the tool
-  Sources/AnnotatorStore/   the SQLite database: plan versions (GRDB)
+  Sources/AnnotatorStore/   the SQLite database: plan versions, history, saved comments (GRDB)
   Sources/ClaudeCodeAdapter/ everything specific to Claude Code: hook formats, settings.json
   Sources/AnnotatorCLIKit/  the command-line tool's commands
   Sources/AnnotatorUI/      the app: menu-bar item, review window, text view

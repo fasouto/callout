@@ -7,10 +7,12 @@ import SwiftUI
 @MainActor
 final class SelectionToolbar {
     private let perform: (MarkKind) -> Void
+    private let pickSnippet: () -> Void
     private var panel: NSPanel?
 
-    init(perform: @escaping (MarkKind) -> Void) {
+    init(perform: @escaping (MarkKind) -> Void, pickSnippet: @escaping () -> Void = {}) {
         self.perform = perform
+        self.pickSnippet = pickSnippet
     }
 
     func show(above rect: NSRect, in view: NSView) {
@@ -39,7 +41,7 @@ final class SelectionToolbar {
     }
 
     func makeContentView() -> NSView {
-        FirstMouseHostingView(rootView: SelectionToolbarView(perform: perform))
+        FirstMouseHostingView(rootView: SelectionToolbarView(perform: perform, pickSnippet: pickSnippet))
     }
 
     private func makePanel() -> NSPanel {
@@ -68,6 +70,7 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
 
 private struct SelectionToolbarView: View {
     let perform: (MarkKind) -> Void
+    let pickSnippet: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -89,6 +92,21 @@ private struct SelectionToolbarView: View {
                 .help("\(kind.hint) (\(kind.key))")
                 .accessibilityLabel(kind.label)
             }
+            Divider().frame(height: 16).padding(.horizontal, 2)
+            Button(action: pickSnippet) {
+                HStack(spacing: 6) {
+                    Image(systemName: "text.badge.plus")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    KeyCap("S")
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Comment with one of your saved comments (S)")
+            .accessibilityLabel("Saved comments")
         }
         .padding(.horizontal, 3)
         .background(.regularMaterial, in: Capsule())

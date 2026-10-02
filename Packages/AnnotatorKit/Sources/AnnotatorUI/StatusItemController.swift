@@ -8,6 +8,7 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         var markUpSelection: () -> Void
         var reviewClipboard: () -> Void
         var openFile: (URL) -> Void
+        var showHistory: () -> Void
         var showSettings: () -> Void
     }
 
@@ -37,6 +38,7 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         menu.addItem(hotkeyItem)
         menu.addItem(withTitle: "Mark Up Clipboard Text", action: #selector(reviewClipboardText), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "History…", action: #selector(showHistory), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Annotator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -54,6 +56,10 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
 
     @objc private func reviewClipboardText() {
         actions.reviewClipboard()
+    }
+
+    @objc private func showHistory() {
+        actions.showHistory()
     }
 
     @objc private func showSettings() {

@@ -62,7 +62,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AnnotatorStoreTests",
-            dependencies: ["AnnotatorStore"]
+            dependencies: ["AnnotatorStore", "AnnotatorCore", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .testTarget(
             name: "ClaudeCodeAdapterTests",

@@ -6,6 +6,7 @@ import SwiftUI
 /// The PDF view with the same keys as the text page: letters mark the selection.
 final class AnnotationPDFView: PDFView {
     var onMarkKey: ((MarkKind) -> Void)?
+    var onSnippetKey: (() -> Void)?
     var onDeleteKey: (() -> Void)?
     var onReturnKey: (() -> Void)?
     var onTabKey: ((_ forward: Bool) -> Void)?
@@ -19,6 +20,10 @@ final class AnnotationPDFView: PDFView {
         if modifiers.isEmpty || modifiers == .shift,
            let key = event.charactersIgnoringModifiers, let kind = MarkKind(key: key) {
             onMarkKey?(kind)
+            return
+        }
+        if modifiers.isEmpty || modifiers == .shift, event.charactersIgnoringModifiers?.lowercased() == "s" {
+            onSnippetKey?()
             return
         }
         switch event.keyCode {
@@ -152,7 +157,11 @@ struct PDFPane: NSViewRepresentable {
         private var shownSelection: UUID?
         private var shownFocusToken = 0
         private var annotations: [MarkAnnotation] = []
-        private lazy var toolbar = SelectionToolbar { [weak self] kind in self?.perform(kind) }
+        private lazy var toolbar = SelectionToolbar(
+            perform: { [weak self] kind in self?.perform(kind) },
+            pickSnippet: { [weak self] in self?.pickSnippet() }
+        )
+        private let snippetPicker = SnippetPickerPopover()
 
         init(session: ReviewSession, margin: MarginModel, onCancel: @escaping () -> Void) {
             self.session = session
@@ -172,6 +181,7 @@ struct PDFPane: NSViewRepresentable {
             view.setAccessibilityLabel("Document")
 
             view.onMarkKey = { [weak self] kind in self?.perform(kind) }
+            view.onSnippetKey = { [weak self] in self?.pickSnippet() }
             view.onDeleteKey = { [weak self] in
                 guard let self, let id = self.session.selectedMarkID else { return }
                 self.session.remove(id)
@@ -349,6 +359,28 @@ struct PDFPane: NSViewRepresentable {
         }
 
         // MARK: Actions
+
+        /// Comments on the selection with a reusable comment chosen from the picker.
+        func pickSnippet() {
+            toolbar.hide()
+            guard let selected = currentSelection(), session.pageTexts.indices.contains(selected.index) else {
+                session.statusMessage = "Select some text of the document first."
+                NSSound.beep()
+                return
+            }
+            let anchor = Anchor.make(
+                inPage: session.pageTexts[selected.index], page: selected.index + 1,
+                span: TextSpan(selected.range.location, NSMaxRange(selected.range))
+            )
+            snippetPicker.show(
+                snippets: session.loadSnippets(), preferred: .preferred(for: session.request),
+                relativeTo: view.convert(selected.firstLine, from: selected.page), of: view
+            ) { [weak self] snippet in
+                guard let self else { return }
+                if let snippet { self.session.addComment(from: snippet, anchor: anchor) }
+                self.view.window?.makeFirstResponder(self.view)
+            }
+        }
 
         func perform(_ kind: MarkKind) {
             toolbar.hide()

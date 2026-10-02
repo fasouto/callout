@@ -1,4 +1,5 @@
 import AnnotatorCore
+import AnnotatorStore
 import AppKit
 import SwiftUI
 
@@ -7,6 +8,10 @@ import SwiftUI
 @MainActor
 final class ReviewWindowController: NSObject, NSWindowDelegate {
     private(set) var session: ReviewSession
+    /// Where the reusable comments come from. Applies to the session shown now and to any shown later.
+    var loadSnippets: () -> [Snippet] = { [] } {
+        didSet { session.loadSnippets = loadSnippets }
+    }
     /// For a capture that was cleaned up: whether the text as it was copied is showing instead.
     private(set) var isShowingRawCapture = false
     private let window: NSWindow
@@ -52,6 +57,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         })
         undoManager.removeAllActions()
         session.undoManager = undoManager
+        session.loadSnippets = loadSnippets
     }
 
     /// Swaps between the cleaned-up text and the text as it was copied. Marks

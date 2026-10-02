@@ -29,11 +29,24 @@ final class ReviewCoordinator {
             version = recorded.version
         }
         let controller = ReviewWindowController(request: request, previousVersion: previous, planVersion: version) { [weak self] result in
-            self?.windows[request.id] = nil
-            self?.deliver(result, for: request, reply: reply)
+            guard let self else { return }
+            if let session = self.windows[request.id]?.session { self.remember(result, of: session) }
+            self.windows[request.id] = nil
+            self.deliver(result, for: request, reply: reply)
         }
+        controller.loadSnippets = { [store] in (try? store?.snippets()) ?? [] }
         windows[request.id] = controller
         if presentsWindows { controller.show() }
+    }
+
+    /// Keeps a finished review in the history. A cancelled one produced nothing to keep.
+    private func remember(_ result: ReviewResult, of session: ReviewSession) {
+        guard result.decision != .cancel else { return }
+        try? store?.saveReview(
+            session.request, result: result, marks: session.orderedMarks,
+            generalComment: session.generalComment.trimmingCharacters(in: .whitespacesAndNewlines),
+            snippets: session.snippetUses
+        )
     }
 
     private func deliver(_ result: ReviewResult, for request: ReviewRequest, reply: ((ReviewResult) -> Void)?) {

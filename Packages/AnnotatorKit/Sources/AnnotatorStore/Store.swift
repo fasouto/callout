@@ -38,6 +38,70 @@ public final class Store: Sendable {
                 table.uniqueKey(["sessionId", "version"])
             }
         }
+        migrator.registerMigration("v2: history and snippets") { db in
+            // One row per finished review. The content is kept so a review can be
+            // read again; a PDF is kept by path and hash, not copied.
+            try db.create(table: "review") { table in
+                table.primaryKey("id", .text)
+                table.column("createdAt", .datetime).notNull().indexed()
+                table.column("origin", .text).notNull()
+                table.column("sourceApp", .text)
+                table.column("projectPath", .text).indexed()
+                table.column("sessionId", .text).indexed()
+                table.column("title", .text).notNull()
+                table.column("contentKind", .text).notNull()
+                table.column("contentText", .text)
+                table.column("filePath", .text)
+                table.column("fileHash", .text)
+                table.column("decision", .text).notNull()
+                table.column("feedback", .text)
+                table.column("editedText", .text)
+                table.column("generalComment", .text).notNull().defaults(to: "")
+            }
+            // One row per mark, so corrections can be counted and grouped later:
+            // "you have made this correction five times".
+            try db.create(table: "mark") { table in
+                table.primaryKey("id", .text)
+                table.column("reviewId", .text).notNull().indexed().references("review", onDelete: .cascade)
+                table.column("ordinal", .integer).notNull()
+                table.column("kind", .text).notNull()
+                table.column("page", .integer)
+                table.column("start", .integer).notNull()
+                table.column("end", .integer).notNull()
+                table.column("quote", .text).notNull()
+                table.column("prefix", .text).notNull()
+                table.column("suffix", .text).notNull()
+                table.column("text", .text)
+                table.column("note", .text)
+                table.column("snippetId", .integer)
+            }
+            try db.create(index: "mark_on_kind_note", on: "mark", columns: ["kind", "note"])
+            try db.create(index: "mark_on_snippet", on: "mark", columns: ["snippetId"])
+
+            try db.create(virtualTable: "review_search", using: FTS5()) { table in
+                table.synchronize(withTable: "review")
+                table.tokenizer = .unicode61()
+                table.column("title")
+                table.column("contentText")
+                table.column("feedback")
+                table.column("generalComment")
+            }
+
+            try db.create(table: "snippet") { table in
+                table.autoIncrementedPrimaryKey("id")
+                table.column("context", .text).notNull().indexed()
+                table.column("text", .text).notNull()
+                table.column("position", .integer).notNull()
+            }
+            for (context, texts) in Snippet.starters {
+                for (position, text) in texts.enumerated() {
+                    try db.execute(
+                        sql: "INSERT INTO snippet (context, text, position) VALUES (?, ?, ?)",
+                        arguments: [context.rawValue, text, position]
+                    )
+                }
+            }
+        }
         return migrator
     }
 
