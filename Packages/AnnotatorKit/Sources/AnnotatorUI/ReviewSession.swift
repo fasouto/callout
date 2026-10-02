@@ -217,9 +217,9 @@ final class ReviewSession {
 
     /// Gives the keyboard to a mark's margin field: its text for a replacement or
     /// insertion, otherwise its note.
-    func beginEditing(_ id: UUID, field: NoteField? = nil) {
+    func beginEditing(_ id: UUID, field: MarkField? = nil) {
         guard let mark = marks.first(where: { $0.id == id }), mark.kind != .keep else { return }
-        let natural: NoteField = mark.kind == .replace || mark.kind == .insert ? .text : .note
+        let natural: MarkField = mark.kind == .replace || mark.kind == .insert ? .text : .note
         selectedMarkID = id
         editing = EditTarget(markID: id, field: field ?? natural)
     }
@@ -369,7 +369,7 @@ final class ReviewSession {
     }
 }
 
-enum NoteField: Hashable {
+enum MarkField: Hashable {
     /// The replacement, or the text to insert.
     case text
     /// The reason or the comment.
@@ -378,7 +378,7 @@ enum NoteField: Hashable {
 
 struct EditTarget: Equatable {
     var markID: UUID
-    var field: NoteField
+    var field: MarkField
 }
 
 enum SelectionState: Equatable {

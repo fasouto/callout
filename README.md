@@ -66,7 +66,7 @@ Replacements, insertions and comments open a note in the margin with the keyboar
 |---|---|
 | `Tab`, `⇧Tab` | Next and previous mark |
 | `↩` | Write in the selected mark's note |
-| `⌫` | Remove the selected mark |
+| `⌫` | Strike out the selected text (again to take it back); with nothing selected, remove the mark the caret is on |
 | `⌘Z`, `⇧⌘Z` | Undo and redo |
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |

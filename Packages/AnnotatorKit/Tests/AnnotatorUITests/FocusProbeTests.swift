@@ -1,0 +1,179 @@
+import AnnotatorCore
+import AppKit
+import SwiftUI
+import Testing
+@testable import AnnotatorUI
+
+/// Where the keyboard goes. These are the paths a person takes with their hands
+/// on the keys: open, mark, write the note, finish, carry on.
+@MainActor
+@Suite("Keyboard focus")
+struct KeyboardFocusTests {
+    private struct Harness {
+        let session: ReviewSession
+        let window: NSWindow
+    }
+
+    private func makeHarness() async -> Harness {
+        _ = NSApplication.shared
+        let request = ReviewRequest(
+            content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .planHook,
+            metadata: ReviewMetadata(title: "Plan"), reply: .clipboard, modes: [.feedback, .applyEdits]
+        )
+        let session = ReviewSession(request: request)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
+        let harness = Harness(session: session, window: window)
+        await settle(harness)
+        return harness
+    }
+
+    /// Lets both kinds of pending work happen: SwiftUI's updates, which ride on
+    /// the run loop, and blocks queued on the main queue, which only run while
+    /// this test is suspended.
+    private func settle(_ harness: Harness) async {
+        for _ in 0..<3 {
+            spin(harness.window)
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+    }
+
+    private func spin(_ window: NSWindow) {
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    }
+
+    /// The text field being typed in, when the keyboard is in one.
+    private func fieldInFocus(_ harness: Harness) -> NSTextField? {
+        guard let editor = harness.window.firstResponder as? NSTextView, editor.isFieldEditor else { return nil }
+        return editor.delegate as? NSTextField
+    }
+
+    private func type(_ text: String, in harness: Harness) throws {
+        let editor = try #require(harness.window.firstResponder as? NSTextView)
+        editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    private func press(_ selector: Selector, in harness: Harness) throws {
+        let editor = try #require(harness.window.firstResponder as? NSTextView)
+        editor.doCommand(by: selector)
+    }
+
+    @Test func aReviewOpensWithTheKeyboardInTheDocument() async {
+        let harness = await makeHarness()
+        #expect(harness.window.firstResponder is AnnotationTextView)
+    }
+
+    @Test func replacingPutsTheKeyboardInTheMarginAndTypingLandsInTheNote() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let mark = try #require(session.addMarkToWrite(.replace, span: TextSpan(8, 16)))
+        await settle(harness)
+
+        let field = try #require(fieldInFocus(harness))
+        #expect(field is NoteTextField)
+        #expect(field.accessibilityLabel() == "Replace with")
+
+        try type("use", in: harness)
+        #expect(session.marks.first?.text == "use")
+
+        // Return finishes the note and hands the keyboard back to the document.
+        try press(#selector(NSResponder.insertNewline(_:)), in: harness)
+        await settle(harness)
+        #expect(session.editing == nil)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+        #expect(session.marks.first?.id == mark.id)
+        #expect(try session.editedText() == "We will use a very robust approach here.")
+    }
+
+    @Test func commentingAndInsertingAlsoTakeTheKeyboard() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+
+        session.addMarkToWrite(.comment, span: TextSpan(19, 30))
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Comment")
+        try type("filler", in: harness)
+        try press(#selector(NSResponder.insertNewline(_:)), in: harness)
+        await settle(harness)
+        #expect(session.marks.first?.note == "filler")
+
+        session.addMarkToWrite(.insert, span: TextSpan(16, 16))
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Text to add")
+        try type(" gladly", in: harness)
+        #expect(session.marks.last?.text == " gladly")
+    }
+
+    @Test func escapeInANoteDropsAnEmptyOneAndReturnsToTheDocument() async throws {
+        let harness = await makeHarness()
+        harness.session.addMarkToWrite(.comment, span: TextSpan(19, 30))
+        await settle(harness)
+        #expect(fieldInFocus(harness) != nil)
+
+        try press(#selector(NSResponder.cancelOperation(_:)), in: harness)
+        await settle(harness)
+        #expect(harness.session.marks.isEmpty)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+    }
+
+    @Test func returnOnAMarkOpensItsNoteForTyping() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let mark = try #require(session.addMark(.delete, span: TextSpan(19, 31)))
+        await settle(harness)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+
+        session.beginEditing(mark.id)
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Reason (optional)")
+        try type("filler", in: harness)
+        #expect(session.marks.first?.note == "filler")
+    }
+
+    @Test func oPutsTheKeyboardInTheOverallComment() async throws {
+        let harness = await makeHarness()
+        harness.session.focusOverallComment()
+        await settle(harness)
+        let editor = try #require(harness.window.firstResponder as? NSTextView)
+        #expect(editor.isFieldEditor)
+        try type("Too complex, simplify.", in: harness)
+        #expect(harness.session.generalComment == "Too complex, simplify.")
+    }
+
+    @Test func backspaceStrikesTheSelectionAndTakesTheStrikeBack() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+
+        func backspace() throws {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: "\u{7F}", charactersIgnoringModifiers: "\u{7F}", isARepeat: false, keyCode: KeyCode.delete
+            ))
+            textView.keyDown(with: event)
+        }
+
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust "))
+        try backspace()
+        #expect(session.marks.map(\.kind) == [.delete])
+        #expect(session.marks.first?.anchor.quote == "very robust ")
+        // The document itself is never changed.
+        #expect(textView.string == "We will leverage a very robust approach here.")
+
+        // The same selection again: the strike comes off.
+        await settle(harness)
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust "))
+        try backspace()
+        #expect(session.marks.isEmpty)
+
+        // With nothing selected, it removes the mark the caret is on.
+        let mark = try #require(session.addMark(.keep, span: TextSpan(8, 16)))
+        await settle(harness)
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
+        #expect(session.selectedMarkID == mark.id)
+        try backspace()
+        #expect(session.marks.isEmpty)
+    }
+}

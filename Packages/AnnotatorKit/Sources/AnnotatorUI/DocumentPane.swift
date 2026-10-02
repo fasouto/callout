@@ -131,7 +131,6 @@ struct DocumentPane: NSViewRepresentable {
             )
 
             refresh(revision: session.revision)
-            DispatchQueue.main.async { [weak textView] in textView?.window?.makeFirstResponder(textView) }
             return scrollView
         }
 
@@ -325,7 +324,19 @@ struct DocumentPane: NSViewRepresentable {
             }
         }
 
+        /// ⌫ strikes out the selected text, as it would delete it in an editor.
+        /// On text that is already struck, it takes the strike back; with nothing
+        /// selected, it removes the mark the caret is on.
         private func removeSelectedMark() {
+            if let selection = Range(textView.selectedRange()), !selection.isEmpty,
+               let span = session.sourceSpan(forView: selection) {
+                if let struck = session.marks.first(where: { $0.kind == .delete && $0.anchor.span == span }) {
+                    session.remove(struck.id)
+                } else {
+                    perform(.delete)
+                }
+                return
+            }
             guard let id = session.selectedMarkID else { return }
             session.remove(id)
         }

@@ -93,6 +93,15 @@ final class AnnotationPDFView: PDFView {
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // A review opens ready for the keyboard: no click needed before the first key.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window, window.firstResponder === window else { return }
+            window.makeFirstResponder(self)
+        }
+    }
 }
 
 /// A mark drawn on a PDF page: the pen stroke, the highlighter, the underline
@@ -235,8 +244,18 @@ struct PDFPane: NSViewRepresentable {
                 }
             }
             view.onDeleteKey = { [weak self] in
-                guard let self, let id = self.session.selectedMarkID else { return }
-                self.session.remove(id)
+                guard let self else { return }
+                // ⌫ strikes out the selected text, or takes the strike back from text
+                // that is already struck; with nothing selected it removes the selected mark.
+                if let selected = self.currentSelection() {
+                    let span = TextSpan(selected.range.location, NSMaxRange(selected.range))
+                    let struck = self.session.marks.first {
+                        $0.kind == .delete && $0.anchor.page == selected.index + 1 && $0.anchor.span == span
+                    }
+                    if let struck { self.session.remove(struck.id) } else { self.perform(.delete) }
+                } else if let id = self.session.selectedMarkID {
+                    self.session.remove(id)
+                }
             }
             view.onReturnKey = { [weak self] in
                 guard let self, let id = self.session.selectedMarkID else { return }

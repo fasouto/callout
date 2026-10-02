@@ -76,7 +76,8 @@ private struct MarginNote: View {
 
     @State private var text: String
     @State private var note: String
-    @FocusState private var focus: NoteField?
+    /// The field that has the keyboard, if one of this note's does.
+    @State private var focus: MarkField?
 
     init(session: ReviewSession, mark: Mark) {
         self.session = session
@@ -104,17 +105,12 @@ private struct MarginNote: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .textFieldStyle(.plain)
-            .onSubmit { session.endEditing() }
-            .onExitCommand { session.endEditing() }
         }
         .padding(.vertical, Self.topPadding)
         .padding(.horizontal, 8)
         .background(mark.kind.tint.opacity(isSelected ? 0.11 : 0), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { session.selectedMarkID = mark.id }
-        .onAppear(perform: takeFocus)
-        .onChange(of: session.editing) { takeFocus() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -147,11 +143,9 @@ private struct MarginNote: View {
 
     @ViewBuilder private var editor: some View {
         if hasText {
-            TextField(mark.kind.textPrompt, text: $text, axis: .vertical)
-                .font(.system(size: 13, design: .serif).italic())
-                .foregroundStyle(Color(nsColor: Theme.ink))
-                .focused($focus, equals: .text)
-                .onChange(of: text) { _, value in session.update(mark.id, text: value) }
+            field(.text, prompt: mark.kind.textPrompt, text: $text, font: Theme.serif(13, italic: true), color: Theme.ink) {
+                session.update(mark.id, text: $0)
+            }
         }
         if mark.kind.isInstruction {
             Text(mark.kind.label)
@@ -162,10 +156,9 @@ private struct MarginNote: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
         } else {
-            TextField(mark.kind.notePrompt, text: $note, axis: .vertical)
-                .font(.system(size: 12.5))
-                .focused($focus, equals: .note)
-                .onChange(of: note) { _, value in session.update(mark.id, note: value) }
+            field(.note, prompt: mark.kind.notePrompt, text: $note, font: .systemFont(ofSize: 12.5), color: .labelColor) {
+                session.update(mark.id, note: $0)
+            }
         }
         HStack(spacing: 10) {
             if focus != nil {
@@ -190,10 +183,20 @@ private struct MarginNote: View {
         .padding(.top, 1)
     }
 
-    private func takeFocus() {
-        guard let target = session.editing, target.markID == mark.id else { return }
-        // The field only exists once the note has redrawn as selected.
-        DispatchQueue.main.async { focus = target.field }
+    private func field(
+        _ which: MarkField, prompt: String, text: Binding<String>, font: NSFont, color: NSColor,
+        changed: @escaping (String) -> Void
+    ) -> some View {
+        NoteField(
+            placeholder: prompt, text: text, font: font, color: color,
+            wantsFocus: session.editing == EditTarget(markID: mark.id, field: which),
+            onFocusChange: { focused in
+                if focused { focus = which } else if focus == which { focus = nil }
+            },
+            onChange: changed,
+            onCommit: { session.endEditing() },
+            onCancel: { session.endEditing() }
+        )
     }
 
     private var accessibilityLabel: String {

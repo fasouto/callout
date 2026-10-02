@@ -35,6 +35,15 @@ final class AnnotationTextView: NSTextView {
         false
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // A review opens ready for the keyboard: no click needed before the first key.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window, window.firstResponder === window else { return }
+            window.makeFirstResponder(self)
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
