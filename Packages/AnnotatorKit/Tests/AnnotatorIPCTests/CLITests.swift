@@ -474,3 +474,82 @@ struct InstallCommandTests {
         #expect(try String(contentsOfFile: settings, encoding: .utf8) == "{ broken")
     }
 }
+
+@Suite("annotator last-reply")
+struct LastReplyCommandTests {
+    private func line(_ object: [String: Any]) -> String {
+        String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+    }
+
+    /// A home folder holding one session's transcript for the project at /work/app.
+    private func home(session: String) throws -> String {
+        let home = NSTemporaryDirectory() + "annotator-home-\(UUID().uuidString.prefix(8))"
+        let folder = "\(home)/.claude/projects/-work-app"
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        let transcript = [
+            line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": "Write a haiku"]]),
+            line(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [["type": "text", "text": "An old silent pond"]]]]),
+            line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": "<command-name>/annotate-last</command-name>"]]),
+        ].joined(separator: "\n")
+        try Data(transcript.utf8).write(to: URL(fileURLWithPath: "\(folder)/\(session).jsonl"))
+        return home
+    }
+
+    private func run(_ run: Run, _ arguments: [String], home: String, variables: [String: String] = [:]) -> Int32 {
+        AnnotatorCLI.run(CLIEnvironment(
+            arguments: ["annotator"] + arguments,
+            variables: variables,
+            currentDirectory: "/work/app",
+            homeDirectory: home,
+            out: { line in run.out.update { $0.append(line) } },
+            err: { line in run.err.update { $0.append(line) } },
+            socketPath: run.path
+        ))
+    }
+
+    @Test func sendsTheLastReplyForFeedback() throws {
+        let app = Run()
+        try app.startApp(answering { ReviewResult(id: $0.id, decision: .feedback, feedback: "## Feedback on Claude's reply\n") })
+        let home = try home(session: "s-1")
+
+        #expect(run(app, ["last-reply", "--session", "s-1"], home: home) == 0)
+        let request = try #require(app.reviewRequest)
+        #expect(request.content == .text("An old silent pond", format: .markdown))
+        #expect(request.origin == .lastReply)
+        #expect(request.modes == [.feedback])
+        #expect(request.metadata.sessionId == "s-1")
+        #expect(request.metadata.title == "Claude's reply")
+        #expect(app.out.get() == ["## Feedback on Claude's reply\n"])
+    }
+
+    @Test func sessionComesFromClaudeCodesEnvironment() throws {
+        let app = Run()
+        try app.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        let home = try home(session: "from-env")
+
+        #expect(run(app, ["last-reply"], home: home, variables: ["CLAUDE_CODE_SESSION_ID": "from-env"]) == 0)
+        #expect(app.reviewRequest?.metadata.sessionId == "from-env")
+    }
+
+    @Test func missingTranscriptOrReplyIsSaidInOneLine() throws {
+        let app = Run()
+        try app.startApp(answering { ReviewResult(id: $0.id, decision: .approve) })
+        let home = try home(session: "s-1")
+
+        #expect(run(app, ["last-reply", "--session", "unknown"], home: home) == 0)
+        #expect(app.out.get() == ["The transcript of this session was not found, so there is no reply to review."])
+
+        let empty = "\(home)/empty.jsonl"
+        try Data().write(to: URL(fileURLWithPath: empty))
+        #expect(run(app, ["last-reply", "--transcript", empty], home: home) == 0)
+        #expect(app.out.get().last == "No earlier reply was found in this session, so there is nothing to review.")
+        #expect(app.received.get().isEmpty)
+    }
+
+    @Test func unreachableAppExitsCleanly() throws {
+        let app = Run()
+        let home = try home(session: "s-1")
+        #expect(run(app, ["last-reply", "--session", "s-1"], home: home) == 0)
+        #expect(app.out.get() == ["Annotator could not be reached, so no review was done."])
+    }
+}

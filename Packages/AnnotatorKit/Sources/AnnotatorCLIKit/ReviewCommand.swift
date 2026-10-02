@@ -54,45 +54,7 @@ struct ReviewCommand {
     }
 
     func run() throws -> Int32 {
-        let request = try makeRequest()
-
-        guard let client = AppConnection.open(environment) else {
-            return finishWithout(request, "Annotator could not be reached, so no review was done.")
-        }
-        defer { client.close() }
-
-        do {
-            try client.send(.review(request))
-            guard case .accepted = try client.receive(timeout: AppConnection.acceptTimeout) else {
-                return finishWithout(request, "Annotator did not accept the review, so none was done.")
-            }
-            // On standard error, so it is on record even if this process is stopped before the result.
-            environment.err("annotator: review \(request.id.uuidString) is open in Annotator")
-
-            while true {
-                if case .result(let result) = try client.receive(timeout: nil) {
-                    if request.reply == .clipboard, !json, result.decision == .feedback {
-                        environment.out("The response was copied to the clipboard.")
-                    } else {
-                        environment.out(Output.text(for: result, json: json))
-                    }
-                    return ExitCode.success
-                }
-            }
-        } catch {
-            // The app quit or crashed mid-review. The caller carries on as if there had been none.
-            return finishWithout(request, "Annotator closed before the review was finished, so no feedback was given.")
-        }
-    }
-
-    private func finishWithout(_ request: ReviewRequest, _ message: String) -> Int32 {
-        if json {
-            environment.err("annotator: \(message)")
-            environment.out(Output.text(for: ReviewResult(id: request.id, decision: .cancel), json: true))
-        } else {
-            environment.out(message)
-        }
-        return ExitCode.success
+        ReviewExchange(environment: environment, json: json).run(try makeRequest())
     }
 
     // MARK: - Request
@@ -138,6 +100,101 @@ struct ReviewCommand {
             if allowed.isEmpty { allowed = [.feedback] }
         }
         return ReviewRequest(content: content, origin: origin, metadata: metadata, reply: reply, modes: allowed)
+    }
+}
+
+/// Sends a request to the app and waits for the response, with the fallback rule:
+/// whenever there is no response to give, say so in one line and exit successfully.
+struct ReviewExchange {
+    let environment: CLIEnvironment
+    var json = false
+
+    func run(_ request: ReviewRequest) -> Int32 {
+        guard let client = AppConnection.open(environment) else {
+            return finishWithout(request, "Annotator could not be reached, so no review was done.")
+        }
+        defer { client.close() }
+
+        do {
+            try client.send(.review(request))
+            guard case .accepted = try client.receive(timeout: AppConnection.acceptTimeout) else {
+                return finishWithout(request, "Annotator did not accept the review, so none was done.")
+            }
+            // On standard error, so it is on record even if this process is stopped before the result.
+            environment.err("annotator: review \(request.id.uuidString) is open in Annotator")
+
+            while true {
+                if case .result(let result) = try client.receive(timeout: nil) {
+                    if request.reply == .clipboard, !json, result.decision == .feedback {
+                        environment.out("The response was copied to the clipboard.")
+                    } else {
+                        environment.out(Output.text(for: result, json: json))
+                    }
+                    return ExitCode.success
+                }
+            }
+        } catch {
+            // The app quit or crashed mid-review. The caller carries on as if there had been none.
+            return finishWithout(request, "Annotator closed before the review was finished, so no feedback was given.")
+        }
+    }
+
+    private func finishWithout(_ request: ReviewRequest, _ message: String) -> Int32 {
+        if json {
+            environment.err("annotator: \(message)")
+            environment.out(Output.text(for: ReviewResult(id: request.id, decision: .cancel), json: true))
+        } else {
+            environment.out(message)
+        }
+        return ExitCode.success
+    }
+}
+
+/// `annotator last-reply`: opens Claude's last reply in this session for review.
+struct LastReplyCommand {
+    private let environment: CLIEnvironment
+    private var session: String?
+    private var transcript: String?
+    private var json = false
+
+    init(arguments: inout Arguments, environment: CLIEnvironment) throws {
+        self.environment = environment
+        while let argument = arguments.next() {
+            switch argument {
+            case "--session":
+                session = try arguments.value(for: argument)
+            case "--transcript":
+                transcript = try arguments.value(for: argument)
+            case "--json":
+                json = true
+            default:
+                throw UsageError("Unknown option \(argument).")
+            }
+        }
+    }
+
+    func run() -> Int32 {
+        let session = session ?? ClaudeCode.sessionID(in: environment.variables)
+        let path = transcript ?? Transcript.locate(
+            sessionID: session, workingDirectory: environment.currentDirectory, variables: environment.variables,
+            home: environment.homeDirectory
+        )
+        guard let path else {
+            environment.out("The transcript of this session was not found, so there is no reply to review.")
+            return ExitCode.success
+        }
+        guard let reply = Transcript.lastReply(inTranscriptAt: path) else {
+            environment.out("No earlier reply was found in this session, so there is nothing to review.")
+            return ExitCode.success
+        }
+        let request = ReviewRequest(
+            content: .text(reply, format: .markdown),
+            origin: .lastReply,
+            metadata: ReviewMetadata(projectPath: environment.currentDirectory, sessionId: session, title: "Claude's reply"),
+            reply: .stdout,
+            modes: [.feedback]
+        )
+        return ReviewExchange(environment: environment, json: json).run(request)
     }
 }
 

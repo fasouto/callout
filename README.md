@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. The review window works for text: it renders markdown, takes all five marks, and returns either the feedback or the corrected text. The `annotator` command-line tool sends it requests over a local socket, and the Claude Code plugin sends it every plan. Reviewing replies and documents from Claude Code, and PDF support, are next.
+Status: early development. Text reviews work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans and replies. PDF support and reviews of generated documents are next.
 
 ## Building
 
@@ -98,6 +98,8 @@ ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-
 **Plans.** When Claude finishes a plan, it opens in Annotator before the terminal dialog. *Send Feedback* (`⌘↩`) sends your marks back and Claude revises the plan. *Approve* (`⌘⇧↩`) approves the plan and asks Claude Code to switch to accept-edits mode. `Esc` closes the window and leaves Claude Code's own dialog. If the app is missing or quits, you get that dialog as well.
 
 Known limitation: Claude Code 2.1.287 ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
+
+**Replies.** Type `/annotate-last` to correct Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude rewrites the reply from your marks. Only you can start it: Claude never opens a review of its own reply by itself.
 
 Without the plugin, `annotator install` adds the same hook to `~/.claude/settings.json` (it edits only that entry and keeps a backup), and `annotator uninstall` removes it.
 

@@ -7,6 +7,7 @@ public struct CLIEnvironment {
     public var arguments: [String]
     public var variables: [String: String]
     public var currentDirectory: String
+    public var homeDirectory: String
     public var readStandardInput: () -> Data
     public var standardInputIsTerminal: Bool
     public var out: (String) -> Void
@@ -23,6 +24,7 @@ public struct CLIEnvironment {
         arguments: [String],
         variables: [String: String] = [:],
         currentDirectory: String = FileManager.default.currentDirectoryPath,
+        homeDirectory: String = NSHomeDirectory(),
         readStandardInput: @escaping () -> Data = { Data() },
         standardInputIsTerminal: Bool = false,
         out: @escaping (String) -> Void,
@@ -35,6 +37,7 @@ public struct CLIEnvironment {
         self.arguments = arguments
         self.variables = variables
         self.currentDirectory = currentDirectory
+        self.homeDirectory = homeDirectory
         self.readStandardInput = readStandardInput
         self.standardInputIsTerminal = standardInputIsTerminal
         self.out = out
@@ -62,6 +65,7 @@ public enum AnnotatorCLI {
     Usage:
       annotator review [file | -] [options]   Open a review and wait for the response
       annotator result [id] [--session <id>]  Print a finished review again
+      annotator last-reply [--session <id>]   Review Claude's last reply in a Claude Code session
       annotator hook                          Claude Code plan hook (reads the hook JSON on standard input)
       annotator install [--settings <file>]   Add the plan hook to ~/.claude/settings.json
       annotator uninstall [--settings <file>] Remove it again
@@ -91,6 +95,8 @@ public enum AnnotatorCLI {
                 return try ReviewCommand(arguments: &arguments, environment: environment).run()
             case "result":
                 return try ResultCommand(arguments: &arguments, environment: environment).run()
+            case "last-reply":
+                return try LastReplyCommand(arguments: &arguments, environment: environment).run()
             case "hook":
                 return HookCommand(environment: environment).run()
             case "install":

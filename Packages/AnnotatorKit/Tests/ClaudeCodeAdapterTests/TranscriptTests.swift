@@ -1,0 +1,243 @@
+import Foundation
+import Testing
+@testable import ClaudeCodeAdapter
+
+/// Builds transcript lines shaped like the ones Claude Code writes.
+enum Line {
+    private static func json(_ object: [String: Any]) -> String {
+        String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+    }
+
+    static func prompt(_ text: String) -> String {
+        json(["type": "user", "isSidechain": false, "message": ["role": "user", "content": text]])
+    }
+
+    static func promptWithImage(_ text: String) -> String {
+        json(["type": "user", "isSidechain": false, "message": ["role": "user", "content": [
+            ["type": "text", "text": text], ["type": "image", "source": ["type": "base64"]],
+        ]]])
+    }
+
+    static func command(_ name: String) -> String {
+        prompt("<command-message>\(name)</command-message>\n<command-name>/\(name)</command-name>\n<command-args></command-args>")
+    }
+
+    static func meta(_ text: String) -> String {
+        json(["type": "user", "isSidechain": false, "isMeta": true, "message": ["role": "user", "content": [["type": "text", "text": text]]]])
+    }
+
+    static func assistant(_ text: String, sidechain: Bool = false) -> String {
+        json(["type": "assistant", "isSidechain": sidechain, "message": ["role": "assistant", "content": [["type": "text", "text": text]]]])
+    }
+
+    static func thinking() -> String {
+        json(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [["type": "thinking", "thinking": "hmm"]]]])
+    }
+
+    static func toolUse() -> String {
+        json(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [
+            ["type": "tool_use", "id": "toolu_1", "name": "Bash", "input": ["command": "ls"]],
+        ]]])
+    }
+
+    static func toolResult() -> String {
+        json(["type": "user", "isSidechain": false, "message": ["role": "user", "content": [
+            ["type": "tool_result", "tool_use_id": "toolu_1", "content": "file.txt"],
+        ]]])
+    }
+
+    static func other(_ type: String) -> String {
+        json(["type": type, "sessionId": "s"])
+    }
+}
+
+@Suite("Transcript: last reply")
+struct LastReplyTests {
+    private func reply(_ lines: String...) -> String? {
+        Transcript.lastReply(in: lines.joined(separator: "\n"))
+    }
+
+    @Test func theReplyBeforeTheCommandIsTheOneToReview() {
+        #expect(reply(
+            Line.other("permission-mode"),
+            Line.prompt("Write me a cover letter"),
+            Line.thinking(),
+            Line.assistant("Dear hiring manager,\n\nI am writing to apply."),
+            Line.other("file-history-snapshot"),
+            Line.command("annotate-last"),
+            Line.meta("The user wants to correct your previous reply..."),
+            Line.assistant("Opening your reply in Annotator."),
+            Line.toolUse()
+        ) == "Dear hiring manager,\n\nI am writing to apply.")
+    }
+
+    @Test func onlyTheFinalMessageOfATurnIsTaken() {
+        #expect(reply(
+            Line.prompt("Fix the bug"),
+            Line.assistant("Let me look at the code."),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("Found it."),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("The bug was an off-by-one."),
+            Line.assistant("I fixed it in `loop.py`."),
+            Line.command("annotate-last")
+        ) == "The bug was an off-by-one.\n\nI fixed it in `loop.py`.")
+    }
+
+    @Test func aTurnThatEndedOnAToolCallIsTakenWhole() {
+        #expect(reply(
+            Line.prompt("Fix the bug"),
+            Line.assistant("Looking."),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("Trying a fix."),
+            Line.toolUse(),
+            Line.command("annotate-last")
+        ) == "Looking.\n\nTrying a fix.")
+    }
+
+    @Test func otherCommandsAndUnansweredPromptsAreSteppedOver() {
+        #expect(reply(
+            Line.prompt("Summarise the design"),
+            Line.assistant("The design has three parts."),
+            Line.command("model"),
+            Line.prompt("<local-command-stdout>Set model to opus</local-command-stdout>"),
+            Line.promptWithImage("and look at this"),
+            Line.command("annotate-last")
+        ) == "The design has three parts.")
+    }
+
+    @Test func earlierTurnsAreNotIncluded() {
+        #expect(reply(
+            Line.prompt("First question"),
+            Line.assistant("First answer."),
+            Line.prompt("Second question"),
+            Line.assistant("Second answer."),
+            Line.command("annotate-last")
+        ) == "Second answer.")
+    }
+
+    @Test func subagentAndInjectedMessagesAreIgnored() {
+        #expect(reply(
+            Line.prompt("Research this"),
+            Line.assistant("Subagent chatter.", sidechain: true),
+            Line.assistant("Here is what I found."),
+            Line.meta("Caveat: generated by a local command"),
+            Line.command("annotate-last")
+        ) == "Here is what I found.")
+    }
+
+    @Test func theLatestInvocationIsTheBoundary() {
+        // The command was used once already; its own turn is now the reply to review.
+        #expect(reply(
+            Line.prompt("Draft a message"),
+            Line.assistant("First draft."),
+            Line.command("annotate-last"),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("Second draft, with your corrections."),
+            Line.command("annotate-last")
+        ) == "Second draft, with your corrections.")
+    }
+
+    @Test func withoutTheCommandTheCurrentTurnIsLeftOut() {
+        // Claude ran the tool itself in answer to "let me correct that".
+        #expect(reply(
+            Line.prompt("Explain the trade-offs"),
+            Line.assistant("There are two trade-offs."),
+            Line.prompt("let me correct that"),
+            Line.assistant("Opening it."),
+            Line.toolUse()
+        ) == "There are two trade-offs.")
+    }
+
+    @Test func nothingToReview() {
+        #expect(reply(Line.command("annotate-last")) == nil)
+        #expect(reply(Line.prompt("hello"), Line.command("annotate-last")) == nil)
+        #expect(reply() == nil)
+    }
+
+    /// Opt-in check against a transcript written by the installed Claude Code:
+    /// set ANNOTATOR_REAL_TRANSCRIPT to its path.
+    @Test func readsATranscriptFromTheInstalledClaudeCode() throws {
+        guard let path = ProcessInfo.processInfo.environment["ANNOTATOR_REAL_TRANSCRIPT"] else { return }
+        let reply = try #require(Transcript.lastReply(inTranscriptAt: path))
+        #expect(!reply.isEmpty)
+        print("last reply: \(reply.count) characters, starting: \(reply.prefix(160).debugDescription)")
+    }
+
+    @Test func damagedLinesAreSkipped() {
+        #expect(reply(
+            Line.prompt("Question"),
+            "{ this is not json",
+            "",
+            #"{"type":"assistant","message":"not an object"}"#,
+            Line.assistant("Answer."),
+            #"{"type":"assistant","message":{"content":[{"type":"text"}]}}"#,
+            Line.command("annotate-last")
+        ) == "Answer.")
+    }
+}
+
+@Suite("Transcript: locating")
+struct TranscriptLocatorTests {
+    private func makeHome() throws -> String {
+        let home = NSTemporaryDirectory() + "annotator-home-\(UUID().uuidString.prefix(8))"
+        try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
+        return home
+    }
+
+    private func write(_ path: String, age: TimeInterval = 0) throws {
+        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: URL(fileURLWithPath: path))
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: path)
+    }
+
+    @Test func projectFolderNameReplacesEverythingButLettersAndDigits() {
+        #expect(Transcript.projectName(for: "/Users/fabio/projects/annotator") == "-Users-fabio-projects-annotator")
+        #expect(Transcript.projectName(for: "/work/my app_v2.1") == "-work-my-app-v2-1")
+        #expect(Transcript.projectName(for: "/work/ñandú") == "-work--and-")
+    }
+
+    @Test func findsTheSessionInTheProjectOfTheWorkingDirectory() throws {
+        let home = try makeHome()
+        let expected = "\(home)/.claude/projects/-work-app/abc.jsonl"
+        try write(expected)
+        try write("\(home)/.claude/projects/-work-app/other.jsonl")
+        #expect(Transcript.locate(sessionID: "abc", workingDirectory: "/work/app", variables: [:], home: home) == expected)
+    }
+
+    @Test func findsASessionThatMovedToAnotherDirectory() throws {
+        let home = try makeHome()
+        let expected = "\(home)/.claude/projects/-work-elsewhere/abc.jsonl"
+        try write(expected)
+        try write("\(home)/.claude/projects/-work-app/other.jsonl")
+        #expect(Transcript.locate(sessionID: "abc", workingDirectory: "/work/app", variables: [:], home: home) == expected)
+    }
+
+    @Test func aKnownSessionThatIsMissingIsNotGuessed() throws {
+        let home = try makeHome()
+        try write("\(home)/.claude/projects/-work-app/other.jsonl")
+        #expect(Transcript.locate(sessionID: "abc", workingDirectory: "/work/app", variables: [:], home: home) == nil)
+    }
+
+    @Test func withoutASessionTheNewestTranscriptOfTheProjectIsUsed() throws {
+        let home = try makeHome()
+        try write("\(home)/.claude/projects/-work-app/old.jsonl", age: 3600)
+        try write("\(home)/.claude/projects/-work-app/new.jsonl", age: 5)
+        try write("\(home)/.claude/projects/-work-other/newest.jsonl")
+        #expect(Transcript.locate(sessionID: nil, workingDirectory: "/work/app", variables: [:], home: home)
+            == "\(home)/.claude/projects/-work-app/new.jsonl")
+        #expect(Transcript.locate(sessionID: nil, workingDirectory: "/work/none", variables: [:], home: home) == nil)
+    }
+
+    @Test func configDirectoryCanBeMoved() throws {
+        let home = try makeHome()
+        let config = "\(home)/custom-config"
+        try write("\(config)/projects/-work-app/abc.jsonl")
+        #expect(Transcript.locate(sessionID: "abc", workingDirectory: "/work/app", variables: ["CLAUDE_CONFIG_DIR": config], home: home)
+            == "\(config)/projects/-work-app/abc.jsonl")
+    }
+}
