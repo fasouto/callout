@@ -12,6 +12,9 @@ let package = Package(
     dependencies: [
         // Markdown parsing with source ranges for every node. 0.x minors may break API.
         .package(url: "https://github.com/swiftlang/swift-markdown.git", .upToNextMinor(from: "0.9.0")),
+        // SQLite for plan versions, history and snippets: migrations, full-text
+        // search, and the aggregate queries a later version needs.
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
     ],
     targets: [
         .target(
@@ -38,10 +41,15 @@ let package = Package(
             name: "annotator",
             dependencies: ["AnnotatorCLIKit"]
         ),
+        // What the app remembers: plan versions, history, snippets.
+        .target(
+            name: "AnnotatorStore",
+            dependencies: ["AnnotatorCore", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
         // The whole app except its bundle. A library so it also builds without Xcode.
         .target(
             name: "AnnotatorUI",
-            dependencies: ["AnnotatorCore", "AnnotatorIPC"]
+            dependencies: ["AnnotatorCore", "AnnotatorIPC", "AnnotatorStore"]
         ),
         // Runs the app unbundled, for development without Xcode.
         .executableTarget(
@@ -51,6 +59,10 @@ let package = Package(
         .testTarget(
             name: "AnnotatorCoreTests",
             dependencies: ["AnnotatorCore"]
+        ),
+        .testTarget(
+            name: "AnnotatorStoreTests",
+            dependencies: ["AnnotatorStore"]
         ),
         .testTarget(
             name: "ClaudeCodeAdapterTests",

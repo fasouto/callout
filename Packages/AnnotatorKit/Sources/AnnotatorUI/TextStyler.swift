@@ -24,7 +24,10 @@ enum BlockDecoration: Equatable {
 /// Builds what the text view shows from the rendered document and the marks.
 @MainActor
 enum TextStyler {
-    static func attributedString(layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?) -> NSAttributedString {
+    /// - Parameter added: source spans that are new since the previous version, to be tinted.
+    static func attributedString(
+        layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = []
+    ) -> NSAttributedString {
         let document = layout.document
         let result = NSMutableAttributedString()
 
@@ -41,6 +44,13 @@ enum TextStyler {
         endQuoteBars(in: result)
         layOutTables(tableCells, in: result)
 
+        // New since the previous version: a quiet tint, under whatever the reviewer marks.
+        for span in added {
+            for range in document.displayedRanges(forSource: span) {
+                result.addAttribute(.backgroundColor, value: Theme.revision.withAlphaComponent(0.13), range: NSRange(range))
+            }
+        }
+
         // Marks are applied in displayed offsets, before ghosts shift anything.
         for mark in marks {
             let selected = mark.id == selectedMarkID
@@ -55,7 +65,16 @@ enum TextStyler {
         }
 
         for ghost in layout.ghosts.reversed() {
-            guard let mark = marks.first(where: { $0.id == ghost.markID }) else { continue }
+            guard let mark = marks.first(where: { $0.id == ghost.markID }) else {
+                // Not a mark's words: text that was removed since the previous version.
+                let removed = NSMutableAttributedString(string: ghost.text, attributes: removalAttributes(for: ghost, in: result))
+                if !ghost.text.hasSuffix("\n"), !ghost.text.hasSuffix(" "), removed.length > 0 {
+                    // A little air before the words that took its place.
+                    removed.addAttribute(.kern, value: 3, range: NSRange(location: removed.length - 1, length: 1))
+                }
+                result.insert(removed, at: ghost.anchor)
+                continue
+            }
             result.insert(
                 NSAttributedString(string: ghost.text, attributes: ghostAttributes(for: mark, at: ghost.anchor, in: result, selected: mark.id == selectedMarkID)),
                 at: ghost.anchor
@@ -104,6 +123,31 @@ enum TextStyler {
         attributes[.foregroundColor] = Theme.ink
         attributes[.backgroundColor] = selected ? Theme.ink.withAlphaComponent(0.14) : nil
         attributes[.annotatorMark] = mark.id.uuidString
+        return attributes
+    }
+
+    /// Text from the previous version: faint and struck with a thin line, so it
+    /// reads as gone and cannot be mistaken for the reviewer's red pen.
+    private static func removalAttributes(for ghost: DisplayLayout.Ghost, in text: NSAttributedString) -> [NSAttributedString.Key: Any] {
+        var attributes = self.attributes(for: SegmentStyle())
+        let isOwnLine = ghost.text.hasSuffix("\n") || ghost.text.hasPrefix("\n")
+        if !isOwnLine, text.length > 0 {
+            let neighbour = text.attributes(at: min(max(ghost.anchor - 1, 0), text.length - 1), effectiveRange: nil)
+            if let paragraph = neighbour[.paragraphStyle] { attributes[.paragraphStyle] = paragraph }
+            if let block = neighbour[.annotatorBlock] { attributes[.annotatorBlock] = block }
+            if let font = neighbour[.font] { attributes[.font] = font }
+        }
+        if isOwnLine {
+            // A removed line sits close to its neighbours, like one more item among them.
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = 5
+            paragraph.paragraphSpacing = 5
+            attributes[.paragraphStyle] = paragraph
+        }
+        attributes[.foregroundColor] = NSColor.tertiaryLabelColor
+        attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+        attributes[.strikethroughColor] = NSColor.tertiaryLabelColor
+        attributes[.backgroundColor] = nil
         return attributes
     }
 

@@ -1,5 +1,6 @@
 import AnnotatorCore
 import AnnotatorIPC
+import AnnotatorStore
 import AppKit
 
 /// The app's entry point, shared by the app bundle and the unbundled development build.
@@ -18,7 +19,7 @@ public enum AnnotatorApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let coordinator = ReviewCoordinator()
+    private let coordinator = ReviewCoordinator(store: try? Store(path: Store.defaultPath))
     private lazy var capture = CaptureController(coordinator: coordinator)
     private lazy var settings = SettingsWindow(showOnboarding: { [weak self] in self?.capture.showOnboarding() })
     private var statusItem: StatusItemController?

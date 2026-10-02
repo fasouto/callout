@@ -37,6 +37,8 @@ enum Theme {
     static var ink: NSColor { .systemBlue }
     static var highlighter: NSColor { .systemYellow }
     static var keep: NSColor { .systemGreen }
+    /// What changed since the previous version. Not one of the reviewer's inks.
+    static var revision: NSColor { .systemPurple }
 
     static func color(for kind: MarkKind) -> NSColor {
         switch kind {

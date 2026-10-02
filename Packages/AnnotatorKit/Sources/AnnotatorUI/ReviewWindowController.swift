@@ -14,8 +14,13 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     /// Each review has its own history of marks to undo.
     private let undoManager = UndoManager()
 
-    init(request: ReviewRequest, completion: @escaping (ReviewResult) -> Void) {
-        session = ReviewSession(request: request)
+    /// - Parameter previousVersion: the previous plan of the same session, and
+    ///   the number of this one, when the request is a revised plan.
+    init(
+        request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil,
+        completion: @escaping (ReviewResult) -> Void
+    ) {
+        session = ReviewSession(request: request, previousVersion: previousVersion, planVersion: planVersion)
         self.completion = completion
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700),
@@ -26,7 +31,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.title = session.title
-        window.subtitle = Self.subtitle(for: request)
+        window.subtitle = Self.subtitle(for: request, planVersion: planVersion)
         // The title bar is part of the sheet of paper, not a strip above it.
         window.titlebarAppearsTransparent = true
         window.backgroundColor = session.isPDF ? .underPageBackgroundColor : .textBackgroundColor
@@ -78,9 +83,9 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    private static func subtitle(for request: ReviewRequest) -> String {
+    private static func subtitle(for request: ReviewRequest, planVersion: Int?) -> String {
         switch request.origin {
-        case .planHook: "Plan"
+        case .planHook: (planVersion ?? 1) > 1 ? "Plan, version \(planVersion ?? 1)" : "Plan"
         case .lastReply: "Reply"
         case .agentRequest: "Document"
         case .hotkey, .service: "Selection"

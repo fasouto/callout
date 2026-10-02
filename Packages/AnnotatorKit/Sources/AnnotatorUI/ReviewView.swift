@@ -97,6 +97,13 @@ private struct ActionBar: View {
                 }
                 Spacer(minLength: 8)
 
+                if session.changes != nil {
+                    Button(session.showsChanges ? "Hide Changes" : "Show Changes") { session.showsChanges.toggle() }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 1)
+                        .help("What changed since the previous version of this plan: new text is tinted, removed text is struck in grey")
+                }
                 if let capture {
                     Button(capture.isShowingRaw ? "Show Cleaned Up" : "Show as Copied", action: capture.toggle)
                         .buttonStyle(.borderless)

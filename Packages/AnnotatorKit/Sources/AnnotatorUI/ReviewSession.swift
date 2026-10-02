@@ -17,6 +17,14 @@ final class ReviewSession {
     let pageTexts: [String]
     /// Why the content could not be shown, if it could not.
     let loadFailure: String?
+    /// What changed since the previous version of this plan, when there was one.
+    let changes: PlanChanges?
+    /// Which version of the plan this is, counting from 1.
+    let planVersion: Int?
+    /// Whether the changes since the previous version are pointed out.
+    var showsChanges = true {
+        didSet { if showsChanges != oldValue { marksChanged() } }
+    }
 
     private(set) var marks: [Mark] = []
     private(set) var layout: DisplayLayout
@@ -47,8 +55,18 @@ final class ReviewSession {
     /// The mark whose edits are already covered by an undo step.
     @ObservationIgnored private var coalescedEdit: UUID?
 
-    init(request: ReviewRequest) {
+    /// - Parameters:
+    ///   - previousVersion: the plan as it was before this revision, to compare against.
+    ///   - planVersion: which version this one is.
+    init(request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil) {
         self.request = request
+        self.planVersion = planVersion
+        if case .text(let text, _) = request.content, let previousVersion {
+            let found = PlanDiff.changes(from: previousVersion, to: text)
+            changes = found.isEmpty ? nil : found
+        } else {
+            changes = nil
+        }
         switch request.content {
         case .text(let text, let format):
             source = text
@@ -70,7 +88,12 @@ final class ReviewSession {
                 loadFailure = nil
             }
         }
-        layout = DisplayLayout(document: document, marks: [])
+        layout = DisplayLayout(document: document, marks: [], removals: changes?.removed ?? [])
+    }
+
+    /// The changes to point out right now: none when they are hidden.
+    var shownChanges: PlanChanges? {
+        showsChanges ? changes : nil
     }
 
     var isPDF: Bool { pdf != nil }
@@ -295,7 +318,7 @@ final class ReviewSession {
     }
 
     private func marksChanged() {
-        layout = DisplayLayout(document: document, marks: marks)
+        layout = DisplayLayout(document: document, marks: marks, removals: shownChanges?.removed ?? [])
         revision += 1
     }
 

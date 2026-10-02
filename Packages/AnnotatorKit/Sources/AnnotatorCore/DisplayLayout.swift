@@ -5,7 +5,8 @@ import Foundation
 /// offsets and the rendered document's displayed offsets. All offsets are UTF-16.
 public struct DisplayLayout: Equatable, Sendable {
     public struct Ghost: Equatable, Sendable {
-        public var markID: UUID
+        /// The mark whose words these are. Nil for text removed since the previous version.
+        public var markID: UUID?
         public var text: String
         /// Displayed offset in the rendered document the ghost sits at.
         public var anchor: Int
@@ -17,10 +18,24 @@ public struct DisplayLayout: Equatable, Sendable {
     /// In view order.
     public let ghosts: [Ghost]
 
-    public init(document: RenderedDocument, marks: [Mark]) {
+    /// - Parameter removals: text that was in the previous version, shown where it used to be.
+    public init(document: RenderedDocument, marks: [Mark], removals: [PlanChanges.Removal] = []) {
         self.document = document
 
-        var pending: [(order: Int, markID: UUID, text: String, anchor: Int)] = []
+        var pending: [(order: Int, markID: UUID?, text: String, anchor: Int)] = []
+        let end = document.text.utf16Length
+        for (index, removal) in removals.enumerated() {
+            // Removals come before a mark's words at the same place, in their own order.
+            let order = index - removals.count
+            if !removal.isWholeLine {
+                guard let anchor = document.displayedOffset(forSource: removal.offset) else { continue }
+                pending.append((order, nil, removal.text, anchor))
+            } else if removal.offset >= document.source.utf16Length {
+                pending.append((order, nil, (end > 0 ? "\n" : "") + Self.withoutBlockMarker(removal.text), end))
+            } else if let anchor = document.displayedLineStart(forSource: removal.offset) {
+                pending.append((order, nil, Self.withoutBlockMarker(removal.text) + "\n", anchor))
+            }
+        }
         for (order, mark) in marks.enumerated() where mark.anchor.page == nil {
             guard let text = mark.text, !text.isEmpty else { continue }
             switch mark.kind {
@@ -45,6 +60,13 @@ public struct DisplayLayout: Equatable, Sendable {
             shift += length
         }
         self.ghosts = ghosts
+    }
+
+    /// A removed line without the syntax that started it: its text is shown, not its markdown.
+    static func withoutBlockMarker(_ line: String) -> String {
+        let marker = /[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]*)?|\#{1,6}[ \t]+)?/
+        guard let match = line.prefixMatch(of: marker) else { return line }
+        return String(line[match.range.upperBound...])
     }
 
     /// The view text: the document's text with every ghost in place.

@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. Reviews of text and of PDFs work end to end, from Claude Code (plans, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share). Comparing plan versions, reusable comments and history are next.
+Status: early development. Reviews of text and of PDFs work end to end, from Claude Code (plans with their changes between versions, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share). Reusable comments and history are next.
 
 ## Building
 
@@ -112,6 +112,10 @@ ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-
 
 Known limitation: Claude Code 2.1.287 ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
 
+When Claude revises a plan, the review shows what changed since the version you last saw: new text is tinted, removed text is struck in grey where it used to be. *Hide Changes* turns that off. Versions are kept per Claude Code session.
+
+![A revised plan with its changes pointed out](docs/plan-changes.png)
+
 **Replies.** Type `/annotate-last` to correct Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude rewrites the reply from your marks. Only you can start it: Claude never opens a review of its own reply by itself.
 
 **Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Annotator, as a PDF when it generated one. Your feedback goes back to Claude, which applies it to the source and regenerates the document. You can also just say "let me review it".
@@ -129,6 +133,7 @@ App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
   Sources/AnnotatorCore/    contract, marks, formatter, apply-edits, markdown source mapping
   Sources/AnnotatorIPC/     the socket protocol between the app and the tool
+  Sources/AnnotatorStore/   the SQLite database: plan versions (GRDB)
   Sources/ClaudeCodeAdapter/ everything specific to Claude Code: hook formats, settings.json
   Sources/AnnotatorCLIKit/  the command-line tool's commands
   Sources/AnnotatorUI/      the app: menu-bar item, review window, text view

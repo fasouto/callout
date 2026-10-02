@@ -1,4 +1,5 @@
 import AnnotatorCore
+import AnnotatorStore
 import AppKit
 
 /// Opens a window for each request and sends its result where the request asked.
@@ -7,15 +8,27 @@ final class ReviewCoordinator {
     private(set) var windows: [UUID: ReviewWindowController] = [:]
     /// False keeps windows off screen, for tests.
     private let presentsWindows: Bool
+    /// Where plan versions are kept. Without it, plans are reviewed without a comparison.
+    private let store: Store?
 
-    init(presentsWindows: Bool = true) {
+    init(presentsWindows: Bool = true, store: Store? = nil) {
         self.presentsWindows = presentsWindows
+        self.store = store
     }
 
     /// - Parameter reply: receives the result, for requests that came from a
     ///   sender waiting for it. Copying to the clipboard is handled here.
     func open(_ request: ReviewRequest, reply: ((ReviewResult) -> Void)? = nil) {
-        let controller = ReviewWindowController(request: request) { [weak self] result in
+        // A plan is remembered per session, so its next revision can show what changed.
+        var previous: String?
+        var version: Int?
+        if request.origin == .planHook, let sessionId = request.metadata.sessionId,
+           case .text(let plan, _) = request.content,
+           let recorded = try? store?.recordPlan(plan, sessionId: sessionId) {
+            previous = recorded.previous?.content
+            version = recorded.version
+        }
+        let controller = ReviewWindowController(request: request, previousVersion: previous, planVersion: version) { [weak self] result in
             self?.windows[request.id] = nil
             self?.deliver(result, for: request, reply: reply)
         }

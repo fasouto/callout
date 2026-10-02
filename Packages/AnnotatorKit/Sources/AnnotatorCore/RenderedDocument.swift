@@ -175,6 +175,19 @@ public struct RenderedDocument: Equatable, Sendable {
         return ranges
     }
 
+    /// Where the displayed line begins that holds the source at or after `offset`,
+    /// a line start in the source. Syntax at the start of the source line, such
+    /// as a list marker, is not displayed, so the text after it is what is looked for.
+    public func displayedLineStart(forSource offset: Int) -> Int? {
+        guard let index = segments.indices.first(where: { ($0 < segments.count) && (segments[$0].source.map { $0.end > offset } ?? false) }) else {
+            return nil
+        }
+        let start = starts[index]
+        let before = (text as NSString).substring(to: start) as NSString
+        let lineBreak = before.range(of: "\n", options: .backwards)
+        return lineBreak.location == NSNotFound ? 0 : lineBreak.location + 1
+    }
+
     /// Where a source offset is displayed, for drawing an insertion point.
     public func displayedOffset(forSource offset: Int) -> Int? {
         var nearest: (distance: Int, offset: Int)?

@@ -77,6 +77,51 @@ struct DisplayLayoutTests {
         #expect(layout.viewOffset(forDisplayed: 2) == 2)
     }
 
+    // MARK: Text removed since the previous version
+
+    @Test func removedWordsAreShownWhereTheyWere() {
+        let old = "Use the old slow cache here.\n"
+        let new = "Use the cache here.\n"
+        let changes = PlanDiff.changes(from: old, to: new)
+        let layout = DisplayLayout(document: MarkdownRenderer.render(new), marks: [], removals: changes.removed)
+        #expect(layout.text == "Use the old slow cache here.")
+        #expect(layout.ghosts.count == 1)
+        #expect(layout.ghosts[0].markID == nil)
+        // The ghost is not document text: a selection inside it maps to nothing.
+        let ghost = layout.ghosts[0].range
+        #expect(layout.displayedRange(forView: ghost).isEmpty)
+    }
+
+    @Test func removedLinesGetTheirOwnLineWithoutTheirMarker() {
+        let old = "# Plan\n\n1. Add a cache\n2. Use Redis\n3. Tests\n\n## Notes\n"
+        let new = "# Plan\n\n1. Add a cache\n3. Tests\n"
+        let changes = PlanDiff.changes(from: old, to: new)
+        let layout = DisplayLayout(document: MarkdownRenderer.render(new), marks: [], removals: changes.removed)
+        // The removed item sits before the line that now follows it; the removed
+        // heading, which had nothing after it, goes at the end. (Markdown numbers
+        // a list from its first item, so the source's "3." is shown as "2.".)
+        #expect(layout.text == "Plan\n1. Add a cache\nUse Redis\n2. Tests\nNotes")
+    }
+
+    @Test func removalsAndMarkGhostsShareTheLayout() {
+        let old = "Use the old cache here.\n"
+        let new = "Use the cache here.\n"
+        let changes = PlanDiff.changes(from: old, to: new)
+        let marks = [mark(.replace, "cache", in: new, text: "store")]
+        let layout = DisplayLayout(document: MarkdownRenderer.render(new), marks: marks, removals: changes.removed)
+        #expect(layout.text == "Use the old cachestore here.")
+        #expect(layout.ghosts.map(\.markID) == [nil, marks[0].id])
+        #expect(layout.viewRanges(forSource: span(of: "cache", in: new)) == [12..<17])
+    }
+
+    @Test func blockMarkersAreStrippedFromRemovedLines() {
+        #expect(DisplayLayout.withoutBlockMarker("- [ ] write tests") == "write tests")
+        #expect(DisplayLayout.withoutBlockMarker("  12. step twelve") == "step twelve")
+        #expect(DisplayLayout.withoutBlockMarker("## A heading") == "A heading")
+        #expect(DisplayLayout.withoutBlockMarker("> > quoted") == "quoted")
+        #expect(DisplayLayout.withoutBlockMarker("plain text") == "plain text")
+    }
+
     @Test func marksWithoutTextAddNoGhost() {
         let layout = layout([mark(.replace, "cache", in: source, text: ""), insert("", after: "Use", in: source)])
         #expect(layout.ghosts.isEmpty)

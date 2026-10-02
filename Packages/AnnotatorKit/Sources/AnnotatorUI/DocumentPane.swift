@@ -141,7 +141,8 @@ struct DocumentPane: NSViewRepresentable {
             let caret = (shownLayout ?? session.layout).displayedOffset(forView: textView.selectedRange().location)
             shownLayout = session.layout
             let styled = TextStyler.attributedString(
-                layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID
+                layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID,
+                added: session.shownChanges?.added ?? []
             )
             isRestyling = true
             textView.textStorage?.setAttributedString(styled)
