@@ -109,8 +109,32 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         case .feedback:
             respond(ReviewResult(id: id, decision: .feedback, feedback: session.feedback()))
         case .approve:
+            // Approving sends nothing but the approval: marks would be lost without a word.
+            if session.hasFeedback {
+                switch ask(
+                    "Approve without your feedback?",
+                    "Approving tells Claude to go ahead as it is. \(markCount) and your overall comment are not sent.",
+                    buttons: ["Send Feedback", "Approve Anyway", "Keep Reviewing"]
+                ) {
+                case .alertFirstButtonReturn: return finish(.feedback)
+                case .alertSecondButtonReturn: break
+                default: return
+                }
+            }
             respond(ReviewResult(id: id, decision: .approve))
         case .applyEdits:
+            // The corrected text carries edits only; comments and the like have nowhere to go.
+            let notEdits = session.marks.filter { !$0.kind.isEdit }.count
+            let general = session.generalComment.nilIfBlank != nil
+            if notEdits > 0 || general {
+                let what = [notEdits > 0 ? "Comments and other notes on the text" : nil, general ? "the overall comment" : nil]
+                    .compactMap { $0 }.joined(separator: " and ")
+                guard ask(
+                    "Apply only the edits?",
+                    "The corrected text includes your deletions, replacements and additions. \(what) are not part of it.",
+                    buttons: ["Apply Edits", "Keep Reviewing"]
+                ) == .alertFirstButtonReturn else { return }
+            }
             do {
                 respond(ReviewResult(id: id, decision: .feedback, editedText: try session.editedText()))
             } catch {
@@ -133,12 +157,26 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     /// Cancelling with marks on the page asks first; they cannot be brought back.
     private func confirmDiscard() -> Bool {
         guard session.hasFeedback else { return true }
+        return ask("Discard this review?", "Your marks and comments will be lost.", buttons: ["Discard", "Keep Reviewing"])
+            == .alertFirstButtonReturn
+    }
+
+    private var markCount: String {
+        let count = session.marks.count
+        return count == 0 ? "Nothing you marked" : count == 1 ? "Your mark" : "Your \(count) marks"
+    }
+
+    /// Asks a question in an alert. Tests answer it themselves.
+    var ask: (_ message: String, _ detail: String, _ buttons: [String]) -> NSApplication.ModalResponse = { message, detail, buttons in
         let alert = NSAlert()
-        alert.messageText = "Discard this review?"
-        alert.informativeText = "Your marks and comments will be lost."
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Keep Reviewing")
-        return alert.runModal() == .alertFirstButtonReturn
+        alert.messageText = message
+        alert.informativeText = detail
+        for title in buttons { alert.addButton(withTitle: title) }
+        return alert.runModal()
+    }
+
+    private func ask(_ message: String, _ detail: String, buttons: [String]) -> NSApplication.ModalResponse {
+        ask(message, detail, buttons)
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {

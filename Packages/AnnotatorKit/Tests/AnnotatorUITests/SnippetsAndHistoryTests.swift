@@ -115,6 +115,80 @@ struct SnippetsAndHistoryTests {
         #expect(try store.history().first?.decision == .approve)
     }
 
+    // MARK: Answers that would drop marks
+
+    @Test func approvingWithMarksAsksFirst() throws {
+        _ = NSApplication.shared
+        let coordinator = ReviewCoordinator(presentsWindows: false)
+        var results: [ReviewResult] = []
+
+        func review(answering answer: NSApplication.ModalResponse) throws -> (ReviewWindowController, [String]) {
+            let request = request()
+            coordinator.open(request) { results.append($0) }
+            let window = try #require(coordinator.windows[request.id])
+            var asked: [String] = []
+            window.ask = { message, _, _ in
+                asked.append(message)
+                return answer
+            }
+            window.session.addMark(.delete, span: TextSpan(19, 31))
+            window.finish(.approve)
+            return (window, asked)
+        }
+
+        // "Send Feedback": the marks go after all.
+        var (_, asked) = try review(answering: .alertFirstButtonReturn)
+        #expect(asked == ["Approve without your feedback?"])
+        #expect(results.last?.decision == .feedback)
+
+        // "Approve Anyway".
+        (_, asked) = try review(answering: .alertSecondButtonReturn)
+        #expect(results.last?.decision == .approve)
+
+        // "Keep Reviewing": nothing is answered and the window stays.
+        let count = results.count
+        let (window, _) = try review(answering: .alertThirdButtonReturn)
+        #expect(results.count == count)
+        #expect(coordinator.windows[window.session.request.id] != nil)
+    }
+
+    @Test func approvingWithNothingMarkedDoesNotAsk() throws {
+        _ = NSApplication.shared
+        let coordinator = ReviewCoordinator(presentsWindows: false)
+        let request = request()
+        var result: ReviewResult?
+        coordinator.open(request) { result = $0 }
+        let window = try #require(coordinator.windows[request.id])
+        window.ask = { _, _, _ in
+            Issue.record("should not ask")
+            return .alertFirstButtonReturn
+        }
+        window.finish(.approve)
+        #expect(result?.decision == .approve)
+    }
+
+    @Test func applyingOnlyEditsDoesNotAsk() throws {
+        _ = NSApplication.shared
+        let coordinator = ReviewCoordinator(presentsWindows: false)
+        let request = ReviewRequest(
+            content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .hotkey,
+            metadata: ReviewMetadata(title: "Selection"), reply: .clipboard, modes: [.feedback, .applyEdits]
+        )
+        var result: ReviewResult?
+        coordinator.open(request) { result = $0 }
+        let window = try #require(coordinator.windows[request.id])
+        var asked: [String] = []
+        window.ask = { message, _, _ in
+            asked.append(message)
+            return .alertSecondButtonReturn
+        }
+        window.session.addMark(.delete, span: TextSpan(19, 31))
+        window.finish(.applyEdits)
+        // Only edits: no question.
+        #expect(asked.isEmpty)
+        #expect(result?.editedText == "We will leverage a approach here.")
+    }
+
     // MARK: How they look
 
     @Test func windowsLayOut() throws {

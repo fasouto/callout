@@ -115,25 +115,7 @@ private struct ActionBar: View {
                     }
                     MarksOverview(session: session)
 
-                    Button("Cancel") { finish(.cancel) }
-                        .keyboardShortcut(.cancelAction)
-                    if session.allows.approve {
-                        Button("Approve") { finish(.approve) }
-                            .keyboardShortcut(.return, modifiers: [.command, .shift])
-                            .help("Approve it as it is (⌘⇧↩)")
-                    } else if session.allows.applyEdits {
-                        Button("Apply Edits") { finish(.applyEdits) }
-                            .keyboardShortcut(.return, modifiers: [.command, .shift])
-                            .disabled(!session.hasEdits)
-                            .help("Return the text with your edits applied (⌘⇧↩)")
-                    }
-                    if session.allows.feedback {
-                        Button("Send Feedback") { finish(.feedback) }
-                            .keyboardShortcut(.return, modifiers: .command)
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!session.hasFeedback)
-                            .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
-                    }
+                    ResponseButtons(session: session, finish: finish)
                 }
             }
             .padding(.horizontal, 16)
@@ -181,6 +163,56 @@ private struct ActionBar: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { writingOverall = true }
+    }
+}
+
+/// The answers to the review: large, since they are what the window is for.
+/// The one that applies right now carries the weight: Approve or Apply Edits
+/// while nothing is marked, Send Feedback once something is.
+private struct ResponseButtons: View {
+    let session: ReviewSession
+    let finish: (ReviewOutcome) -> Void
+
+    private var feedbackLeads: Bool {
+        session.hasFeedback || !(session.allows.approve || session.allows.applyEdits)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { finish(.cancel) } label: {
+                Text("Cancel").frame(minWidth: 64)
+            }
+            .keyboardShortcut(.cancelAction)
+            .buttonStyle(.bordered)
+
+            if session.allows.approve {
+                response("Approve", leads: !feedbackLeads, minWidth: 92) { finish(.approve) }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .help("Approve it as it is (⌘⇧↩)")
+            } else if session.allows.applyEdits {
+                response("Apply Edits", leads: !session.hasFeedback, minWidth: 104) { finish(.applyEdits) }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .disabled(!session.hasEdits)
+                    .help("Return the text with your edits applied (⌘⇧↩)")
+            }
+            if session.allows.feedback {
+                response("Send Feedback", leads: feedbackLeads, minWidth: 128) { finish(.feedback) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!session.hasFeedback)
+                    .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
+            }
+        }
+        .controlSize(.large)
+    }
+
+    @ViewBuilder
+    private func response(_ title: String, leads: Bool, minWidth: CGFloat, action: @escaping () -> Void) -> some View {
+        let label = Text(title).fontWeight(leads ? .semibold : .regular).frame(minWidth: minWidth)
+        if leads {
+            Button(action: action) { label }.buttonStyle(.borderedProminent)
+        } else {
+            Button(action: action) { label }.buttonStyle(.bordered)
+        }
     }
 }
 

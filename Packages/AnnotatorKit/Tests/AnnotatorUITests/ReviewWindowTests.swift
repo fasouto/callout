@@ -474,6 +474,24 @@ struct ReviewWindowTests {
         #expect(harness.session.marks.isEmpty)
     }
 
+    @Test func theAnswerThatAppliesLeads() throws {
+        _ = NSApplication.shared
+        let request = ReviewRequest(
+            content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .planHook,
+            metadata: ReviewMetadata(title: "Plan"), reply: .hookDecision, modes: [.feedback, .approve]
+        )
+        let session = ReviewSession(request: request)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
+        settle(window)
+        snapshot(window, named: "buttons-nothing-marked")
+
+        session.addMark(.delete, span: TextSpan(19, 31))
+        settle(window)
+        snapshot(window, named: "buttons-marked")
+    }
+
     @Test func showsTheRenderedDocument() throws {
         let harness = try makeHarness()
         #expect(harness.textView.string == harness.session.document.text)
