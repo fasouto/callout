@@ -51,6 +51,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator
         PRODUCT_NAME: Annotator
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # Named AnnotatorCLI because a target called "annotator" would collide with
   # "Annotator" on a case-insensitive disk. The product is still `annotator`.
