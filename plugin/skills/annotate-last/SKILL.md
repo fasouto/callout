@@ -21,7 +21,7 @@ A review takes as long as the user needs, which can be longer than a foreground 
 
 When the command finishes, read its output.
 
-- **It starts with `## Feedback`.** These are the user's corrections to your previous reply. Each numbered item quotes the exact text it refers to; "Which one" lines tell repeated phrases apart; "Keep as is" lists text that must not change; "General" applies to the whole reply. Write a revised version of that reply which applies every item, and present it. Do not defend the original wording, and do not change anything the feedback did not ask to change.
+- **It starts with `## Feedback`.** These are the user's corrections to your previous reply. Each numbered item quotes the exact text it refers to; "Expand" asks for more on the quoted passage and "Summarize" for the same in fewer words; "Which one" lines tell repeated phrases apart; "Keep as is" lists text that must not change; "General" applies to the whole reply. Write a revised version of that reply which applies every item, and present it. Do not defend the original wording, and do not change anything the feedback did not ask to change.
 - **It says the review was cancelled, or that Annotator could not be reached.** Say so in one line and carry on. Do not retry.
 
 If the background command was stopped before it finished (for example at its time limit), the review may still have been completed. Run `annotator result --session ${CLAUDE_SESSION_ID}` once to collect it.

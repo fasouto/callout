@@ -234,6 +234,41 @@ struct FeedbackFormatterTests {
         #expect(format("Plan", .text("anything"), []) == "## Feedback on Plan\n\nNo changes requested.\n")
     }
 
+    @Test func expandAndSummarizeAreInstructionsOnAPassage() {
+        let source = "We add a cache. The rollout has four phases, each gated on error rates, with a rollback after any phase."
+        let marks = [
+            mark(.summarize, "The rollout has four phases, each gated on error rates, with a rollback after any phase.", in: source),
+            mark(.expand, "We add a cache", in: source, note: "Which cache, and where does it sit?"),
+        ]
+        let expected = """
+        ## Feedback on Plan
+
+        ### 1. Expand
+        > We add a cache
+        Which cache, and where does it sit?
+
+        ### 2. Summarize
+        > The rollout has four phases, each gated on error rates, with a rollback after any phase.
+
+        """
+        #expect(format("Plan", .text(source), marks) == expected)
+    }
+
+    @Test func instructionsLeaveTheTextAlone() throws {
+        let source = "Short text to expand."
+        let marks = [mark(.expand, "Short text", in: source), mark(.summarize, "to expand", in: source)]
+        #expect(try EditApplier.apply(marks, to: source) == source)
+        // They are not edits, so they can sit on top of one.
+        #expect(EditApplier.conflict(of: marks[0], with: [mark(.delete, "Short text", in: source)]) == nil)
+    }
+
+    @Test func instructionsOnAPDFCarryThePage() {
+        let page = "Worked at CERN on databases."
+        let output = format("cv.pdf", .pdf(pages: ["First.", page]), [mark(.expand, "Worked at CERN", in: page, page: 2)])
+        #expect(output.contains("### 1. Expand (page 2)\n> Worked at CERN\n"))
+        #expect(output.contains("Apply these changes to the source"))
+    }
+
     @Test func replaceCanCarryAReason() {
         let source = "We leverage synergies."
         let marks = [mark(.replace, "leverage synergies", in: source, text: "work together", note: "plain words")]

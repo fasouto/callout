@@ -44,7 +44,7 @@ enum Theme {
         switch kind {
         case .delete: pen
         case .replace, .insert: ink
-        case .comment: highlighter
+        case .comment, .expand, .summarize: highlighter
         case .keep: keep
         }
     }

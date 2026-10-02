@@ -3,11 +3,11 @@ import AppKit
 
 /// The document view. It behaves like an editable text view, so there is a
 /// caret and the keyboard can move and select, but it refuses every change:
-/// letters trigger mark actions instead of typing.
+/// letters trigger commands instead of typing.
 final class AnnotationTextView: NSTextView {
-    var onMarkKey: ((MarkKind) -> Void)?
-    /// S opens the picker of reusable comments.
-    var onSnippetKey: (() -> Void)?
+    var onCommand: ((Keymap.Command) -> Void)?
+    /// Overrides the setting for this view. Nil follows Settings.
+    var usesVimKeys: Bool?
     var onDeleteKey: (() -> Void)?
     var onReturnKey: (() -> Void)?
     /// Tab moves to the next mark, Shift-Tab to the previous one.
@@ -15,6 +15,21 @@ final class AnnotationTextView: NSTextView {
     var onCancelKey: (() -> Void)?
     /// Called when a mouse selection is finished.
     var onSelectionSettled: (() -> Void)?
+    /// With vim keys: called when visual mode starts or ends.
+    var onVisualModeChange: ((Bool) -> Void)?
+
+    /// True while a vim movement is adjusting the selection in steps; the
+    /// selection only counts once it has settled.
+    private(set) var isMovingByKey = false
+    /// With vim keys, the fixed end of the selection in visual mode. Nil outside it.
+    private var visualAnchor: Int? {
+        didSet {
+            if (visualAnchor == nil) != (oldValue == nil) { onVisualModeChange?(visualAnchor != nil) }
+        }
+    }
+    /// The moving end of the selection: where the caret is.
+    private var head = 0
+    private var awaitsSecondG = false
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         false
@@ -22,14 +37,15 @@ final class AnnotationTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let characters = event.charactersIgnoringModifiers ?? ""
+        let isPlain = modifiers.isEmpty || modifiers == .shift
 
-        if modifiers.isEmpty || modifiers == .shift,
-           let key = event.charactersIgnoringModifiers, let kind = MarkKind(key: key) {
-            onMarkKey?(kind)
-            return
-        }
-        if modifiers.isEmpty || modifiers == .shift, event.charactersIgnoringModifiers?.lowercased() == "s" {
-            onSnippetKey?()
+        let vim = usesVimKeys ?? Keymap.usesVimKeys
+        if vim, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) { return }
+
+        if isPlain, let command = Keymap.command(for: characters, vim: vim) {
+            onCommand?(command)
+            visualAnchor = nil
             return
         }
         switch event.keyCode {
@@ -51,6 +67,7 @@ final class AnnotationTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         // The superclass tracks the drag and only returns once the mouse is up.
+        visualAnchor = nil
         super.mouseDown(with: event)
         onSelectionSettled?()
     }
@@ -88,6 +105,97 @@ final class AnnotationTextView: NSTextView {
         guard let layoutManager = textLayoutManager else { return 0 }
         layoutManager.ensureLayout(for: layoutManager.documentRange)
         return ceil(layoutManager.usageBoundsForTextContainer.maxY)
+    }
+
+    // MARK: - Vim keys
+
+    /// Handles a key the vim way. Returns false for keys vim mode leaves alone.
+    private func vimKeyDown(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        if modifiers == .control, characters == "r" {
+            undoManager?.redo()
+            return true
+        }
+        if keyCode == KeyCode.escape {
+            // Esc leaves visual mode and lets go of the selection. It never
+            // cancels the review: it is pressed too often by habit for that.
+            visualAnchor = nil
+            let caret = selectedRange().location
+            setSelectedRange(NSRange(location: caret, length: 0))
+            return true
+        }
+        guard modifiers.isEmpty || modifiers == .shift else { return false }
+        defer { if characters != "g" { awaitsSecondG = false } }
+
+        let text = string as NSString
+        syncHead()
+        switch characters {
+        case "h": move(to: max(0, head - 1))
+        case "l": move(to: min(text.length, head + 1))
+        case "j": moveVertically(#selector(moveDown(_:)))
+        case "k": moveVertically(#selector(moveUp(_:)))
+        case "w": move(to: VimMotion.nextWordStart(in: text, from: head))
+        case "e": move(to: VimMotion.wordEnd(in: text, from: head))
+        case "b": move(to: VimMotion.previousWordStart(in: text, from: head))
+        case "0": moveVertically(#selector(moveToBeginningOfLine(_:)))
+        case "$": moveVertically(#selector(moveToEndOfLine(_:)))
+        case "{": move(to: VimMotion.paragraphStart(in: text, from: head))
+        case "}": move(to: VimMotion.paragraphEnd(in: text, from: head))
+        case "G": move(to: text.length)
+        case "g":
+            if awaitsSecondG { move(to: 0) }
+            awaitsSecondG.toggle()
+        case "v":
+            visualAnchor = visualAnchor == nil ? head : nil
+            move(to: head)
+        case "V":
+            // The whole line the caret is on, and on from there.
+            let line = text.lineRange(for: NSRange(location: min(head, text.length), length: 0))
+            visualAnchor = line.location
+            move(to: NSMaxRange(line) - (line.length > 0 && text.character(at: NSMaxRange(line) - 1) == 0x0A ? 1 : 0))
+        case "u": undoManager?.undo()
+        case "n": onTabKey?(true)
+        case "N": onTabKey?(false)
+        default: return false
+        }
+        return true
+    }
+
+    /// Picks up where the caret is when it was moved by something else, such as the mouse.
+    private func syncHead() {
+        let selection = selectedRange()
+        if let anchor = visualAnchor {
+            let expected = NSRange(location: min(anchor, head), length: abs(anchor - head))
+            if selection == expected { return }
+            visualAnchor = nil
+        }
+        head = selection.length > 0 && visualAnchor == nil ? NSMaxRange(selection) : selection.location
+        if selection.length > 0 {
+            // A selection made with the mouse can be extended from the keyboard.
+            visualAnchor = selection.location
+        }
+    }
+
+    private func move(to offset: Int) {
+        head = min(max(offset, 0), (string as NSString).length)
+        let range: NSRange
+        if let anchor = visualAnchor {
+            range = NSRange(location: min(anchor, head), length: abs(anchor - head))
+        } else {
+            range = NSRange(location: head, length: 0)
+        }
+        setSelectedRange(range)
+        scrollRangeToVisible(NSRange(location: head, length: 0))
+    }
+
+    /// Movements that depend on how the text is laid out are left to the text
+    /// view: the caret is put at the head, moved, and read back.
+    private func moveVertically(_ selector: Selector) {
+        isMovingByKey = true
+        setSelectedRange(NSRange(location: head, length: 0))
+        doCommand(by: selector)
+        let moved = selectedRange().location
+        isMovingByKey = false
+        move(to: moved)
     }
 }
 

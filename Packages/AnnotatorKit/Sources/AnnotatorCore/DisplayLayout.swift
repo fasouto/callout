@@ -45,7 +45,7 @@ public struct DisplayLayout: Equatable, Sendable {
             case .insert:
                 guard let offset = document.displayedOffset(forSource: mark.anchor.span.start) else { continue }
                 pending.append((order, mark.id, text, offset))
-            case .delete, .comment, .keep:
+            case .delete, .comment, .expand, .summarize, .keep:
                 continue
             }
         }

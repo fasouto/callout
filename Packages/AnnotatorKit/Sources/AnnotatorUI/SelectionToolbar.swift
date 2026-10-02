@@ -82,14 +82,14 @@ private struct SelectionToolbarView: View {
                         Image(systemName: kind.symbol)
                             .font(.system(size: 11.5, weight: .bold))
                             .foregroundStyle(kind.tint)
-                        KeyCap(kind.key)
+                        KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
                     }
-                    .padding(.horizontal, 9)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("\(kind.hint) (\(kind.key))")
+                .help("\(kind.hint) (\(kind.keyLabel(vim: Keymap.usesVimKeys)))")
                 .accessibilityLabel(kind.label)
             }
             Divider().frame(height: 16).padding(.horizontal, 2)

@@ -5,13 +5,17 @@ public enum MarkKind: String, Codable, Sendable, CaseIterable {
     case replace
     case insert
     case comment
+    /// An instruction about a passage: say more here.
+    case expand
+    /// An instruction about a passage: say this in fewer words.
+    case summarize
     case keep
 
     /// Whether the mark changes the text when edits are applied.
     public var isEdit: Bool {
         switch self {
         case .delete, .replace, .insert: true
-        case .comment, .keep: false
+        case .comment, .expand, .summarize, .keep: false
         }
     }
 }

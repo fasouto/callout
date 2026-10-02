@@ -72,75 +72,106 @@ private struct ActionBar: View {
     @Bindable var session: ReviewSession
     var capture: CaptureSwitch?
     let finish: (ReviewOutcome) -> Void
+    @FocusState private var writingOverall: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(alignment: .bottom, spacing: 12) {
-                TextField("Overall comment", text: $session.generalComment, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .frame(maxWidth: 440)
-                    .onExitCommand { session.endEditing() }
-                    .accessibilityLabel("Overall comment")
+            VStack(alignment: .leading, spacing: 10) {
+                overallComment
+                HStack(spacing: 12) {
+                    if session.isSelectingByKeyboard {
+                        Text("Visual")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(.quaternary, in: Capsule())
+                            .help("Moving extends the selection. Press a mark key, or Esc to let go.")
+                    }
+                    if let message = session.statusMessage {
+                        Text(message)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .transition(.opacity)
+                    }
+                    Spacer(minLength: 8)
 
-                if let message = session.statusMessage {
-                    Text(message)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .padding(.bottom, 5)
-                        .transition(.opacity)
-                }
-                Spacer(minLength: 8)
+                    if session.changes != nil {
+                        Button(session.showsChanges ? "Hide Changes" : "Show Changes") { session.showsChanges.toggle() }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                            .help("What changed since the previous version of this plan: new text is tinted, removed text is struck in grey")
+                    }
+                    if let capture {
+                        Button(capture.isShowingRaw ? "Show Cleaned Up" : "Show as Copied", action: capture.toggle)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                            .help(capture.isShowingRaw
+                                ? "Go back to the text with the terminal's frames and line breaks removed"
+                                : "See the text exactly as it was copied from the terminal")
+                    }
+                    MarksOverview(session: session)
 
-                if session.changes != nil {
-                    Button(session.showsChanges ? "Hide Changes" : "Show Changes") { session.showsChanges.toggle() }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 1)
-                        .help("What changed since the previous version of this plan: new text is tinted, removed text is struck in grey")
-                }
-                if let capture {
-                    Button(capture.isShowingRaw ? "Show Cleaned Up" : "Show as Copied", action: capture.toggle)
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 1)
-                        .help(capture.isShowingRaw
-                            ? "Go back to the text with the terminal's frames and line breaks removed"
-                            : "See the text exactly as it was copied from the terminal")
-                }
-                MarksOverview(session: session)
-                    .padding(.bottom, 1)
-
-                Button("Cancel") { finish(.cancel) }
-                    .keyboardShortcut(.cancelAction)
-                if session.allows.approve {
-                    Button("Approve") { finish(.approve) }
-                        .keyboardShortcut(.return, modifiers: [.command, .shift])
-                        .help("Approve it as it is (⌘⇧↩)")
-                } else if session.allows.applyEdits {
-                    Button("Apply Edits") { finish(.applyEdits) }
-                        .keyboardShortcut(.return, modifiers: [.command, .shift])
-                        .disabled(!session.hasEdits)
-                        .help("Return the text with your edits applied (⌘⇧↩)")
-                }
-                if session.allows.feedback {
-                    Button("Send Feedback") { finish(.feedback) }
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!session.hasFeedback)
-                        .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
+                    Button("Cancel") { finish(.cancel) }
+                        .keyboardShortcut(.cancelAction)
+                    if session.allows.approve {
+                        Button("Approve") { finish(.approve) }
+                            .keyboardShortcut(.return, modifiers: [.command, .shift])
+                            .help("Approve it as it is (⌘⇧↩)")
+                    } else if session.allows.applyEdits {
+                        Button("Apply Edits") { finish(.applyEdits) }
+                            .keyboardShortcut(.return, modifiers: [.command, .shift])
+                            .disabled(!session.hasEdits)
+                            .help("Return the text with your edits applied (⌘⇧↩)")
+                    }
+                    if session.allows.feedback {
+                        Button("Send Feedback") { finish(.feedback) }
+                            .keyboardShortcut(.return, modifiers: .command)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!session.hasFeedback)
+                            .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
+                    }
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
         }
         .background(.bar)
         .animation(.default, value: session.statusMessage)
+        .onChange(of: session.overallFocusToken) { writingOverall = true }
+    }
+
+    /// What the reviewer says about the whole document: the note a teacher
+    /// writes at the end of the essay. Always in view, with room to write.
+    private var overallComment: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "text.alignleft")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(writingOverall || !session.generalComment.isEmpty ? Color(nsColor: Theme.ink) : .secondary)
+                .accessibilityHidden(true)
+            TextField("Overall comment: what should change in general?", text: $session.generalComment, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .lineLimit(2...6)
+                .focused($writingOverall)
+                .onExitCommand { session.endEditing() }
+                .accessibilityLabel("Overall comment")
+            if !writingOverall, session.generalComment.isEmpty {
+                KeyCap("O")
+                    .help("Press O in the document to write here")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(writingOverall ? Color(nsColor: Theme.ink).opacity(0.7) : Color(nsColor: .separatorColor), lineWidth: writingOverall ? 1.5 : 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { writingOverall = true }
     }
 }
 
@@ -165,6 +196,7 @@ private struct MarksOverview: View {
         .foregroundStyle(.secondary)
         .disabled(session.marks.isEmpty)
         .opacity(session.marks.isEmpty ? 0 : 1)
+        .accessibilityHidden(session.marks.isEmpty)
         .help("See every mark and jump to one")
         .popover(isPresented: $isOpen, arrowEdge: .top) {
             ScrollView {

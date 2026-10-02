@@ -98,8 +98,8 @@ struct DocumentPane: NSViewRepresentable {
             textView.autoresizingMask = []
             textView.setAccessibilityLabel("Document")
 
-            textView.onMarkKey = { [weak self] kind in self?.perform(kind) }
-            textView.onSnippetKey = { [weak self] in self?.pickSnippet() }
+            textView.onCommand = { [weak self] command in self?.run(command) }
+            textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onReturnKey = { [weak self] in self?.editSelectedMark() }
             textView.onTabKey = { [weak self] forward in self?.session.selectMark(offsetBy: forward ? 1 : -1) }
@@ -239,7 +239,7 @@ struct DocumentPane: NSViewRepresentable {
         // MARK: Selection
 
         func textViewDidChangeSelection(_ notification: Notification) {
-            guard !isRestyling else { return }
+            guard !isRestyling, !textView.isMovingByKey else { return }
             // While the mouse is down the selection is still being dragged out.
             if NSEvent.pressedMouseButtons == 0 { selectionSettled() }
         }
@@ -269,6 +269,14 @@ struct DocumentPane: NSViewRepresentable {
 
         // MARK: Actions
 
+        func run(_ command: Keymap.Command) {
+            switch command {
+            case .mark(let kind): perform(kind)
+            case .snippets: pickSnippet()
+            case .overall: session.focusOverallComment()
+            }
+        }
+
         func perform(_ kind: MarkKind) {
             guard let selection = Range(textView.selectedRange()) else { return }
             toolbar.hide()
@@ -289,7 +297,7 @@ struct DocumentPane: NSViewRepresentable {
                 return
             }
             switch kind {
-            case .delete, .keep:
+            case .delete, .keep, .expand, .summarize:
                 session.addMark(kind, span: span)
             case .replace, .comment:
                 session.addMarkToWrite(kind, span: span)

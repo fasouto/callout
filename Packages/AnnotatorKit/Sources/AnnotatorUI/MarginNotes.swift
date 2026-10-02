@@ -127,13 +127,18 @@ private struct MarginNote: View {
                 .foregroundStyle(Color(nsColor: Theme.ink))
                 .lineLimit(3)
         }
+        if mark.kind.isInstruction {
+            // The instruction is the message; it is always said.
+            Text(mark.kind.label)
+                .font(.system(size: 12.5, weight: .medium))
+        }
         if let note = mark.note {
             Text(note)
                 .font(.system(size: 12.5))
-                .foregroundStyle(.primary)
+                .foregroundStyle(mark.kind.isInstruction ? .secondary : .primary)
                 .lineLimit(6)
                 .fixedSize(horizontal: false, vertical: true)
-        } else if !hasText || mark.text?.nilIfBlank == nil {
+        } else if !mark.kind.isInstruction, !hasText || mark.text?.nilIfBlank == nil {
             Text(mark.kind.label)
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
@@ -147,6 +152,10 @@ private struct MarginNote: View {
                 .foregroundStyle(Color(nsColor: Theme.ink))
                 .focused($focus, equals: .text)
                 .onChange(of: text) { _, value in session.update(mark.id, text: value) }
+        }
+        if mark.kind.isInstruction {
+            Text(mark.kind.label)
+                .font(.system(size: 12.5, weight: .medium))
         }
         if mark.kind == .keep {
             Text("Keep")
@@ -203,13 +212,13 @@ private struct MarginNote: View {
 private struct MarginGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("Select text, then press a key.")
+            Text(Keymap.usesVimKeys ? "Press v and move to select, then press a key." : "Select text, then press a key.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
                 ForEach(MarkKind.allCases, id: \.self) { kind in
                     GridRow {
-                        KeyCap(kind.key)
+                        KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
                         HStack(spacing: 7) {
                             Image(systemName: kind.symbol)
                                 .font(.system(size: 10.5, weight: .bold))
@@ -219,6 +228,18 @@ private struct MarginGuide: View {
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                }
+                GridRow {
+                    KeyCap("S")
+                    HStack(spacing: 7) {
+                        Image(systemName: "text.badge.plus")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14)
+                        Text("Use a saved comment")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -252,6 +273,8 @@ extension MarkKind {
         case .replace: "Replace it"
         case .insert: "Add text here"
         case .comment: "Comment on it"
+        case .expand: "Ask for more here"
+        case .summarize: "Ask for it shorter"
         case .keep: "Keep it as it is"
         }
     }

@@ -73,6 +73,11 @@ struct ContractTests {
         #expect(try JSONDecoder().decode(ReviewResult.self, from: data) == result)
     }
 
+    @Test func markKindsKeepTheirNames() {
+        // These names are stored in the history and travel over the socket.
+        #expect(MarkKind.allCases.map(\.rawValue) == ["delete", "replace", "insert", "comment", "expand", "summarize", "keep"])
+    }
+
     @Test func marksRoundTrip() throws {
         let source = "Some text to mark up."
         let marks = [

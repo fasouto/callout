@@ -16,7 +16,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     func show() {
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 520, height: 460),
+                contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
                 styleMask: [.titled, .closable], backing: .buffered, defer: false
             )
             window.title = "Annotator Settings"
@@ -28,7 +28,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 SnippetSettings(store: store)
                     .tabItem { Label("Saved Comments", systemImage: "text.badge.plus") }
             }
-            .frame(width: 520, height: 460))
+            .frame(width: 520, height: 560))
             window.center()
             self.window = window
         }
@@ -48,6 +48,7 @@ struct SettingsView: View {
     @State private var isAllowed = SelectionCapture.isAllowed
     @State private var refused = false
     @State private var copied = false
+    @State private var vimKeys = Keymap.usesVimKeys
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     /// The command-line tool inside the app bundle, when there is a bundle.
@@ -82,6 +83,18 @@ struct SettingsView: View {
                 Text("From any app")
             } footer: {
                 Text("Select text in any app and press the shortcut. A file dropped on the menu-bar icon, and Annotate with Annotator in an app's Services menu, need no permission.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Section {
+                Toggle("Move with vim keys", isOn: $vimKeys)
+                    .onChange(of: vimKeys) { _, isOn in Keymap.usesVimKeys = isOn }
+            } header: {
+                Text("In a review")
+            } footer: {
+                Text("h j k l, w b e, 0 $, { }, gg and G move the caret; v starts a selection and V takes the line; n and N go to the next and previous mark; u undoes. Keep moves to ⇧K, and Esc lets go of the selection instead of cancelling the review.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)

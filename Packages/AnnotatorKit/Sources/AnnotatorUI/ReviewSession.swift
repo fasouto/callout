@@ -48,6 +48,10 @@ final class ReviewSession {
     private(set) var documentFocusToken = 0
     /// Whether the document has a selection that marks can be applied to.
     var selection = SelectionState.none
+    /// Bumped to give the keyboard to the overall comment.
+    private(set) var overallFocusToken = 0
+    /// With vim keys: whether a selection is being extended by moving (visual mode).
+    var isSelectingByKeyboard = false
     /// The reusable comments on offer, loaded when the picker is first asked for.
     @ObservationIgnored var loadSnippets: () -> [Snippet] = { [] }
     /// For comments that came from a snippet, which one: the history remembers it.
@@ -218,6 +222,12 @@ final class ReviewSession {
         let natural: NoteField = mark.kind == .replace || mark.kind == .insert ? .text : .note
         selectedMarkID = id
         editing = EditTarget(markID: id, field: field ?? natural)
+    }
+
+    /// Gives the keyboard to the overall comment.
+    func focusOverallComment() {
+        if editing != nil { endEditing() }
+        overallFocusToken += 1
     }
 
     /// Finishes writing and returns the keyboard to the document. A mark left
@@ -392,6 +402,8 @@ extension MarkKind {
         case .replace: "Replace"
         case .insert: "Insert"
         case .comment: "Comment"
+        case .expand: "Expand"
+        case .summarize: "Summarize"
         case .keep: "Keep"
         }
     }
@@ -402,8 +414,15 @@ extension MarkKind {
         case .replace: "R"
         case .insert: "I"
         case .comment: "C"
+        case .expand: "X"
+        case .summarize: "M"
         case .keep: "K"
         }
+    }
+
+    /// The key as shown to the user. With vim keys on, a plain K moves up, so Keep needs Shift.
+    func keyLabel(vim: Bool) -> String {
+        self == .keep && vim ? "⇧K" : key
     }
 
     var symbol: String {
@@ -412,8 +431,15 @@ extension MarkKind {
         case .replace: "arrow.2.squarepath"
         case .insert: "plus"
         case .comment: "highlighter"
+        case .expand: "arrow.up.left.and.arrow.down.right"
+        case .summarize: "arrow.down.right.and.arrow.up.left"
         case .keep: "checkmark"
         }
+    }
+
+    /// An instruction is said by the mark itself; a note is only an addition to it.
+    var isInstruction: Bool {
+        self == .expand || self == .summarize
     }
 
     /// What the mark's margin field asks for.
@@ -422,7 +448,12 @@ extension MarkKind {
     }
 
     var notePrompt: String {
-        self == .comment ? "Comment" : "Reason (optional)"
+        switch self {
+        case .comment: "Comment"
+        case .expand: "What is missing (optional)"
+        case .summarize: "What to keep (optional)"
+        default: "Reason (optional)"
+        }
     }
 
     init?(key: String) {

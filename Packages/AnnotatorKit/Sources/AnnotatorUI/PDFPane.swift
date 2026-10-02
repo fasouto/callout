@@ -5,25 +5,27 @@ import SwiftUI
 
 /// The PDF view with the same keys as the text page: letters mark the selection.
 final class AnnotationPDFView: PDFView {
-    var onMarkKey: ((MarkKind) -> Void)?
-    var onSnippetKey: (() -> Void)?
+    var onCommand: ((Keymap.Command) -> Void)?
+    /// Overrides the setting for this view. Nil follows Settings.
+    var usesVimKeys: Bool?
     var onDeleteKey: (() -> Void)?
     var onReturnKey: (() -> Void)?
     var onTabKey: ((_ forward: Bool) -> Void)?
     var onCancelKey: (() -> Void)?
     /// Called when the mouse is released, at a point in view coordinates.
     var onMouseUp: ((NSPoint) -> Void)?
+    private var awaitsSecondG = false
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let characters = event.charactersIgnoringModifiers ?? ""
+        let isPlain = modifiers.isEmpty || modifiers == .shift
 
-        if modifiers.isEmpty || modifiers == .shift,
-           let key = event.charactersIgnoringModifiers, let kind = MarkKind(key: key) {
-            onMarkKey?(kind)
-            return
-        }
-        if modifiers.isEmpty || modifiers == .shift, event.charactersIgnoringModifiers?.lowercased() == "s" {
-            onSnippetKey?()
+        let vim = usesVimKeys ?? Keymap.usesVimKeys
+        if vim, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) { return }
+
+        if isPlain, let command = Keymap.command(for: characters, vim: vim) {
+            onCommand?(command)
             return
         }
         switch event.keyCode {
@@ -38,6 +40,51 @@ final class AnnotationPDFView: PDFView {
         default:
             super.keyDown(with: event)
         }
+    }
+
+    /// A page has no caret to move, so vim's keys scroll it. Text is still selected with the mouse.
+    private func vimKeyDown(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        if modifiers == .control, characters == "r" {
+            undoManager?.redo()
+            return true
+        }
+        if keyCode == KeyCode.escape {
+            clearSelection()
+            return true
+        }
+        guard modifiers.isEmpty || modifiers == .shift else { return false }
+        defer { if characters != "g" { awaitsSecondG = false } }
+        switch characters {
+        case "j": scroll(by: 48)
+        case "k": scroll(by: -48)
+        case "G": goToLastPage(nil)
+        case "g":
+            if awaitsSecondG { goToFirstPage(nil) }
+            awaitsSecondG.toggle()
+        case "u": undoManager?.undo()
+        case "n": onTabKey?(true)
+        case "N": onTabKey?(false)
+        default: return false
+        }
+        return true
+    }
+
+    private func scroll(by distance: CGFloat) {
+        guard let clip = Self.clipView(in: self), let document = clip.documentView else { return }
+        var origin = clip.bounds.origin
+        // Down the page is towards smaller y unless the document view is flipped.
+        origin.y += document.isFlipped ? distance : -distance
+        origin.y = min(max(origin.y, 0), max(0, document.frame.height - clip.bounds.height))
+        clip.scroll(to: origin)
+        clip.enclosingScrollView?.reflectScrolledClipView(clip)
+    }
+
+    static func clipView(in view: NSView) -> NSClipView? {
+        for subview in view.subviews {
+            if let scroll = subview as? NSScrollView { return scroll.contentView }
+            if let found = clipView(in: subview) { return found }
+        }
+        return nil
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -180,8 +227,13 @@ struct PDFPane: NSViewRepresentable {
             view.backgroundColor = .underPageBackgroundColor
             view.setAccessibilityLabel("Document")
 
-            view.onMarkKey = { [weak self] kind in self?.perform(kind) }
-            view.onSnippetKey = { [weak self] in self?.pickSnippet() }
+            view.onCommand = { [weak self] command in
+                switch command {
+                case .mark(let kind): self?.perform(kind)
+                case .snippets: self?.pickSnippet()
+                case .overall: self?.session.focusOverallComment()
+                }
+            }
             view.onDeleteKey = { [weak self] in
                 guard let self, let id = self.session.selectedMarkID else { return }
                 self.session.remove(id)
@@ -200,7 +252,7 @@ struct PDFPane: NSViewRepresentable {
             center.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: view)
             // The page scrolls inside the PDF view's own scroll view.
             DispatchQueue.main.async { [weak self, weak view] in
-                guard let self, let view, let clip = Self.clipView(in: view) else { return }
+                guard let self, let view, let clip = AnnotationPDFView.clipView(in: view) else { return }
                 clip.postsBoundsChangedNotifications = true
                 center.addObserver(self, selector: #selector(self.viewChanged), name: NSView.boundsDidChangeNotification, object: clip)
                 view.window?.makeFirstResponder(view)
@@ -208,14 +260,6 @@ struct PDFPane: NSViewRepresentable {
             }
             refresh(revision: session.revision)
             return view
-        }
-
-        private static func clipView(in view: NSView) -> NSClipView? {
-            for subview in view.subviews {
-                if let scroll = subview as? NSScrollView { return scroll.contentView }
-                if let found = clipView(in: subview) { return found }
-            }
-            return nil
         }
 
         // MARK: Drawing
@@ -275,7 +319,7 @@ struct PDFPane: NSViewRepresentable {
             switch mark.kind {
             case .delete, .replace:
                 return rects.map { (.strike, $0) }
-            case .comment:
+            case .comment, .expand, .summarize:
                 return rects.map { (.highlight, $0) }
             case .keep:
                 return rects.map { (.keep, $0) }
@@ -398,7 +442,7 @@ struct PDFPane: NSViewRepresentable {
             switch kind {
             case .insert:
                 session.addMarkToWrite(.insert, anchor: Anchor.make(inPage: text, page: page, span: TextSpan(span.end, span.end)))
-            case .delete, .keep:
+            case .delete, .keep, .expand, .summarize:
                 session.addMark(kind, anchor: Anchor.make(inPage: text, page: page, span: span))
             case .replace, .comment:
                 session.addMarkToWrite(kind, anchor: Anchor.make(inPage: text, page: page, span: span))

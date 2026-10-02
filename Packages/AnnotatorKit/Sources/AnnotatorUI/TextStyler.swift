@@ -94,7 +94,9 @@ enum TextStyler {
             attributes[.strikethroughColor] = Theme.pen
             attributes[.foregroundColor] = NSColor.secondaryLabelColor
             if selected { attributes[.backgroundColor] = Theme.pen.withAlphaComponent(0.14) }
-        case .comment:
+        case .comment, .expand, .summarize:
+            // All three are notes to the author about a passage: the highlighter
+            // says "look here", the margin says what about it.
             attributes[.backgroundColor] = Theme.highlighter.withAlphaComponent(selected ? 0.62 : 0.34)
         case .keep:
             attributes[.underlineStyle] = NSUnderlineStyle.thick.rawValue

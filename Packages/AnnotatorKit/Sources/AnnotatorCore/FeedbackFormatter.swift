@@ -75,6 +75,11 @@ public enum FeedbackFormatter {
             lines.append("### \(number). Comment\(page)")
             lines += quoteLines(for: mark, in: document)
             lines += noteLines(nil, mark.note)
+        case .expand, .summarize:
+            // The heading is the instruction; a note only adds to it.
+            lines.append("### \(number). \(mark.kind == .expand ? "Expand" : "Summarize")\(page)")
+            lines += quoteLines(for: mark, in: document)
+            lines += noteLines(nil, mark.note)
         case .insert:
             let place = insertionContext(for: mark, in: document)
             lines.append("### \(number). Insert\(place.map { " \($0.relation)" } ?? "")\(page)")

@@ -52,8 +52,11 @@ The document is a page; your notes go in its margin, beside the lines they refer
 | `R` | Replace it: type the new text in the margin |
 | `I` | Add text at the caret, or after the selection |
 | `C` | Comment on it |
+| `X` | Expand: ask for more here |
+| `M` | Summarize: ask for it shorter |
 | `K` | Keep it: do not change this |
 | `S` | Comment with one of your saved comments |
+| `O` | Write the overall comment |
 
 A PDF takes the same marks: select text on the page and press the same keys. Marks are drawn on the page but never saved into the file, and a PDF only gives feedback, since the source to edit is whatever the PDF was generated from. To add text, select the words it goes after and press `I`.
 
@@ -68,6 +71,8 @@ Replacements, insertions and comments open a note in the margin with the keyboar
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
+
+**Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, Keep moves to `⇧K` (a plain `k` moves up) and `Esc` lets go of the selection instead of cancelling the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
 
 **Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `S` on a selection to pick one; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
 

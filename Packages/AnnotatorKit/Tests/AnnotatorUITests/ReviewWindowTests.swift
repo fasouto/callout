@@ -427,6 +427,36 @@ struct ReviewWindowTests {
         try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("selection-bar.png"))
     }
 
+    @Test func expandAndSummarizeAreOneKeyEach() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        select("token bucket", in: harness)
+        try press("x", keyCode: 7, in: harness)
+        select("The API has no limits today, so a single client can exhaust the pool.", in: harness)
+        try press("m", keyCode: 46, in: harness)
+
+        #expect(session.marks.map(\.kind) == [.expand, .summarize])
+        // Nothing to write is asked for: the instruction is complete as it is.
+        #expect(session.editing == nil)
+        #expect(session.feedback().contains("### 1. Summarize\n> The API has **no limits** today"))
+        #expect(session.feedback().contains("### 2. Expand\n> token bucket\n"))
+
+        // A note can still be added with Return.
+        try press("\r", keyCode: KeyCode.return, in: harness)
+        #expect(session.editing?.field == .note)
+        session.update(try #require(session.selectedMarkID), note: "One sentence is enough.")
+        session.endEditing()
+        #expect(session.feedback().contains("exhaust the pool.\nOne sentence is enough.\n"))
+    }
+
+    @Test func oGoesToTheOverallComment() throws {
+        let harness = try makeHarness()
+        let token = harness.session.overallFocusToken
+        try press("o", keyCode: 31, in: harness)
+        #expect(harness.session.overallFocusToken == token + 1)
+        #expect(harness.session.marks.isEmpty)
+    }
+
     @Test func showsTheRenderedDocument() throws {
         let harness = try makeHarness()
         #expect(harness.textView.string == harness.session.document.text)
@@ -442,6 +472,8 @@ struct ReviewWindowTests {
         session.addMark(.replace, span: sourceSpan(of: "leverage"), text: "use")
         session.addMark(.comment, span: sourceSpan(of: "token bucket"), note: "Why not a sliding window?")
         session.addMark(.keep, span: sourceSpan(of: "Return `429` with a `Retry-After` header"))
+        session.addMark(.expand, span: sourceSpan(of: "Add a `RateLimiter` middleware"), note: "Where does it sit?")
+        session.addMark(.summarize, span: sourceSpan(of: "The API has **no limits** today, so a single client can exhaust the pool."))
         let end = sourceSpan(of: "websockets").end
         session.addMark(.insert, span: TextSpan(end, end), text: " or streaming")
         session.generalComment = "Too complex, simplify."

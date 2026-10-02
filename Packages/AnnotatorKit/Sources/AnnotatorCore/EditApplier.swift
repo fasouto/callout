@@ -37,7 +37,7 @@ public enum EditApplier {
                     if !reachesBack && !reachesForward { range = tidied }
                 }
                 text.deleteCharacters(in: range)
-            case .comment, .keep:
+            case .comment, .expand, .summarize, .keep:
                 break
             }
         }
