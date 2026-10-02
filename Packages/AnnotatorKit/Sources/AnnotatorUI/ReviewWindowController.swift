@@ -27,7 +27,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         window.subtitle = Self.subtitle(for: request)
         // The title bar is part of the sheet of paper, not a strip above it.
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = .textBackgroundColor
+        window.backgroundColor = session.isPDF ? .underPageBackgroundColor : .textBackgroundColor
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: ReviewView(session: session) { [weak self] outcome in

@@ -38,7 +38,8 @@ private struct MarginLayout: Layout {
 
     private func frames(width: CGFloat, subviews: Subviews) -> [CGRect] {
         var frames: [CGRect] = []
-        var cursor: CGFloat = 0
+        // Notes of marks scrolled out above the view sit above it, not piled at its top.
+        var cursor = -CGFloat.greatestFiniteMagnitude
         for subview in subviews {
             let size = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
             let top = max(subview[AnchorKey.self], cursor)
@@ -50,7 +51,7 @@ private struct MarginLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? Theme.marginWidth
-        return CGSize(width: width, height: frames(width: width, subviews: subviews).last?.maxY ?? 0)
+        return CGSize(width: width, height: max(0, frames(width: width, subviews: subviews).last?.maxY ?? 0))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {

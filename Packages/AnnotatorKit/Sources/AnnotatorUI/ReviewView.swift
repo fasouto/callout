@@ -15,14 +15,46 @@ struct ReviewView: View {
     let finish: (ReviewOutcome) -> Void
 
     var body: some View {
-        DocumentPane(
-            session: session, revision: session.revision, focusToken: session.documentFocusToken
-        ) { finish(.cancel) }
+        content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 ActionBar(session: session, finish: finish)
             }
-            .background(Color(nsColor: .textBackgroundColor))
             .frame(minWidth: 720, minHeight: 440)
+    }
+
+    @ViewBuilder private var content: some View {
+        if let failure = session.loadFailure {
+            ContentUnavailableView("Nothing to review", systemImage: "doc.questionmark", description: Text(failure))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+        } else if session.isPDF {
+            PDFReview(session: session, finish: finish)
+        } else {
+            DocumentPane(
+                session: session, revision: session.revision, focusToken: session.documentFocusToken
+            ) { finish(.cancel) }
+                .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+}
+
+/// A PDF with its margin: the notes sit on the desk beside the sheet and follow it as it scrolls.
+private struct PDFReview: View {
+    let session: ReviewSession
+    let finish: (ReviewOutcome) -> Void
+    @State private var margin = MarginModel()
+
+    var body: some View {
+        HStack(spacing: 0) {
+            PDFPane(
+                session: session, margin: margin, revision: session.revision, focusToken: session.documentFocusToken
+            ) { finish(.cancel) }
+            MarginNotes(session: session, model: margin)
+                .padding(.trailing, 16)
+                .frame(width: Theme.marginWidth + 16)
+                .clipped()
+        }
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 }
 

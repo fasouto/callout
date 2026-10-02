@@ -1,6 +1,7 @@
 import AnnotatorCore
 import Foundation
 import Observation
+import PDFKit
 
 /// One review in progress: the document, the marks made so far, and what to
 /// send back. Everything the review window shows comes from here.
@@ -8,8 +9,14 @@ import Observation
 @Observable
 final class ReviewSession {
     let request: ReviewRequest
+    /// The text under review, and how it is displayed. Empty for a PDF.
     let source: String
     let document: RenderedDocument
+    /// The PDF under review, with the text of each page. Nil for text.
+    let pdf: PDFDocument?
+    let pageTexts: [String]
+    /// Why the content could not be shown, if it could not.
+    let loadFailure: String?
 
     private(set) var marks: [Mark] = []
     private(set) var layout: DisplayLayout
@@ -46,16 +53,31 @@ final class ReviewSession {
         case .text(let text, let format):
             source = text
             document = MarkdownRenderer.render(text, format: format)
-        case .file:
-            // PDFs get their own view; until then a file request shows as empty text.
+            pdf = nil
+            pageTexts = []
+            loadFailure = nil
+        case .file(let path):
             source = ""
             document = RenderedDocument(plain: "")
+            let loaded = PDFDocument(url: URL(fileURLWithPath: path))
+            pdf = loaded
+            pageTexts = (0..<(loaded?.pageCount ?? 0)).map { loaded?.page(at: $0)?.string ?? "" }
+            if loaded == nil {
+                loadFailure = "\(URL(fileURLWithPath: path).lastPathComponent) could not be opened as a PDF."
+            } else if pageTexts.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                loadFailure = "This PDF has no text to select. It may be a scan."
+            } else {
+                loadFailure = nil
+            }
         }
         layout = DisplayLayout(document: document, marks: [])
     }
 
+    var isPDF: Bool { pdf != nil }
+
     var title: String {
         if let title = request.metadata.title, !title.isEmpty { return title }
+        if case .file(let path) = request.content { return URL(fileURLWithPath: path).lastPathComponent }
         if let path = request.metadata.filePath { return URL(fileURLWithPath: path).lastPathComponent }
         return "Text"
     }
@@ -63,7 +85,8 @@ final class ReviewSession {
     /// Marks in the order they appear in the document.
     var orderedMarks: [Mark] {
         marks.enumerated().sorted { lhs, rhs in
-            (lhs.element.anchor.span.start, lhs.offset) < (rhs.element.anchor.span.start, rhs.offset)
+            (lhs.element.anchor.page ?? 0, lhs.element.anchor.span.start, lhs.offset)
+                < (rhs.element.anchor.page ?? 0, rhs.element.anchor.span.start, rhs.offset)
         }.map(\.element)
     }
 
@@ -101,7 +124,13 @@ final class ReviewSession {
     /// Adds a mark over a source span. Returns nil, with a status message, when it cannot be placed.
     @discardableResult
     func addMark(_ kind: MarkKind, span: TextSpan, text: String? = nil, note: String? = nil) -> Mark? {
-        place(kind, span: span, text: text, note: note, undoName: kind.label)
+        place(kind, anchor: Anchor.make(in: source, span: span), text: text, note: note, undoName: kind.label)
+    }
+
+    /// Adds a mark at an anchor built elsewhere, such as on a PDF page.
+    @discardableResult
+    func addMark(_ kind: MarkKind, anchor: Anchor?, text: String? = nil, note: String? = nil) -> Mark? {
+        place(kind, anchor: anchor, text: text, note: note, undoName: kind.label)
     }
 
     /// Adds a mark that still has to be written: a replacement, an insertion or a
@@ -109,8 +138,13 @@ final class ReviewSession {
     /// undoable once something was written; left empty, it never happened.
     @discardableResult
     func addMarkToWrite(_ kind: MarkKind, span: TextSpan) -> Mark? {
+        addMarkToWrite(kind, anchor: Anchor.make(in: source, span: span))
+    }
+
+    @discardableResult
+    func addMarkToWrite(_ kind: MarkKind, anchor: Anchor?) -> Mark? {
         let before = Snapshot(marks: marks, selection: selectedMarkID)
-        guard let mark = place(kind, span: span, text: kind == .comment ? nil : "", note: nil, undoName: nil) else {
+        guard let mark = place(kind, anchor: anchor, text: kind == .comment ? nil : "", note: nil, undoName: nil) else {
             return nil
         }
         unwritten = (mark.id, before)
@@ -119,8 +153,8 @@ final class ReviewSession {
         return mark
     }
 
-    private func place(_ kind: MarkKind, span: TextSpan, text: String?, note: String?, undoName: String?) -> Mark? {
-        guard let anchor = Anchor.make(in: source, span: span) else {
+    private func place(_ kind: MarkKind, anchor: Anchor?, text: String?, note: String?, undoName: String?) -> Mark? {
+        guard let anchor else {
             statusMessage = "That selection can't be marked."
             return nil
         }
@@ -277,7 +311,8 @@ final class ReviewSession {
 
     func feedback() -> String {
         FeedbackFormatter.format(.init(
-            title: title, document: .text(source), marks: marks, generalComment: generalComment
+            title: title, document: isPDF ? .pdf(pages: pageTexts) : .text(source),
+            marks: marks, generalComment: generalComment
         ))
     }
 

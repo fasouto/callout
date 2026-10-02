@@ -52,6 +52,17 @@ public struct Anchor: Codable, Hashable, Sendable {
     }
 }
 
+extension Anchor {
+    /// Builds an anchor on a PDF page. `span` is measured in the page's text. The
+    /// quote is stored with runs of whitespace collapsed: a selection's line
+    /// breaks belong to the page layout, not to the text the reader has to find.
+    public static func make(inPage text: String, page: Int, span: TextSpan) -> Anchor? {
+        guard var anchor = make(in: text, span: span, page: page) else { return nil }
+        anchor.quote = anchor.quote.collapsingWhitespace().trimmingCharacters(in: .whitespaces)
+        return anchor
+    }
+}
+
 public struct Mark: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var kind: MarkKind

@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. Text reviews work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans and replies. PDF support and reviews of generated documents are next.
+Status: early development. Reviews of text and of PDFs work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans and replies. The skill that lets Claude ask for a review of a document it generated is next.
 
 ## Building
 
@@ -52,6 +52,8 @@ The document is a page; your notes go in its margin, beside the lines they refer
 | `I` | Add text at the caret, or after the selection |
 | `C` | Comment on it |
 | `K` | Keep it: do not change this |
+
+A PDF takes the same marks: select text on the page and press the same keys. Marks are drawn on the page but never saved into the file, and a PDF only gives feedback, since the source to edit is whatever the PDF was generated from. To add text, select the words it goes after and press `I`.
 
 Replacements, insertions and comments open a note in the margin with the keyboard already in it. `↩` finishes the note and returns to the document; your words appear in the text in blue as you type them.
 
