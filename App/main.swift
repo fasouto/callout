@@ -1,0 +1,3 @@
+import AnnotatorUI
+
+AnnotatorApplication.run()

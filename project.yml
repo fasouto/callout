@@ -1,0 +1,47 @@
+name: Annotator
+
+options:
+  # Placeholder: set this to a prefix you own before distributing a build.
+  bundleIdPrefix: dev.annotator
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Outside the Mac App Store: hardened runtime for notarization, no sandbox.
+    ENABLE_HARDENED_RUNTIME: YES
+
+packages:
+  AnnotatorKit:
+    path: Packages/AnnotatorKit
+
+targets:
+  Annotator:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: AnnotatorKit
+        product: AnnotatorUI
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Annotator
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        # Menu-bar app: no Dock icon.
+        LSUIElement: true
+        NSHumanReadableCopyright: Licensed under the GNU General Public License v3.0.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator
+        PRODUCT_NAME: Annotator
