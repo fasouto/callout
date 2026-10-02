@@ -9,6 +9,8 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     let session: ReviewSession
     private let window: NSWindow
     private var completion: ((ReviewResult) -> Void)?
+    /// Each review has its own history of marks to undo.
+    private let undoManager = UndoManager()
 
     init(request: ReviewRequest, completion: @escaping (ReviewResult) -> Void) {
         session = ReviewSession(request: request)
@@ -23,11 +25,15 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
 
         window.title = session.title
         window.subtitle = Self.subtitle(for: request)
+        // The title bar is part of the sheet of paper, not a strip above it.
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .textBackgroundColor
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: ReviewView(session: session) { [weak self] outcome in
             self?.finish(outcome)
         })
+        session.undoManager = undoManager
         window.setFrameAutosaveName("ReviewWindow")
         if window.frame.origin == .zero { window.center() }
     }
@@ -52,6 +58,8 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
 
     func finish(_ outcome: ReviewOutcome) {
         let id = session.request.id
+        // A note still being written counts, and an empty one is dropped.
+        if outcome != .cancel, session.editing != nil { session.endEditing() }
         switch outcome {
         case .feedback:
             respond(ReviewResult(id: id, decision: .feedback, feedback: session.feedback()))
@@ -86,6 +94,10 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Keep Reviewing")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        undoManager
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

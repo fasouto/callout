@@ -2,6 +2,8 @@
 
 A native macOS menu-bar app for correcting AI-written text the way a teacher marks up an essay: strike out, replace, insert, comment, mark as good. The result goes back to the AI as structured feedback, or to you as the corrected text.
 
+![The review window: a page with marks, and notes in the margin beside the lines they refer to](docs/review-window.png)
+
 It has two parts:
 
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
@@ -41,16 +43,24 @@ Select your team under Signing & Capabilities, then build and run the `Annotator
 
 ## Using it
 
-Select text in the document, then press a key:
+The document is a page; your notes go in its margin, beside the lines they refer to. Select text, then press a key (or use the bar that appears above the selection):
 
 | Key | Mark |
 |---|---|
-| `D` | Delete (strikethrough) |
-| `R` | Replace with new text |
-| `I` | Insert text at the caret, or after the selection |
-| `C` | Comment |
-| `K` | Keep: do not change this |
+| `D` | Strike it out |
+| `R` | Replace it: type the new text in the margin |
+| `I` | Add text at the caret, or after the selection |
+| `C` | Comment on it |
+| `K` | Keep it: do not change this |
+
+Replacements, insertions and comments open a note in the margin with the keyboard already in it. `↩` finishes the note and returns to the document; your words appear in the text in blue as you type them.
+
+| Key | |
+|---|---|
+| `Tab`, `⇧Tab` | Next and previous mark |
+| `↩` | Write in the selected mark's note |
 | `⌫` | Remove the selected mark |
+| `⌘Z`, `⇧⌘Z` | Undo and redo |
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |

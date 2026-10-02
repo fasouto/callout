@@ -9,108 +9,128 @@ enum ReviewOutcome {
     case cancel
 }
 
-/// The review window's content: the document, the list of marks and the actions.
+/// The review window's content: the page with its margin, and the bar of actions under it.
 struct ReviewView: View {
     @Bindable var session: ReviewSession
     let finish: (ReviewOutcome) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            HSplitView {
-                TextPane(session: session, revision: session.revision) { finish(.cancel) }
-                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
-                SidePanel(session: session)
-                    .frame(minWidth: 240, idealWidth: 300, maxWidth: 420, maxHeight: .infinity)
+        DocumentPane(
+            session: session, revision: session.revision, focusToken: session.documentFocusToken
+        ) { finish(.cancel) }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ActionBar(session: session, finish: finish)
             }
-            Divider()
-            ActionBar(session: session, finish: finish)
-        }
-        .frame(minWidth: 760, minHeight: 460)
+            .background(Color(nsColor: .textBackgroundColor))
+            .frame(minWidth: 720, minHeight: 440)
     }
 }
 
-// MARK: - Side panel
+// MARK: - Actions
 
-private struct SidePanel: View {
+private struct ActionBar: View {
     @Bindable var session: ReviewSession
+    let finish: (ReviewOutcome) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            if session.marks.isEmpty {
-                EmptyMarks()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: $session.selectedMarkID) {
-                    ForEach(session.orderedMarks) { mark in
-                        MarkRow(mark: mark).tag(mark.id)
-                    }
-                }
-                .listStyle(.sidebar)
-                .onDeleteCommand {
-                    if let id = session.selectedMarkID { session.remove(id) }
-                }
-            }
-
-            if let mark = session.selectedMark {
-                Divider()
-                MarkDetail(session: session, mark: mark)
-                    .id(mark.id)
-            }
-
             Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                Text("General comment")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextField("About the whole document", text: $session.generalComment, axis: .vertical)
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Overall comment", text: $session.generalComment, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .lineLimit(3...8)
-                    .padding(8)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-            }
-            .padding(12)
-        }
-    }
-}
+                    .lineLimit(1...4)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .frame(maxWidth: 440)
+                    .onExitCommand { session.endEditing() }
+                    .accessibilityLabel("Overall comment")
 
-private struct EmptyMarks: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("No marks yet")
-                .font(.headline)
-            Text("Select text, then press a key.")
-                .foregroundStyle(.secondary)
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                ForEach(MarkKind.allCases, id: \.self) { kind in
-                    GridRow {
-                        KeyCap(kind.key)
-                        Label(kind.label, systemImage: kind.symbol)
-                            .foregroundStyle(.secondary)
-                    }
+                if let message = session.statusMessage {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.bottom, 5)
+                        .transition(.opacity)
+                }
+                Spacer(minLength: 8)
+
+                MarksOverview(session: session)
+                    .padding(.bottom, 1)
+
+                Button("Cancel") { finish(.cancel) }
+                    .keyboardShortcut(.cancelAction)
+                if session.allows.approve {
+                    Button("Approve") { finish(.approve) }
+                        .keyboardShortcut(.return, modifiers: [.command, .shift])
+                        .help("Approve it as it is (⌘⇧↩)")
+                } else if session.allows.applyEdits {
+                    Button("Apply Edits") { finish(.applyEdits) }
+                        .keyboardShortcut(.return, modifiers: [.command, .shift])
+                        .disabled(!session.hasEdits)
+                        .help("Return the text with your edits applied (⌘⇧↩)")
+                }
+                if session.allows.feedback {
+                    Button("Send Feedback") { finish(.feedback) }
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!session.hasFeedback)
+                        .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
                 }
             }
-            .padding(.top, 4)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .padding(20)
+        .background(.bar)
+        .animation(.default, value: session.statusMessage)
     }
 }
 
-private struct KeyCap: View {
-    let key: String
+/// How many marks there are, and a list to jump to any of them.
+private struct MarksOverview: View {
+    let session: ReviewSession
+    @State private var isOpen = false
 
-    init(_ key: String) { self.key = key }
+    private var title: String {
+        let count = session.marks.count
+        return count == 1 ? "1 mark" : "\(count) marks"
+    }
 
     var body: some View {
-        Text(key)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .frame(minWidth: 18)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 2)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
+        Button {
+            isOpen.toggle()
+        } label: {
+            Label(title, systemImage: "list.bullet")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .disabled(session.marks.isEmpty)
+        .opacity(session.marks.isEmpty ? 0 : 1)
+        .help("See every mark and jump to one")
+        .popover(isPresented: $isOpen, arrowEdge: .top) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(session.orderedMarks) { mark in
+                        Button {
+                            session.selectedMarkID = mark.id
+                            isOpen = false
+                        } label: {
+                            OverviewRow(mark: mark)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(8)
+            }
+            .frame(width: 320)
+            .frame(maxHeight: 360)
+        }
     }
 }
 
-private struct MarkRow: View {
+private struct OverviewRow: View {
     let mark: Mark
 
     private var quote: String {
@@ -121,138 +141,35 @@ private struct MarkRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: mark.kind.symbol)
+                .font(.system(size: 10.5, weight: .bold))
                 .foregroundStyle(mark.kind.tint)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
                 if !quote.isEmpty {
                     Text(quote)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .strikethrough(mark.kind == .delete || mark.kind == .replace)
                         .foregroundStyle(mark.kind == .delete || mark.kind == .replace ? .secondary : .primary)
                 }
-                if let text = mark.text, !text.isEmpty {
-                    Text(text).lineLimit(2)
+                if let text = mark.text?.nilIfBlank {
+                    Text(text)
+                        .italic()
+                        .foregroundStyle(Color(nsColor: Theme.ink))
+                        .lineLimit(1)
                 }
                 if let note = mark.note {
                     Text(note)
-                        .lineLimit(2)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(mark.kind.label): \(quote)")
-    }
-}
-
-/// Edits the text and the note of the selected mark.
-private struct MarkDetail: View {
-    let session: ReviewSession
-    let mark: Mark
-
-    @State private var text: String
-    @State private var note: String
-
-    init(session: ReviewSession, mark: Mark) {
-        self.session = session
-        self.mark = mark
-        _text = State(initialValue: mark.text ?? "")
-        _note = State(initialValue: mark.note ?? "")
-    }
-
-    private var noteLabel: String {
-        mark.kind == .comment ? "Comment" : "Reason (optional)"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(mark.kind.label, systemImage: mark.kind.symbol)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    session.remove(mark.id)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .help("Remove this mark (⌫)")
-                .accessibilityLabel("Remove this mark")
-            }
-            if mark.kind == .replace || mark.kind == .insert {
-                field(mark.kind == .replace ? "Replace with" : "Text to insert", text: $text)
-                    .onChange(of: text) { _, value in session.update(mark.id, text: value) }
-            }
-            if mark.kind != .keep {
-                field(noteLabel, text: $note)
-                    .onChange(of: note) { _, value in session.update(mark.id, note: value) }
-            }
-        }
-        .padding(12)
-    }
-
-    private func field(_ prompt: String, text: Binding<String>) -> some View {
-        TextField(prompt, text: text, axis: .vertical)
-            .textFieldStyle(.plain)
-            .lineLimit(1...6)
-            .padding(8)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-extension MarkKind {
-    var tint: Color {
-        switch self {
-        case .delete: .red
-        case .replace: .orange
-        case .insert: .green
-        case .comment: .yellow
-        case .keep: .green
-        }
-    }
-}
-
-// MARK: - Actions
-
-private struct ActionBar: View {
-    let session: ReviewSession
-    let finish: (ReviewOutcome) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button("Cancel") { finish(.cancel) }
-                .keyboardShortcut(.cancelAction)
-
-            if let message = session.statusMessage {
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-
-            if session.allows.approve {
-                Button("Approve") { finish(.approve) }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift])
-                    .help("Approve as it is (⌘⇧↩)")
-            } else if session.allows.applyEdits {
-                Button("Apply Edits") { finish(.applyEdits) }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift])
-                    .disabled(!session.hasEdits)
-                    .help("Return the text with your edits applied (⌘⇧↩)")
-            }
-            if session.allows.feedback {
-                Button("Send Feedback") { finish(.feedback) }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!session.hasFeedback)
-                    .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write a general comment first")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 }

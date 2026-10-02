@@ -87,13 +87,19 @@ struct ReviewWindowTests {
         return TextSpan(range.location, NSMaxRange(range))
     }
 
+    /// Writes the window as PNGs, in light and in dark, when a snapshot folder is set.
     private func snapshot(_ window: NSWindow, named name: String) {
         guard let directory = ProcessInfo.processInfo.environment["ANNOTATOR_SNAPSHOT_DIR"],
-              let view = window.contentView,
-              let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let url = URL(fileURLWithPath: directory).appendingPathComponent("\(name).png")
-        try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+              let view = window.contentView else { return }
+        for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            window.appearance = NSAppearance(named: appearance)
+            settle(window)
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let url = URL(fileURLWithPath: directory).appendingPathComponent("\(name)-\(suffix).png")
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+        }
+        window.appearance = nil
     }
 
     private func press(_ characters: String, keyCode: UInt16, in harness: Harness) throws {
@@ -156,6 +162,268 @@ struct ReviewWindowTests {
         select("robust approach", in: harness)
         try press("d", keyCode: 2, in: harness)
         #expect(harness.session.marks.count == 1)
+    }
+
+    // MARK: Writing in the margin
+
+    @Test func replaceKeyOpensTheMarginForWriting() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        select("leverage", in: harness)
+        try press("r", keyCode: 15, in: harness)
+
+        let mark = try #require(session.marks.first)
+        #expect(mark.kind == .replace)
+        #expect(session.editing == EditTarget(markID: mark.id, field: .text))
+        #expect(session.selectedMarkID == mark.id)
+
+        // What is typed in the margin shows in the document as it is typed.
+        session.update(mark.id, text: "use")
+        settle(harness.window)
+        #expect(harness.textView.string.contains("We will leverageuse a very robust"))
+
+        let token = session.documentFocusToken
+        session.endEditing()
+        #expect(session.editing == nil)
+        #expect(session.documentFocusToken == token + 1)
+        #expect(session.marks.first?.kind == .replace)
+        #expect(session.marks.first?.text == "use")
+    }
+
+    @Test func aReplacementLeftEmptyBecomesADeletion() throws {
+        let harness = try makeHarness()
+        select("leverage", in: harness)
+        try press("r", keyCode: 15, in: harness)
+        harness.session.endEditing()
+        #expect(harness.session.marks.map(\.kind) == [.delete])
+        #expect(harness.session.marks.first?.text == nil)
+    }
+
+    @Test func commentsAndInsertionsLeftEmptyAreDropped() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+
+        select("token bucket", in: harness)
+        try press("c", keyCode: 8, in: harness)
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.editing?.field == .note)
+        session.endEditing()
+        #expect(session.marks.isEmpty)
+
+        select("websockets", in: harness)
+        try press("i", keyCode: 34, in: harness)
+        #expect(session.marks.map(\.kind) == [.insert])
+        #expect(session.editing?.field == .text)
+        session.endEditing()
+        #expect(session.marks.isEmpty)
+
+        // Written ones stay.
+        select("token bucket", in: harness)
+        try press("c", keyCode: 8, in: harness)
+        session.update(try #require(session.marks.first).id, note: "Why?")
+        session.endEditing()
+        #expect(session.marks.first?.note == "Why?")
+    }
+
+    @Test func insertionGoesAfterTheSelection() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        select("websockets", in: harness)
+        try press("i", keyCode: 34, in: harness)
+        session.update(try #require(session.marks.first).id, text: " or streaming")
+        session.endEditing()
+        #expect(try session.editedText().contains("cover websockets or streaming."))
+    }
+
+    @Test func returnOpensTheSelectedMarkForWriting() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        select("very robust ", in: harness)
+        try press("d", keyCode: 2, in: harness)
+        #expect(session.editing == nil)
+
+        try press("\r", keyCode: KeyCode.return, in: harness)
+        #expect(session.editing == EditTarget(markID: try #require(session.marks.first).id, field: .note))
+
+        // A keep has nothing to write.
+        session.endEditing()
+        select("no limits", in: harness)
+        try press("k", keyCode: 40, in: harness)
+        try press("\r", keyCode: KeyCode.return, in: harness)
+        #expect(session.editing == nil)
+    }
+
+    @Test func movingTheCaretPicksUpAndLetsGoOfMarks() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        select("very robust ", in: harness)
+        try press("d", keyCode: 2, in: harness)
+        let mark = try #require(session.marks.first)
+        settle(harness.window)
+
+        let text = harness.textView.string as NSString
+        harness.textView.setSelectedRange(NSRange(location: text.range(of: "Plan:").location, length: 0))
+        #expect(session.selectedMarkID == nil)
+
+        harness.textView.setSelectedRange(NSRange(location: text.range(of: "robust").location, length: 0))
+        #expect(session.selectedMarkID == mark.id)
+    }
+
+    // MARK: Undo and moving between marks
+
+    private func undoable(_ session: ReviewSession) -> UndoManager {
+        let manager = UndoManager()
+        // No event loop runs here to close a group per event.
+        manager.groupsByEvent = false
+        session.undoManager = manager
+        return manager
+    }
+
+    @Test func marksCanBeUndoneAndRedone() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let undo = undoable(session)
+
+        let first = try #require(session.addMark(.delete, span: sourceSpan(of: "very robust ")))
+        let second = try #require(session.addMark(.keep, span: sourceSpan(of: "no limits")))
+        #expect(undo.undoActionName == "Keep")
+
+        undo.undo()
+        #expect(session.marks.map(\.id) == [first.id])
+        undo.undo()
+        #expect(session.marks.isEmpty)
+        #expect(!undo.canUndo)
+
+        undo.redo()
+        undo.redo()
+        #expect(session.marks.map(\.id) == [first.id, second.id])
+
+        session.remove(first.id)
+        #expect(session.marks.map(\.id) == [second.id])
+        undo.undo()
+        #expect(session.marks.map(\.id) == [first.id, second.id])
+        // The selection goes back to what it was before the removal, too.
+        #expect(session.selectedMarkID == second.id)
+
+        settle(harness.window)
+        #expect(harness.textView.string == session.layout.text)
+    }
+
+    @Test func aWrittenMarkIsOneUndoStep() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let undo = undoable(session)
+
+        select("leverage", in: harness)
+        try press("r", keyCode: 15, in: harness)
+        let id = try #require(session.marks.first).id
+        for text in ["u", "us", "use"] { session.update(id, text: text) }
+        // Nothing to undo until the note is finished: ⌘Z belongs to the field while writing.
+        #expect(!undo.canUndo)
+        session.endEditing()
+        #expect(undo.undoActionName == "Replace")
+
+        undo.undo()
+        #expect(session.marks.isEmpty)
+        #expect(!undo.canUndo)
+        undo.redo()
+        #expect(session.marks.first?.text == "use")
+    }
+
+    @Test func aMarkLeftEmptyLeavesNothingToUndo() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let undo = undoable(session)
+
+        select("token bucket", in: harness)
+        try press("c", keyCode: 8, in: harness)
+        session.endEditing()
+        #expect(session.marks.isEmpty)
+        #expect(!undo.canUndo)
+
+        // A replacement left empty is a deletion, and that is one step.
+        select("leverage", in: harness)
+        try press("r", keyCode: 15, in: harness)
+        session.endEditing()
+        #expect(session.marks.map(\.kind) == [.delete])
+        undo.undo()
+        #expect(session.marks.isEmpty)
+    }
+
+    @Test func editingANoteIsOneUndoStepPerNote() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let undo = undoable(session)
+        let mark = try #require(session.addMark(.delete, span: sourceSpan(of: "very robust ")))
+
+        session.beginEditing(mark.id)
+        for note in ["f", "fi", "filler"] { session.update(mark.id, note: note) }
+        session.endEditing()
+        #expect(session.marks.first?.note == "filler")
+
+        undo.undo()
+        #expect(session.marks.first?.note == nil)
+        #expect(session.marks.count == 1)
+        undo.undo()
+        #expect(session.marks.isEmpty)
+    }
+
+    @Test func tabMovesThroughMarksInDocumentOrder() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let last = try #require(session.addMark(.delete, span: sourceSpan(of: "very robust ")))
+        let first = try #require(session.addMark(.keep, span: sourceSpan(of: "no limits")))
+        let middle = try #require(session.addMark(.comment, span: sourceSpan(of: "token bucket"), note: "why"))
+
+        session.selectedMarkID = nil
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        #expect(session.selectedMarkID == first.id)
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        #expect(session.selectedMarkID == middle.id)
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        #expect(session.selectedMarkID == first.id)
+
+        session.selectMark(offsetBy: -1)
+        #expect(session.selectedMarkID == last.id)
+    }
+
+    @Test func narrowWindowKeepsTheMargin() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        session.addMark(.comment, span: sourceSpan(of: "token bucket"), note: "Why not a sliding window? It handles bursts at the edges better.")
+        session.addMark(.delete, span: sourceSpan(of: "very robust "), note: "filler")
+        session.selectedMarkID = nil
+        harness.window.setContentSize(NSSize(width: 760, height: 560))
+        settle(harness.window)
+
+        let frame = harness.textView.frame
+        #expect(frame.width >= Theme.minimumMeasure)
+        #expect(frame.maxX + Theme.gutter + Theme.narrowMarginWidth <= 760)
+        snapshot(harness.window, named: "review-narrow")
+    }
+
+    @Test func selectionBarShowsTheFiveMarks() throws {
+        _ = NSApplication.shared
+        var pressed: [MarkKind] = []
+        let bar = SelectionToolbar { pressed.append($0) }
+        let view = bar.makeContentView()
+        view.frame = NSRect(origin: .zero, size: view.fittingSize)
+        #expect(view.fittingSize.width > 150 && view.fittingSize.height < 40)
+
+        guard let directory = ProcessInfo.processInfo.environment["ANNOTATOR_SNAPSHOT_DIR"] else { return }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: view.frame.width + 40, height: 70), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let backdrop = NSView(frame: window.contentLayoutRect)
+        backdrop.wantsLayer = true
+        backdrop.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        view.setFrameOrigin(NSPoint(x: 20, y: 18))
+        backdrop.addSubview(view)
+        window.contentView = backdrop
+        settle(window)
+        guard let bitmap = backdrop.bitmapImageRepForCachingDisplay(in: backdrop.bounds) else { return }
+        backdrop.cacheDisplay(in: backdrop.bounds, to: bitmap)
+        try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("selection-bar.png"))
     }
 
     @Test func showsTheRenderedDocument() throws {

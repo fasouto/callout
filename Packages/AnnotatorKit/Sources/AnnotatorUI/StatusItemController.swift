@@ -13,7 +13,8 @@ final class StatusItemController: NSObject {
         super.init()
 
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "pencil.line", accessibilityDescription: "Annotator")
+            button.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Annotator")
+                ?? NSImage(systemSymbolName: "pencil.line", accessibilityDescription: "Annotator")
             button.toolTip = "Annotator"
         }
         let menu = NSMenu()

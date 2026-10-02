@@ -38,8 +38,12 @@ final class SelectionToolbar {
         panel.orderOut(nil)
     }
 
+    func makeContentView() -> NSView {
+        FirstMouseHostingView(rootView: SelectionToolbarView(perform: perform))
+    }
+
     private func makePanel() -> NSPanel {
-        let host = FirstMouseHostingView(rootView: SelectionToolbarView(perform: perform))
+        let host = makeContentView()
         let size = host.fittingSize
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -66,29 +70,29 @@ private struct SelectionToolbarView: View {
     let perform: (MarkKind) -> Void
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             ForEach(MarkKind.allCases, id: \.self) { kind in
                 Button {
                     perform(kind)
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Image(systemName: kind.symbol)
-                        Text(kind.key)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11.5, weight: .bold))
+                            .foregroundStyle(kind.tint)
+                        KeyCap(kind.key)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("\(kind.label) (\(kind.key))")
+                .help("\(kind.hint) (\(kind.key))")
                 .accessibilityLabel(kind.label)
             }
         }
-        .padding(3)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+        .padding(.horizontal, 3)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.separator.opacity(0.6)))
         .fixedSize()
     }
 }

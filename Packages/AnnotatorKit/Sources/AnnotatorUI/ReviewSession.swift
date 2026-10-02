@@ -17,10 +17,28 @@ final class ReviewSession {
     private(set) var revision = 0
     var generalComment = ""
     var selectedMarkID: UUID? {
-        didSet { if selectedMarkID != oldValue { revision += 1 } }
+        didSet {
+            guard selectedMarkID != oldValue else { return }
+            revision += 1
+            // Writing in a different note is a different undo step.
+            if coalescedEdit != selectedMarkID { coalescedEdit = nil }
+        }
     }
     /// A short note for the status line, such as why an action did nothing.
     var statusMessage: String?
+    /// The margin field that should have the keyboard, if any.
+    private(set) var editing: EditTarget?
+    /// Bumped to hand the keyboard back to the document.
+    private(set) var documentFocusToken = 0
+    /// Whether the document has a selection that marks can be applied to.
+    var selection = SelectionState.none
+    /// The window's undo manager, so ⌘Z takes back marks.
+    @ObservationIgnored weak var undoManager: UndoManager?
+    /// A mark that was added to be written and has nothing written yet, with the
+    /// marks as they were before it.
+    @ObservationIgnored private var unwritten: (id: UUID, before: Snapshot)?
+    /// The mark whose edits are already covered by an undo step.
+    @ObservationIgnored private var coalescedEdit: UUID?
 
     init(request: ReviewRequest) {
         self.request = request
@@ -83,6 +101,25 @@ final class ReviewSession {
     /// Adds a mark over a source span. Returns nil, with a status message, when it cannot be placed.
     @discardableResult
     func addMark(_ kind: MarkKind, span: TextSpan, text: String? = nil, note: String? = nil) -> Mark? {
+        place(kind, span: span, text: text, note: note, undoName: kind.label)
+    }
+
+    /// Adds a mark that still has to be written: a replacement, an insertion or a
+    /// comment. The keyboard goes to its margin field, and the mark only becomes
+    /// undoable once something was written; left empty, it never happened.
+    @discardableResult
+    func addMarkToWrite(_ kind: MarkKind, span: TextSpan) -> Mark? {
+        let before = Snapshot(marks: marks, selection: selectedMarkID)
+        guard let mark = place(kind, span: span, text: kind == .comment ? nil : "", note: nil, undoName: nil) else {
+            return nil
+        }
+        unwritten = (mark.id, before)
+        coalescedEdit = mark.id
+        beginEditing(mark.id)
+        return mark
+    }
+
+    private func place(_ kind: MarkKind, span: TextSpan, text: String?, note: String?, undoName: String?) -> Mark? {
         guard let anchor = Anchor.make(in: source, span: span) else {
             statusMessage = "That selection can't be marked."
             return nil
@@ -92,6 +129,7 @@ final class ReviewSession {
             statusMessage = "That overlaps another edit. Remove it first."
             return nil
         }
+        if let undoName { registerUndo(undoName) }
         marks.append(mark)
         statusMessage = nil
         selectedMarkID = mark.id
@@ -99,24 +137,127 @@ final class ReviewSession {
         return mark
     }
 
+    // MARK: - Writing in the margin
+
+    /// Gives the keyboard to a mark's margin field: its text for a replacement or
+    /// insertion, otherwise its note.
+    func beginEditing(_ id: UUID, field: NoteField? = nil) {
+        guard let mark = marks.first(where: { $0.id == id }), mark.kind != .keep else { return }
+        let natural: NoteField = mark.kind == .replace || mark.kind == .insert ? .text : .note
+        selectedMarkID = id
+        editing = EditTarget(markID: id, field: field ?? natural)
+    }
+
+    /// Finishes writing and returns the keyboard to the document. A mark left
+    /// without what makes it one is tidied away: an empty insertion or comment
+    /// goes, and a replacement with nothing becomes a deletion.
+    func endEditing() {
+        if let id = editing?.markID, let index = marks.firstIndex(where: { $0.id == id }) {
+            let mark = marks[index]
+            let text = mark.text?.nilIfBlank
+            var survives = true
+            switch mark.kind {
+            case .insert where text == nil, .comment where mark.note == nil:
+                survives = false
+                drop(id)
+            case .replace where text == nil:
+                marks[index].kind = .delete
+                marks[index].text = nil
+                marksChanged()
+            default:
+                break
+            }
+            if let unwritten, unwritten.id == id, survives {
+                registerUndo(marks[index].kind.label, restoring: unwritten.before)
+            }
+        }
+        unwritten = nil
+        coalescedEdit = nil
+        editing = nil
+        documentFocusToken += 1
+    }
+
     func update(_ id: UUID, text: String? = nil, note: String? = nil) {
         guard let index = marks.firstIndex(where: { $0.id == id }) else { return }
+        // One undo step per mark being written, not one per keystroke.
+        if coalescedEdit != id {
+            registerUndo("Edit Note")
+            coalescedEdit = id
+        }
         if let text { marks[index].text = text }
         if let note { marks[index].note = note.nilIfBlank }
         marksChanged()
     }
 
     func remove(_ id: UUID) {
+        guard marks.contains(where: { $0.id == id }) else { return }
+        if unwritten?.id == id {
+            unwritten = nil
+        } else {
+            registerUndo("Remove Mark")
+        }
+        drop(id)
+        if editing?.markID == id {
+            editing = nil
+            documentFocusToken += 1
+        }
+    }
+
+    private func drop(_ id: UUID) {
         guard let index = marks.firstIndex(where: { $0.id == id }) else { return }
-        let ordered = orderedMarks
-        let position = ordered.firstIndex { $0.id == id } ?? 0
+        let position = orderedMarks.firstIndex { $0.id == id } ?? 0
         marks.remove(at: index)
+        coalescedEdit = nil
         // Keep the keyboard flowing: select the neighbour.
         if selectedMarkID == id {
             let remaining = orderedMarks
             selectedMarkID = remaining.isEmpty ? nil : remaining[min(position, remaining.count - 1)].id
         }
         marksChanged()
+    }
+
+    /// Selects the next or the previous mark in the document, wrapping around.
+    func selectMark(offsetBy step: Int) {
+        let ordered = orderedMarks
+        guard !ordered.isEmpty else { return }
+        guard let current = ordered.firstIndex(where: { $0.id == selectedMarkID }) else {
+            selectedMarkID = step > 0 ? ordered.first?.id : ordered.last?.id
+            return
+        }
+        selectedMarkID = ordered[(current + step + ordered.count) % ordered.count].id
+    }
+
+    // MARK: - Undo
+
+    private struct Snapshot {
+        var marks: [Mark]
+        var selection: UUID?
+    }
+
+    /// Makes the change that follows undoable, by remembering the marks as they are now.
+    private func registerUndo(_ name: String, restoring snapshot: Snapshot? = nil) {
+        guard let undoManager else { return }
+        let snapshot = snapshot ?? Snapshot(marks: marks, selection: selectedMarkID)
+        let marks = snapshot.marks
+        let selection = snapshot.selection
+        undoManager.beginUndoGrouping()
+        undoManager.registerUndo(withTarget: self) { session in
+            MainActor.assumeIsolated { session.restore(marks, selection: selection, name: name) }
+        }
+        undoManager.setActionName(name)
+        undoManager.endUndoGrouping()
+    }
+
+    private func restore(_ marks: [Mark], selection: UUID?, name: String) {
+        // Registering while undoing is what makes redo work.
+        registerUndo(name)
+        unwritten = nil
+        coalescedEdit = nil
+        editing = nil
+        self.marks = marks
+        selectedMarkID = marks.contains { $0.id == selection } ? selection : nil
+        marksChanged()
+        documentFocusToken += 1
     }
 
     private func marksChanged() {
@@ -143,6 +284,26 @@ final class ReviewSession {
     func editedText() throws -> String {
         try EditApplier.apply(marks, to: source)
     }
+}
+
+enum NoteField: Hashable {
+    /// The replacement, or the text to insert.
+    case text
+    /// The reason or the comment.
+    case note
+}
+
+struct EditTarget: Equatable {
+    var markID: UUID
+    var field: NoteField
+}
+
+enum SelectionState: Equatable {
+    case none
+    /// A caret in the document: text can be inserted there.
+    case caret
+    /// Selected document text: any mark applies.
+    case range
 }
 
 extension String {
@@ -175,11 +336,20 @@ extension MarkKind {
     var symbol: String {
         switch self {
         case .delete: "strikethrough"
-        case .replace: "arrow.left.arrow.right"
-        case .insert: "text.insert"
-        case .comment: "text.bubble"
-        case .keep: "checkmark.seal"
+        case .replace: "arrow.2.squarepath"
+        case .insert: "plus"
+        case .comment: "highlighter"
+        case .keep: "checkmark"
         }
+    }
+
+    /// What the mark's margin field asks for.
+    var textPrompt: String {
+        self == .replace ? "Replace with" : "Text to add"
+    }
+
+    var notePrompt: String {
+        self == .comment ? "Comment" : "Reason (optional)"
     }
 
     init?(key: String) {
