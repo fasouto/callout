@@ -169,6 +169,19 @@ struct EditApplierTests {
         #expect(try EditApplier.apply([mark(.delete, "Passionate", in: source)], to: source) == "engineer")
     }
 
+    @Test func aDeletionWithTextAddedInItsPlaceKeepsItsSpaces() throws {
+        // Striking a word and typing another where it was is a replacement in two marks.
+        let source = "We will leverage a cache."
+        let before = [mark(.delete, "leverage", in: source), insert("use", after: "will ", in: source)]
+        #expect(try EditApplier.apply(before, to: source) == "We will use a cache.")
+
+        let after = [mark(.delete, "leverage", in: source), insert("use", after: "leverage", in: source)]
+        #expect(try EditApplier.apply(after, to: source) == "We will use a cache.")
+
+        // Without anything added, the deletion still closes up its space.
+        #expect(try EditApplier.apply([mark(.delete, "leverage", in: source)], to: source) == "We will a cache.")
+    }
+
     @Test func tidyingDoesNotEatAnAdjacentInsertion() throws {
         let source = "a very good idea"
         let marks = [mark(.delete, "very", in: source), insert(" quite", after: "very", in: source)]

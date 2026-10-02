@@ -100,7 +100,14 @@ struct DocumentPane: NSViewRepresentable {
 
             textView.onCommand = { [weak self] command in self?.run(command) }
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
+            textView.onInsertModeChange = { [weak self] isOn in self?.session.isTypingMode = isOn }
+            textView.onType = { [weak self] text in self?.type(text) }
+            textView.onDeleteCharacter = { [weak self] forward in self?.deleteCharacter(forward: forward) }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
+            textView.onRemoveMark = { [weak self] in
+                guard let self, let id = self.session.selectedMarkID else { return }
+                self.session.remove(id)
+            }
             textView.onReturnKey = { [weak self] in self?.editSelectedMark() }
             textView.onTabKey = { [weak self] forward in self?.session.selectMark(offsetBy: forward ? 1 : -1) }
             textView.onCancelKey = { [weak self] in self?.onCancel() }
@@ -266,6 +273,34 @@ struct DocumentPane: NSViewRepresentable {
             toolbar.show(above: rect, in: textView)
         }
 
+        // MARK: Typing
+
+        /// Redraws right away and puts the caret where typing left it. The usual
+        /// redraw waits for SwiftUI, which is too late for the next key.
+        private func redraw(caret: Int) {
+            refresh(revision: session.revision)
+            let location = min(caret, (textView.string as NSString).length)
+            textView.setSelectedRange(NSRange(location: location, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: location, length: 0))
+        }
+
+        private func type(_ text: String) {
+            let selection = textView.selectedRange()
+            guard selection.length == 0, let caret = session.type(text, atView: selection.location) else {
+                if session.statusMessage == nil { session.statusMessage = "Text can't be added here." }
+                NSSound.beep()
+                return
+            }
+            redraw(caret: caret)
+        }
+
+        private func deleteCharacter(forward: Bool) {
+            let selection = textView.selectedRange()
+            guard selection.length == 0,
+                  let caret = session.deleteCharacter(atView: selection.location, forward: forward) else { return }
+            redraw(caret: caret)
+        }
+
         // MARK: Actions
 
         func run(_ command: Keymap.Command) {
@@ -281,12 +316,13 @@ struct DocumentPane: NSViewRepresentable {
             toolbar.hide()
 
             if kind == .insert {
-                // With a selection, the new text goes after it.
-                guard let offset = session.sourceOffset(forView: selection.upperBound) else {
+                // The new text is typed in place: after the selection, or at the caret.
+                guard session.sourceOffset(forView: selection.upperBound) != nil else {
                     session.statusMessage = "Place the caret in the document first."
                     return
                 }
-                session.addMarkToWrite(.insert, span: TextSpan(offset, offset))
+                textView.setSelectedRange(NSRange(location: selection.upperBound, length: 0))
+                textView.beginTyping()
                 return
             }
 
@@ -298,7 +334,13 @@ struct DocumentPane: NSViewRepresentable {
             switch kind {
             case .delete, .keep, .expand, .summarize:
                 session.addMark(kind, span: span)
-            case .replace, .comment:
+            case .replace:
+                // The replacement is typed in place, right after the struck text.
+                if let placed = session.replaceInPlace(span: span) {
+                    redraw(caret: placed.caret)
+                    textView.beginTyping()
+                }
+            case .comment:
                 session.addMarkToWrite(kind, span: span)
             case .insert:
                 break

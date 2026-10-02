@@ -44,35 +44,40 @@ To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, sel
 
 ## Using it
 
-The document is a page; your notes go in its margin, beside the lines they refer to. Select text, then press a key (or use the bar that appears above the selection):
+The document is a page; your notes go in its margin, beside the lines they refer to.
+
+**Just type.** With the caret in the text and nothing selected, typing adds words there and `⌫` strikes out what is before the caret. Your words show in blue, what you struck shows in red, and the document itself is never changed: every edit is a mark, so it can be undone, and Claude gets each one as a separate correction. Typing is for words; it does not restructure lists or tables.
+
+**Or select, then press a key** (or use the bar that appears above the selection):
 
 | Key | Mark |
 |---|---|
-| `D` | Strike it out |
-| `R` | Replace it: type the new text in the margin |
-| `I` | Add text at the caret, or after the selection |
+| `D` or `⌫` | Strike it out |
+| `R` | Replace it: type the new text right there |
+| `I` | Put the caret after the selection, ready to type |
 | `C` | Comment on it |
 | `X` | Expand: ask for more here |
 | `M` | Summarize: ask for it shorter |
 | `K` | Keep it: do not change this |
 | `S` | Comment with one of your saved comments |
-| `O` | Write the overall comment |
 
-A PDF takes the same marks: select text on the page and press the same keys. Marks are drawn on the page but never saved into the file, and a PDF only gives feedback, since the source to edit is whatever the PDF was generated from. To add text, select the words it goes after and press `I`.
-
-Replacements, insertions and comments open a note in the margin with the keyboard already in it. `↩` finishes the note and returns to the document; your words appear in the text in blue as you type them.
+Comments open a note in the margin with the keyboard already in it; `↩` finishes the note and returns to the document.
 
 | Key | |
 |---|---|
 | `Tab`, `⇧Tab` | Next and previous mark |
 | `↩` | Write in the selected mark's note |
-| `⌫` | Strike out the selected text (again to take it back); with nothing selected, remove the mark the caret is on |
+| `⌥↩` | A line break in the text you are typing |
+| `⌘⌫` | Remove the mark the caret is on |
+| `⌘O` | Write the overall comment |
 | `⌘Z`, `⇧⌘Z` | Undo and redo |
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
 
-**Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, Keep moves to `⇧K` (a plain `k` moves up) and `Esc` lets go of the selection instead of cancelling the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
+In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin.
+
+**Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `i` and `a` start typing and `Esc` stops; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, letters only type in insert mode, Keep moves to `⇧K` (a plain `k` moves up), `o` opens the overall comment, and `Esc` never cancels the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
 
 **Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `S` on a selection to pick one; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
 

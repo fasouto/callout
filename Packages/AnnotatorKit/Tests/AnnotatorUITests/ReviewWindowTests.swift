@@ -135,14 +135,20 @@ struct ReviewWindowTests {
         #expect(harness.textView.string == session.document.text)
     }
 
-    @Test func keysDoNothingWithoutASelection() throws {
+    @Test func typingAtTheCaretAddsText() throws {
         let harness = try makeHarness()
+        let session = harness.session
+        // Right after "Plan:" in the heading.
         harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
         try press("d", keyCode: 2, in: harness)
         try press("x", keyCode: 7, in: harness)
-        #expect(harness.session.marks.isEmpty)
-        #expect(harness.textView.string == harness.session.document.text)
-        #expect(harness.session.statusMessage != nil)
+
+        // With nothing selected the letters are text, not commands.
+        #expect(session.marks.map(\.kind) == [.insert])
+        #expect(session.marks.first?.text == "dx")
+        #expect(harness.textView.string.hasPrefix("Plan:dx add rate limiting"))
+        #expect(harness.textView.selectedRange() == NSRange(location: 7, length: 0))
+        #expect(try session.editedText().hasPrefix("# Plan:dx add rate limiting"))
     }
 
     @Test func backspaceRemovesTheSelectedMark() throws {
@@ -167,7 +173,7 @@ struct ReviewWindowTests {
 
     // MARK: Writing in the margin
 
-    @Test func replaceKeyOpensTheMarginForWriting() throws {
+    @Test func aReplacementIsTypedInPlace() throws {
         let harness = try makeHarness()
         let session = harness.session
         select("leverage", in: harness)
@@ -175,32 +181,38 @@ struct ReviewWindowTests {
 
         let mark = try #require(session.marks.first)
         #expect(mark.kind == .replace)
-        #expect(session.editing == EditTarget(markID: mark.id, field: .text))
         #expect(session.selectedMarkID == mark.id)
-
-        // What is typed in the margin shows in the document as it is typed.
-        session.update(mark.id, text: "use")
-        settle(harness.window)
-        #expect(harness.textView.string.contains("We will leverageuse a very robust"))
-
-        let token = session.documentFocusToken
-        session.endEditing()
+        // No margin field takes over: the caret waits right after the struck word.
         #expect(session.editing == nil)
-        #expect(session.documentFocusToken == token + 1)
-        #expect(session.marks.first?.kind == .replace)
+        let struck = (harness.textView.string as NSString).range(of: "leverage")
+        #expect(harness.textView.selectedRange() == NSRange(location: NSMaxRange(struck), length: 0))
+
+        harness.textView.insertText("use", replacementRange: NSRange(location: NSNotFound, length: 0))
         #expect(session.marks.first?.text == "use")
+        #expect(harness.textView.string.contains("We will leverageuse a very robust"))
+        #expect(try session.editedText().contains("We will use a very robust"))
+        #expect(session.feedback().contains("> leverage\nWith: use\n"))
+
+        // Moving on leaves it as it is.
+        harness.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(session.marks.map(\.kind) == [.replace])
     }
 
     @Test func aReplacementLeftEmptyBecomesADeletion() throws {
         let harness = try makeHarness()
+        let session = harness.session
         select("leverage", in: harness)
         try press("r", keyCode: 15, in: harness)
-        harness.session.endEditing()
-        #expect(harness.session.marks.map(\.kind) == [.delete])
-        #expect(harness.session.marks.first?.text == nil)
+        #expect(session.marks.map(\.kind) == [.replace])
+        // Even before the caret moves on, nothing goes out as a replacement with no words.
+        #expect(session.feedback().contains("### 1. Delete\n> leverage\n"))
+
+        harness.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(session.marks.map(\.kind) == [.delete])
+        #expect(session.marks.first?.text == nil)
     }
 
-    @Test func commentsAndInsertionsLeftEmptyAreDropped() throws {
+    @Test func aCommentLeftEmptyIsDropped() throws {
         let harness = try makeHarness()
         let session = harness.session
 
@@ -211,14 +223,7 @@ struct ReviewWindowTests {
         session.endEditing()
         #expect(session.marks.isEmpty)
 
-        select("websockets", in: harness)
-        try press("i", keyCode: 34, in: harness)
-        #expect(session.marks.map(\.kind) == [.insert])
-        #expect(session.editing?.field == .text)
-        session.endEditing()
-        #expect(session.marks.isEmpty)
-
-        // Written ones stay.
+        // A written one stays.
         select("token bucket", in: harness)
         try press("c", keyCode: 8, in: harness)
         session.update(try #require(session.marks.first).id, note: "Why?")
@@ -226,13 +231,18 @@ struct ReviewWindowTests {
         #expect(session.marks.first?.note == "Why?")
     }
 
-    @Test func insertionGoesAfterTheSelection() throws {
+    @Test func iPutsTheCaretAfterTheSelectionReadyToType() throws {
         let harness = try makeHarness()
         let session = harness.session
         select("websockets", in: harness)
         try press("i", keyCode: 34, in: harness)
-        session.update(try #require(session.marks.first).id, text: " or streaming")
-        session.endEditing()
+        // Nothing is marked until something is typed.
+        #expect(session.marks.isEmpty)
+        let word = (harness.textView.string as NSString).range(of: "websockets")
+        #expect(harness.textView.selectedRange() == NSRange(location: NSMaxRange(word), length: 0))
+
+        harness.textView.insertText(" or streaming", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(session.marks.map(\.kind) == [.insert])
         #expect(try session.editedText().contains("cover websockets or streaming."))
     }
 
@@ -310,20 +320,19 @@ struct ReviewWindowTests {
         #expect(harness.textView.string == session.layout.text)
     }
 
-    @Test func aWrittenMarkIsOneUndoStep() throws {
+    @Test func aTypedReplacementIsOneUndoStep() throws {
         let harness = try makeHarness()
         let session = harness.session
         let undo = undoable(session)
 
         select("leverage", in: harness)
         try press("r", keyCode: 15, in: harness)
-        let id = try #require(session.marks.first).id
-        for text in ["u", "us", "use"] { session.update(id, text: text) }
-        // Nothing to undo until the note is finished: ⌘Z belongs to the field while writing.
-        #expect(!undo.canUndo)
-        session.endEditing()
-        #expect(undo.undoActionName == "Replace")
+        for character in ["u", "s", "e"] {
+            harness.textView.insertText(character, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        #expect(session.marks.first?.text == "use")
 
+        // The strike and every letter typed after it come back out together.
         undo.undo()
         #expect(session.marks.isEmpty)
         #expect(!undo.canUndo)
@@ -331,7 +340,21 @@ struct ReviewWindowTests {
         #expect(session.marks.first?.text == "use")
     }
 
-    @Test func aMarkLeftEmptyLeavesNothingToUndo() throws {
+    @Test func typedTextIsOneUndoStep() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let undo = undoable(session)
+        harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
+        for character in ["!", "!", "!"] {
+            harness.textView.insertText(character, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        #expect(session.marks.first?.text == "!!!")
+        undo.undo()
+        #expect(session.marks.isEmpty)
+        #expect(!undo.canUndo)
+    }
+
+    @Test func aCommentLeftEmptyLeavesNothingToUndo() throws {
         let harness = try makeHarness()
         let session = harness.session
         let undo = undoable(session)
@@ -341,14 +364,6 @@ struct ReviewWindowTests {
         session.endEditing()
         #expect(session.marks.isEmpty)
         #expect(!undo.canUndo)
-
-        // A replacement left empty is a deletion, and that is one step.
-        select("leverage", in: harness)
-        try press("r", keyCode: 15, in: harness)
-        session.endEditing()
-        #expect(session.marks.map(\.kind) == [.delete])
-        undo.undo()
-        #expect(session.marks.isEmpty)
     }
 
     @Test func editingANoteIsOneUndoStepPerNote() throws {
@@ -449,9 +464,11 @@ struct ReviewWindowTests {
         #expect(session.feedback().contains("exhaust the pool.\nOne sentence is enough.\n"))
     }
 
-    @Test func oGoesToTheOverallComment() throws {
+    @Test func oGoesToTheOverallCommentWhenLettersAreCommands() throws {
         let harness = try makeHarness()
         let token = harness.session.overallFocusToken
+        // With a selection the letters are commands. (At a caret, O is a letter; ⌘O always works.)
+        select("token bucket", in: harness)
         try press("o", keyCode: 31, in: harness)
         #expect(harness.session.overallFocusToken == token + 1)
         #expect(harness.session.marks.isEmpty)

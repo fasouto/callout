@@ -74,16 +74,24 @@ private struct MarginNote: View {
     let session: ReviewSession
     let mark: Mark
 
-    @State private var text: String
-    @State private var note: String
     /// The field that has the keyboard, if one of this note's does.
     @State private var focus: MarkField?
+    /// The note as it is being written. A note that is only spaces is stored
+    /// as no note, and the spaces must not vanish from under the caret.
+    @State private var draftNote: String?
 
-    init(session: ReviewSession, mark: Mark) {
-        self.session = session
-        self.mark = mark
-        _text = State(initialValue: mark.text ?? "")
-        _note = State(initialValue: mark.note ?? "")
+    private var text: Binding<String> {
+        Binding(get: { mark.text ?? "" }, set: { session.update(mark.id, text: $0) })
+    }
+
+    private var note: Binding<String> {
+        Binding(
+            get: { draftNote ?? mark.note ?? "" },
+            set: { value in
+                draftNote = value
+                session.update(mark.id, note: value)
+            }
+        )
     }
 
     private var isSelected: Bool { session.selectedMarkID == mark.id }
@@ -143,9 +151,7 @@ private struct MarginNote: View {
 
     @ViewBuilder private var editor: some View {
         if hasText {
-            field(.text, prompt: mark.kind.textPrompt, text: $text, font: Theme.serif(13, italic: true), color: Theme.ink) {
-                session.update(mark.id, text: $0)
-            }
+            field(.text, prompt: mark.kind.textPrompt, text: text, font: Theme.serif(13, italic: true), color: Theme.ink)
         }
         if mark.kind.isInstruction {
             Text(mark.kind.label)
@@ -156,17 +162,15 @@ private struct MarginNote: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
         } else {
-            field(.note, prompt: mark.kind.notePrompt, text: $note, font: .systemFont(ofSize: 12.5), color: .labelColor) {
-                session.update(mark.id, note: $0)
-            }
+            field(.note, prompt: mark.kind.notePrompt, text: note, font: .systemFont(ofSize: 12.5), color: .labelColor)
         }
         HStack(spacing: 10) {
             if focus != nil {
                 Text("↩ done")
             } else if mark.kind != .keep {
-                Text("↩ write   ⌫ remove")
+                Text("↩ write   ⌘⌫ remove")
             } else {
-                Text("⌫ remove")
+                Text("⌘⌫ remove")
             }
             Spacer(minLength: 0)
             Button {
@@ -183,17 +187,18 @@ private struct MarginNote: View {
         .padding(.top, 1)
     }
 
-    private func field(
-        _ which: MarkField, prompt: String, text: Binding<String>, font: NSFont, color: NSColor,
-        changed: @escaping (String) -> Void
-    ) -> some View {
+    private func field(_ which: MarkField, prompt: String, text: Binding<String>, font: NSFont, color: NSColor) -> some View {
         NoteField(
             placeholder: prompt, text: text, font: font, color: color,
             wantsFocus: session.editing == EditTarget(markID: mark.id, field: which),
             onFocusChange: { focused in
-                if focused { focus = which } else if focus == which { focus = nil }
+                if focused {
+                    focus = which
+                } else if focus == which {
+                    focus = nil
+                    draftNote = nil
+                }
             },
-            onChange: changed,
             onCommit: { session.endEditing() },
             onCancel: { session.endEditing() }
         )
@@ -215,9 +220,12 @@ private struct MarginNote: View {
 private struct MarginGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(Keymap.usesVimKeys ? "Press v and move to select, then press a key." : "Select text, then press a key.")
+            Text(Keymap.usesVimKeys
+                ? "Press v and move to select, then press a key. Press i to type."
+                : "Select text, then press a key. Or just type to add text where the caret is.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
                 ForEach(MarkKind.allCases, id: \.self) { kind in
                     GridRow {

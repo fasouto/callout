@@ -213,9 +213,63 @@ struct VimReviewTests {
         harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
         try type("k", in: harness)
         #expect(harness.session.marks.map(\.kind) == [.keep])
-        // w, h and j are nothing at all.
+        // At a caret, w, h and j are just letters to type.
         harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
         try type("whj", in: harness)
-        #expect(harness.textView.selectedRange() == NSRange(location: 3, length: 0))
+        #expect(harness.session.marks.last?.text == "whj")
+        #expect(harness.textView.string.hasPrefix("We whjwill"))
+    }
+
+    // MARK: Insert mode
+
+    private func insert(_ text: String, in harness: Harness) {
+        harness.textView.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    @Test func inNormalModeNothingTypes() throws {
+        let harness = try makeHarness()
+        insert("stray", in: harness)
+        #expect(harness.session.marks.isEmpty)
+        #expect(harness.textView.string == harness.session.document.text)
+    }
+
+    @Test func iStartsTypingAndEscapeStops() throws {
+        let harness = try makeHarness()
+        try type("ww", in: harness)
+        try type("i", in: harness)
+        #expect(harness.session.isTypingMode)
+        // In insert mode every key is text, the movement letters included.
+        try type("jk ", in: harness)
+        #expect(harness.session.marks.map(\.kind) == [.insert])
+        #expect(harness.session.marks.first?.text == "jk ")
+        #expect(harness.textView.string.hasPrefix("We will jk leverage"))
+
+        try escape(in: harness)
+        #expect(!harness.session.isTypingMode)
+        // Back to moving: h is a movement again.
+        let caret = harness.textView.selectedRange().location
+        try type("h", in: harness)
+        #expect(harness.textView.selectedRange().location == caret - 1)
+        #expect(harness.session.marks.first?.text == "jk ")
+    }
+
+    @Test func aAppendsAfterTheCharacterUnderTheCaret() throws {
+        let harness = try makeHarness()
+        try type("a", in: harness)
+        #expect(harness.session.isTypingMode)
+        try type("X", in: harness)
+        #expect(harness.textView.string.hasPrefix("WXe will"))
+    }
+
+    @Test func replacingAVisualSelectionGoesStraightToTyping() throws {
+        let harness = try makeHarness()
+        try type("wwve", in: harness)
+        try type("r", in: harness)
+        #expect(harness.session.marks.map(\.kind) == [.replace])
+        #expect(harness.session.isTypingMode)
+        #expect(!harness.session.isSelectingByKeyboard)
+        try type("use", in: harness)
+        #expect(harness.session.marks.first?.text == "use")
+        #expect(try harness.session.editedText().hasPrefix("We will use a very robust"))
     }
 }

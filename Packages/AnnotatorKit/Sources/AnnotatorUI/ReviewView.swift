@@ -80,13 +80,15 @@ private struct ActionBar: View {
             VStack(alignment: .leading, spacing: 10) {
                 overallComment
                 HStack(spacing: 12) {
-                    if session.isSelectingByKeyboard {
-                        Text("Visual")
+                    if session.isSelectingByKeyboard || session.isTypingMode {
+                        Text(session.isTypingMode ? "Insert" : "Visual")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
-                            .help("Moving extends the selection. Press a mark key, or Esc to let go.")
+                            .help(session.isTypingMode
+                                ? "Keys type into the document. Esc goes back to moving."
+                                : "Moving extends the selection. Press a mark key, or Esc to let go.")
                     }
                     if let message = session.statusMessage {
                         Text(message)
@@ -139,6 +141,13 @@ private struct ActionBar: View {
             .padding(.bottom, 10)
         }
         .background(.bar)
+        .background {
+            // ⌘O from anywhere in the window. A plain O only works where letters
+            // are commands; at a caret it types.
+            Button("Write the overall comment") { session.focusOverallComment() }
+                .keyboardShortcut("o", modifiers: .command)
+                .hidden()
+        }
         .animation(.default, value: session.statusMessage)
         .onChange(of: session.overallFocusToken) { writingOverall = true }
     }
@@ -159,8 +168,8 @@ private struct ActionBar: View {
                 .onExitCommand { session.endEditing() }
                 .accessibilityLabel("Overall comment")
             if !writingOverall, session.generalComment.isEmpty {
-                KeyCap("O")
-                    .help("Press O in the document to write here")
+                KeyCap("⌘O")
+                    .help("Press ⌘O to write here")
             }
         }
         .padding(.horizontal, 12)

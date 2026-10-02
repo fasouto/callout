@@ -1,14 +1,22 @@
 import AnnotatorCore
 import AppKit
 
-/// The document view. It behaves like an editable text view, so there is a
-/// caret and the keyboard can move and select, but it refuses every change:
-/// letters trigger commands instead of typing.
+/// The document view. It behaves like an editable text view, with a caret and
+/// keyboard selection, but never changes its text itself. What is typed is
+/// handed on, to become marks: typing at the caret adds text, Backspace strikes
+/// text out, and with a selection the letters are commands.
 final class AnnotationTextView: NSTextView {
     var onCommand: ((Keymap.Command) -> Void)?
     /// Overrides the setting for this view. Nil follows Settings.
     var usesVimKeys: Bool?
+    /// Text typed at the caret.
+    var onType: ((String) -> Void)?
+    /// Backspace or forward delete at the caret, with nothing selected.
+    var onDeleteCharacter: ((_ forward: Bool) -> Void)?
+    /// Backspace with text selected.
     var onDeleteKey: (() -> Void)?
+    /// Command-Backspace: take the mark at the caret away.
+    var onRemoveMark: (() -> Void)?
     var onReturnKey: (() -> Void)?
     /// Tab moves to the next mark, Shift-Tab to the previous one.
     var onTabKey: ((_ forward: Bool) -> Void)?
@@ -17,6 +25,8 @@ final class AnnotationTextView: NSTextView {
     var onSelectionSettled: (() -> Void)?
     /// With vim keys: called when visual mode starts or ends.
     var onVisualModeChange: ((Bool) -> Void)?
+    /// With vim keys: called when insert mode starts or ends.
+    var onInsertModeChange: ((Bool) -> Void)?
 
     /// True while a vim movement is adjusting the selection in steps; the
     /// selection only counts once it has settled.
@@ -27,9 +37,27 @@ final class AnnotationTextView: NSTextView {
             if (visualAnchor == nil) != (oldValue == nil) { onVisualModeChange?(visualAnchor != nil) }
         }
     }
+    /// With vim keys: whether keys type (insert mode) rather than move.
+    private(set) var isInserting = false {
+        didSet { if isInserting != oldValue { onInsertModeChange?(isInserting) } }
+    }
     /// The moving end of the selection: where the caret is.
     private var head = 0
     private var awaitsSecondG = false
+
+    private var vimKeys: Bool { usesVimKeys ?? Keymap.usesVimKeys }
+
+    /// Whether keys type into the document right now.
+    private var canType: Bool {
+        selectedRange().length == 0 && (!vimKeys || isInserting)
+    }
+
+    /// Starts typing at the caret. With vim keys this is insert mode; without
+    /// them there is nothing to switch, the caret always types.
+    func beginTyping() {
+        visualAnchor = nil
+        if vimKeys { isInserting = true }
+    }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         false
@@ -48,30 +76,85 @@ final class AnnotationTextView: NSTextView {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
         let isPlain = modifiers.isEmpty || modifiers == .shift
+        let hasSelection = selectedRange().length > 0
 
-        let vim = usesVimKeys ?? Keymap.usesVimKeys
-        if vim, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) { return }
+        if vimKeys {
+            if isInserting {
+                if event.keyCode == KeyCode.escape {
+                    isInserting = false
+                    return
+                }
+            } else if vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) {
+                return
+            }
+        }
 
-        if isPlain, let command = Keymap.command(for: characters, vim: vim) {
+        // Letters are commands on a selection, and wherever nothing types.
+        if isPlain, hasSelection || !canType, let command = Keymap.command(for: characters, vim: vimKeys) {
             onCommand?(command)
             visualAnchor = nil
             return
         }
         switch event.keyCode {
+        case KeyCode.delete where modifiers == .command:
+            onRemoveMark?()
         case KeyCode.delete, KeyCode.forwardDelete:
-            onDeleteKey?()
+            if hasSelection {
+                onDeleteKey?()
+            } else if canType {
+                onDeleteCharacter?(event.keyCode == KeyCode.forwardDelete)
+            } else {
+                onDeleteKey?()
+            }
         case KeyCode.escape:
             onCancelKey?()
-        case KeyCode.return, KeyCode.enter where modifiers.isEmpty:
-            onReturnKey?()
+        case KeyCode.return, KeyCode.enter:
+            if modifiers.isEmpty {
+                onReturnKey?()
+            } else if canType, modifiers == .option || modifiers == .shift {
+                // A line break in the text being typed.
+                onType?("\n")
+            }
         case KeyCode.tab where modifiers.isEmpty || modifiers == .shift:
             onTabKey?(modifiers.isEmpty)
         default:
-            // Movement and selection keys keep working; anything that would type is dropped.
             if KeyCode.navigation.contains(event.keyCode) || modifiers.contains(.command) || modifiers.contains(.control) {
+                // Movement, selection and shortcuts work as in any text view.
                 super.keyDown(with: event)
+            } else if canType {
+                // Through the input system, so accents and other composed characters work.
+                interpretKeyEvents([event])
             }
         }
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        guard canType else { return }
+        let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
+        if !text.isEmpty { onType?(text) }
+    }
+
+    override func doCommand(by selector: Selector) {
+        // Deleting goes through the marks; everything else is the text view's own business.
+        switch selector {
+        case #selector(deleteBackward(_:)): onDeleteCharacter?(false)
+        case #selector(deleteForward(_:)): onDeleteCharacter?(true)
+        case #selector(insertNewline(_:)), #selector(insertTab(_:)), #selector(insertBacktab(_:)): break
+        default: super.doCommand(by: selector)
+        }
+    }
+
+    /// Pasted text is typed in. Nothing replaces a selection: that is what R is for.
+    override func paste(_ sender: Any?) {
+        guard canType, let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        onType?(text)
+    }
+
+    override func pasteAsPlainText(_ sender: Any?) {
+        paste(sender)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -83,8 +166,10 @@ final class AnnotationTextView: NSTextView {
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
-        case #selector(cut(_:)), #selector(paste(_:)), #selector(pasteAsPlainText(_:)), #selector(delete(_:)):
+        case #selector(cut(_:)), #selector(delete(_:)):
             return false
+        case #selector(paste(_:)), #selector(pasteAsPlainText(_:)):
+            return canType && NSPasteboard.general.string(forType: .string) != nil
         default:
             return super.validateUserInterfaceItem(item)
         }
@@ -164,6 +249,12 @@ final class AnnotationTextView: NSTextView {
         case "u": undoManager?.undo()
         case "n": onTabKey?(true)
         case "N": onTabKey?(false)
+        case "a" where visualAnchor == nil:
+            // Append: start typing after the character under the caret.
+            move(to: min(text.length, head + 1))
+            isInserting = true
+        case "i" where visualAnchor == nil && selectedRange().length == 0:
+            isInserting = true
         default: return false
         }
         return true

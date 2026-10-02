@@ -43,7 +43,7 @@ final class ReviewCoordinator {
     private func remember(_ result: ReviewResult, of session: ReviewSession) {
         guard result.decision != .cancel else { return }
         try? store?.saveReview(
-            session.request, result: result, marks: session.orderedMarks,
+            session.request, result: result, marks: session.orderedSettledMarks,
             generalComment: session.generalComment.trimmingCharacters(in: .whitespacesAndNewlines),
             snippets: session.snippetUses
         )

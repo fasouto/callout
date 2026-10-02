@@ -168,12 +168,16 @@ struct KeyboardFocusTests {
         try backspace()
         #expect(session.marks.isEmpty)
 
-        // With nothing selected, it removes the mark the caret is on.
+        // ⌘⌫ takes away the mark the caret is on.
         let mark = try #require(session.addMark(.keep, span: TextSpan(8, 16)))
         await settle(harness)
         textView.setSelectedRange(NSRange(location: 10, length: 0))
         #expect(session.selectedMarkID == mark.id)
-        try backspace()
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: harness.window.windowNumber,
+            context: nil, characters: "\u{7F}", charactersIgnoringModifiers: "\u{7F}", isARepeat: false, keyCode: KeyCode.delete
+        ))
+        textView.keyDown(with: event)
         #expect(session.marks.isEmpty)
     }
 }

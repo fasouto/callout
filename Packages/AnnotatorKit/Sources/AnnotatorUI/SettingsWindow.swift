@@ -94,7 +94,7 @@ struct SettingsView: View {
             } header: {
                 Text("In a review")
             } footer: {
-                Text("h j k l, w b e, 0 $, { }, gg and G move the caret; v starts a selection and V takes the line; n and N go to the next and previous mark; u undoes. Keep moves to ⇧K, and Esc lets go of the selection instead of cancelling the review.")
+                Text("h j k l, w b e, 0 $, { }, gg and G move the caret; v starts a selection and V takes the line; i and a start typing and Esc stops; n and N go to the next and previous mark; u undoes. Keep moves to ⇧K, and Esc never cancels the review.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)

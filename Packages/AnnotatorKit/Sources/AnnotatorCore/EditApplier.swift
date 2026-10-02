@@ -31,7 +31,12 @@ public enum EditApplier {
                     // nor swallow what an adjacent edit just put there.
                     let floor = edits[..<index].map(\.span.end).max() ?? 0
                     let next = index + 1 < edits.count ? edits[index + 1].span.start : nil
-                    let tidied = DeletionTidier.range(for: edit.span, in: text)
+                    // Text inserted right where the deletion starts will sit before it,
+                    // so the deletion's left neighbour is that text, not the source.
+                    let insertedBefore = edits[..<index].last { other in
+                        other.span.isEmpty && other.span.start == edit.span.start && !(other.mark.text ?? "").isEmpty
+                    }?.mark.text
+                    let tidied = DeletionTidier.range(for: edit.span, in: text, precededBy: insertedBefore?.utf16.last)
                     let reachesBack = tidied.location < floor
                     let reachesForward = next == edit.span.end && NSMaxRange(tidied) > edit.span.end
                     if !reachesBack && !reachesForward { range = tidied }
@@ -102,8 +107,18 @@ extension NSRange {
 
 /// Widens a deletion so it does not leave debris behind.
 enum DeletionTidier {
-    static func range(for span: TextSpan, in text: NSString) -> NSRange {
+    /// - Parameter precededBy: the last character of text that will be inserted
+    ///   right before the deletion, when there is any. It stands in for the
+    ///   source's own character there.
+    static func range(for span: TextSpan, in text: NSString, precededBy inserted: unichar? = nil) -> NSRange {
         guard !span.isEmpty else { return NSRange(span) }
+        if let inserted {
+            // The line keeps the inserted text, so it is not emptied; and nothing
+            // before the deletion may be taken, since that is where the text goes.
+            let after = span.end < text.length ? text.character(at: span.end) : newline
+            let takesSpace = isBlank(after) && (isBlank(inserted) || isLineBreak(inserted))
+            return NSRange(location: span.start, length: span.length + (takesSpace ? 1 : 0))
+        }
         if let lines = emptiedLines(by: span, in: text) { return lines }
 
         var start = span.start

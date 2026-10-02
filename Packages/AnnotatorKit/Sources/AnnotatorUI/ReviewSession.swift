@@ -38,6 +38,7 @@ final class ReviewSession {
             revision += 1
             // Writing in a different note is a different undo step.
             if coalescedEdit != selectedMarkID { coalescedEdit = nil }
+            settleAbandonedReplacement(oldValue)
         }
     }
     /// A short note for the status line, such as why an action did nothing.
@@ -52,6 +53,8 @@ final class ReviewSession {
     private(set) var overallFocusToken = 0
     /// With vim keys: whether a selection is being extended by moving (visual mode).
     var isSelectingByKeyboard = false
+    /// With vim keys: whether keys type into the document (insert mode).
+    var isTypingMode = false
     /// The reusable comments on offer, loaded when the picker is first asked for.
     @ObservationIgnored var loadSnippets: () -> [Snippet] = { [] }
     /// For comments that came from a snippet, which one: the history remembers it.
@@ -142,13 +145,140 @@ final class ReviewSession {
         document.sourceOffset(forDisplayed: layout.displayedOffset(forView: offset))
     }
 
-    /// The mark whose text contains a view offset, edits before comments.
+    /// The mark at a caret position, edits before comments. The end of a mark's
+    /// text counts, because that is where its words are typed.
     func mark(atView offset: Int) -> Mark? {
         let hits = marks.filter { mark in
-            if layout.ghosts.contains(where: { $0.markID == mark.id && $0.range.contains(offset) }) { return true }
-            return layout.viewRanges(forSource: mark.anchor.span).contains { $0.contains(offset) }
+            if layout.ghosts.contains(where: { $0.markID == mark.id && $0.range.lowerBound <= offset && offset <= $0.range.upperBound }) {
+                return true
+            }
+            let ranges = layout.viewRanges(forSource: mark.anchor.span)
+            if ranges.contains(where: { $0.contains(offset) }) { return true }
+            return mark.kind.isEdit && ranges.last?.upperBound == offset
         }
         return hits.first { $0.kind.isEdit } ?? hits.first
+    }
+
+    // MARK: - Typing in the document
+
+    /// Types text at a caret. Inside or right after words already typed, it adds
+    /// to them; right after text marked for replacement, it becomes the
+    /// replacement; anywhere else it starts an insertion. Returns where the caret
+    /// goes, or nil when nothing can be typed there.
+    func type(_ string: String, atView offset: Int) -> Int? {
+        guard !isPDF, !string.isEmpty else { return nil }
+        let length = string.utf16.count
+
+        if let ghost = layout.ghosts.first(where: { $0.markID != nil && $0.range.lowerBound <= offset && offset <= $0.range.upperBound }),
+           let index = marks.firstIndex(where: { $0.id == ghost.markID }) {
+            registerTyping(in: marks[index].id)
+            let text = NSMutableString(string: marks[index].text ?? "")
+            text.insert(string, at: min(offset - ghost.range.lowerBound, text.length))
+            marks[index].text = text as String
+            selectedMarkID = marks[index].id
+            marksChanged()
+            return offset + length
+        }
+        if let index = marks.firstIndex(where: { mark in
+            mark.kind == .replace && (mark.text ?? "").isEmpty
+                && layout.viewRanges(forSource: mark.anchor.span).last?.upperBound == offset
+        }) {
+            registerTyping(in: marks[index].id)
+            marks[index].text = string
+            selectedMarkID = marks[index].id
+            marksChanged()
+            return offset + length
+        }
+        guard let position = sourceOffset(forView: offset),
+              let mark = place(.insert, anchor: Anchor.make(in: source, span: TextSpan(position, position)),
+                               text: string, note: nil, undoName: "Typing") else { return nil }
+        // What is typed next belongs to the same undo step.
+        coalescedEdit = mark.id
+        return layout.ghosts.first { $0.markID == mark.id }?.range.upperBound ?? offset + length
+    }
+
+    /// Backspace or forward delete at a caret. Over words that were typed, it
+    /// deletes them; over the document's own text, it strikes the character out,
+    /// growing the strike next to it. Returns where the caret goes.
+    func deleteCharacter(atView offset: Int, forward: Bool) -> Int? {
+        guard !isPDF else { return nil }
+        let view = layout.text as NSString
+        guard forward ? offset < view.length : offset > 0 else { return nil }
+        let character = view.rangeOfComposedCharacterSequence(at: forward ? offset : offset - 1)
+        let range = character.location..<NSMaxRange(character)
+        let caret = forward ? offset : range.lowerBound
+
+        // Typed words: really delete.
+        if let ghost = layout.ghosts.first(where: { $0.markID != nil && $0.range.lowerBound <= range.lowerBound && range.upperBound <= $0.range.upperBound }),
+           let index = marks.firstIndex(where: { $0.id == ghost.markID }) {
+            registerTyping(in: marks[index].id)
+            let text = NSMutableString(string: marks[index].text ?? "")
+            text.deleteCharacters(in: NSRange(location: range.lowerBound - ghost.range.lowerBound, length: range.count))
+            marks[index].text = text as String
+            if text.length == 0, marks[index].kind == .insert {
+                drop(marks[index].id)
+            } else {
+                marksChanged()
+            }
+            return range.lowerBound
+        }
+        // Text shown from the previous version, bullets, line breaks: step over.
+        guard let span = sourceSpan(forView: range) else { return forward ? range.upperBound : range.lowerBound }
+        // Already struck: step over.
+        if marks.contains(where: { ($0.kind == .delete || $0.kind == .replace) && $0.anchor.span.overlaps(span) }) {
+            return forward ? range.upperBound : range.lowerBound
+        }
+
+        // Grow the strike next to it, or start one.
+        let neighbour = marks.firstIndex { mark in
+            mark.kind == .delete && (forward ? mark.anchor.span.end == span.start : mark.anchor.span.start == span.end)
+        }
+        let grown = neighbour.map { marks[$0].anchor.span.union(span) } ?? span
+        guard let anchor = Anchor.make(in: source, span: grown) else { return caret }
+        var candidate = Mark(kind: .delete, anchor: anchor)
+        if let neighbour {
+            candidate = marks[neighbour]
+            candidate.anchor = anchor
+        }
+        guard EditApplier.conflict(of: candidate, with: marks) == nil else {
+            return forward ? range.upperBound : range.lowerBound
+        }
+        if let neighbour {
+            registerTyping(in: candidate.id)
+            marks[neighbour] = candidate
+        } else {
+            registerUndo("Delete")
+            marks.append(candidate)
+            coalescedEdit = candidate.id
+        }
+        selectedMarkID = candidate.id
+        marksChanged()
+        return forward ? range.upperBound : range.lowerBound
+    }
+
+    /// One undo step per mark being typed in, not one per keystroke.
+    private func registerTyping(in id: UUID) {
+        guard coalescedEdit != id else { return }
+        registerUndo("Typing")
+        coalescedEdit = id
+    }
+
+    /// A replacement that was started and never typed is a deletion.
+    private func settleAbandonedReplacement(_ id: UUID?) {
+        guard let index = marks.firstIndex(where: { $0.id == id }), marks[index].kind == .replace,
+              (marks[index].text ?? "").isEmpty, editing?.markID != id else { return }
+        marks[index].kind = .delete
+        marks[index].text = nil
+        marksChanged()
+    }
+
+    /// Marks replaced text and waits for the replacement to be typed in place,
+    /// right after it. Returns the mark and where the caret goes.
+    func replaceInPlace(span: TextSpan) -> (mark: Mark, caret: Int)? {
+        guard let mark = place(.replace, anchor: Anchor.make(in: source, span: span), text: "", note: nil, undoName: "Replace"),
+              let caret = layout.viewRanges(forSource: mark.anchor.span).last?.upperBound else { return nil }
+        coalescedEdit = mark.id
+        return (mark, caret)
     }
 
     // MARK: - Editing marks
@@ -360,12 +490,29 @@ final class ReviewSession {
     func feedback() -> String {
         FeedbackFormatter.format(.init(
             title: title, document: isPDF ? .pdf(pages: pageTexts) : .text(source),
-            marks: marks, generalComment: generalComment
+            marks: settledMarks, generalComment: generalComment
         ))
     }
 
     func editedText() throws -> String {
-        try EditApplier.apply(marks, to: source)
+        try EditApplier.apply(settledMarks, to: source)
+    }
+
+    /// The marks as they go out, in the order they appear in the document.
+    var orderedSettledMarks: [Mark] {
+        let settled = settledMarks
+        return orderedMarks.compactMap { mark in settled.first { $0.id == mark.id } }
+    }
+
+    /// The marks as they go out: a replacement with nothing typed is a deletion.
+    var settledMarks: [Mark] {
+        marks.map { mark in
+            guard mark.kind == .replace, (mark.text ?? "").isEmpty else { return mark }
+            var settled = mark
+            settled.kind = .delete
+            settled.text = nil
+            return settled
+        }
     }
 }
 
