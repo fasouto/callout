@@ -7,7 +7,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. The review window works for text: it renders markdown, takes all five marks, and returns either the feedback or the corrected text. The `annotator` command-line tool sends it requests over a local socket. The Claude Code plugin and PDF support are next.
+Status: early development. The review window works for text: it renders markdown, takes all five marks, and returns either the feedback or the corrected text. The `annotator` command-line tool sends it requests over a local socket, and the Claude Code plugin sends it every plan. Reviewing replies and documents from Claude Code, and PDF support, are next.
 
 ## Building
 
@@ -70,14 +70,35 @@ If the app cannot be reached, or quits in the middle of a review, the tool says 
 
 In the app bundle the tool is at `Annotator.app/Contents/Helpers/annotator`.
 
+## The Claude Code plugin
+
+The plugin is in `plugin/`, and this repository is its marketplace:
+
+```
+/plugin marketplace add <owner>/<this repository>
+/plugin install annotator@annotator
+```
+
+It needs Annotator.app in `/Applications` or `~/Applications`. To use a copy elsewhere, set `ANNOTATOR_CLI` to the path of the `annotator` tool before starting Claude Code. For development, load it straight from a checkout:
+
+```sh
+ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-dir ./plugin
+```
+
+**Plans.** When Claude finishes a plan, it opens in Annotator instead of waiting in the terminal dialog. *Approve* (`⌘⇧↩`) approves the plan and switches Claude Code to accept-edits mode. *Send Feedback* (`⌘↩`) sends your marks back and Claude revises the plan. `Esc` closes the window and leaves Claude Code's own dialog. If the app is missing or quits, you get that dialog as well.
+
+Without the plugin, `annotator install` adds the same hook to `~/.claude/settings.json` (it edits only that entry and keeps a backup), and `annotator uninstall` removes it.
+
 ## Layout
 
 ```
 project.yml                 XcodeGen spec for the app bundle
+plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
   Sources/AnnotatorCore/    contract, marks, formatter, apply-edits, markdown source mapping
   Sources/AnnotatorIPC/     the socket protocol between the app and the tool
+  Sources/ClaudeCodeAdapter/ everything specific to Claude Code: hook formats, settings.json
   Sources/AnnotatorCLIKit/  the command-line tool's commands
   Sources/AnnotatorUI/      the app: menu-bar item, review window, text view
   Sources/AnnotatorApp/     runs the app unbundled, for development without Xcode

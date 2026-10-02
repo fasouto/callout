@@ -1,0 +1,18 @@
+{
+  "description": "Opens each finished plan in Annotator. Approving there approves the plan; feedback sends it back for revision.",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/annotator",
+            "args": ["hook"],
+            "timeout": 86400
+          }
+        ]
+      }
+    ]
+  }
+}

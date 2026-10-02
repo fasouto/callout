@@ -248,7 +248,8 @@ private struct ActionBar: View {
                 Button("Send Feedback") { finish(.feedback) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
-                    .help("Return your marks as feedback (⌘↩)")
+                    .disabled(!session.hasFeedback)
+                    .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write a general comment first")
             }
         }
         .padding(.horizontal, 16)

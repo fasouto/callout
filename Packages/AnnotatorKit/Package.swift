@@ -23,10 +23,16 @@ let package = Package(
             name: "AnnotatorIPC",
             dependencies: ["AnnotatorCore"]
         ),
+        // Everything that knows Claude Code's formats: hook input and output,
+        // transcripts, settings.json.
+        .target(
+            name: "ClaudeCodeAdapter",
+            dependencies: ["AnnotatorCore"]
+        ),
         // The command-line tool's logic, as a library so it can be tested.
         .target(
             name: "AnnotatorCLIKit",
-            dependencies: ["AnnotatorCore", "AnnotatorIPC"]
+            dependencies: ["AnnotatorCore", "AnnotatorIPC", "ClaudeCodeAdapter"]
         ),
         .executableTarget(
             name: "annotator",
@@ -45,6 +51,10 @@ let package = Package(
         .testTarget(
             name: "AnnotatorCoreTests",
             dependencies: ["AnnotatorCore"]
+        ),
+        .testTarget(
+            name: "ClaudeCodeAdapterTests",
+            dependencies: ["ClaudeCodeAdapter"]
         ),
         .testTarget(
             name: "AnnotatorIPCTests",

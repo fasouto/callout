@@ -1,5 +1,6 @@
 import AnnotatorCore
 import AnnotatorIPC
+import ClaudeCodeAdapter
 import Foundation
 
 /// `annotator review`: sends a request, blocks until the user responds, prints the result.
@@ -97,7 +98,11 @@ struct ReviewCommand {
     // MARK: - Request
 
     private func makeRequest() throws -> ReviewRequest {
-        var metadata = ReviewMetadata(projectPath: environment.currentDirectory, sessionId: session, title: title)
+        var metadata = ReviewMetadata(
+            projectPath: environment.currentDirectory,
+            sessionId: session ?? ClaudeCode.sessionID(in: environment.variables),
+            title: title
+        )
         let content: ReviewContent
 
         if let file, file != "-" {
@@ -168,6 +173,8 @@ struct ResultCommand {
         defer { client.close() }
 
         do {
+            // Without an id, the review of the session this runs in is the one meant.
+            let session = session ?? (id == nil ? ClaudeCode.sessionID(in: environment.variables) : nil)
             try client.send(.resultQuery(id: id, sessionId: session))
             switch try client.receive(timeout: AppConnection.acceptTimeout) {
             case .result(let result):

@@ -12,6 +12,8 @@ public struct CLIEnvironment {
     public var out: (String) -> Void
     public var err: (String) -> Void
     public var socketPath: String
+    /// Absolute path of the tool itself, for writing into settings.
+    public var toolPath: String
     /// Starts the app. Returns false when there is nothing to start.
     public var launchApp: () -> Bool
     /// How long to wait for a freshly launched app to answer.
@@ -26,6 +28,7 @@ public struct CLIEnvironment {
         out: @escaping (String) -> Void,
         err: @escaping (String) -> Void,
         socketPath: String,
+        toolPath: String = "/usr/local/bin/annotator",
         launchApp: @escaping () -> Bool = { false },
         launchTimeout: TimeInterval = 5
     ) {
@@ -37,6 +40,7 @@ public struct CLIEnvironment {
         self.out = out
         self.err = err
         self.socketPath = socketPath
+        self.toolPath = toolPath
         self.launchApp = launchApp
         self.launchTimeout = launchTimeout
     }
@@ -46,6 +50,7 @@ public enum ExitCode {
     public static let success: Int32 = 0
     /// A finished review was asked for and there is none.
     public static let nothingFound: Int32 = 1
+    public static let failure: Int32 = 1
     /// The command line could not be understood.
     public static let usage: Int32 = 64
 }
@@ -57,6 +62,9 @@ public enum AnnotatorCLI {
     Usage:
       annotator review [file | -] [options]   Open a review and wait for the response
       annotator result [id] [--session <id>]  Print a finished review again
+      annotator hook                          Claude Code plan hook (reads the hook JSON on standard input)
+      annotator install [--settings <file>]   Add the plan hook to ~/.claude/settings.json
+      annotator uninstall [--settings <file>] Remove it again
 
     Options for review:
       --title <text>            Title shown in the window
@@ -83,6 +91,12 @@ public enum AnnotatorCLI {
                 return try ReviewCommand(arguments: &arguments, environment: environment).run()
             case "result":
                 return try ResultCommand(arguments: &arguments, environment: environment).run()
+            case "hook":
+                return HookCommand(environment: environment).run()
+            case "install":
+                return try InstallCommand(arguments: &arguments, environment: environment, removing: false).run()
+            case "uninstall":
+                return try InstallCommand(arguments: &arguments, environment: environment, removing: true).run()
             case "--version", "version":
                 environment.out("annotator \(version)")
                 return ExitCode.success

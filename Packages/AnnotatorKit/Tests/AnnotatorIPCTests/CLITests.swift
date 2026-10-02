@@ -337,3 +337,140 @@ struct ResultCommandTests {
         #expect(run.annotator("result", "latest") == ExitCode.usage)
     }
 }
+
+@Suite("annotator hook")
+struct HookCommandTests {
+    private let hookInput = """
+    {"session_id":"s-1","transcript_path":"/t.jsonl","cwd":"/work/app","permission_mode":"plan",
+     "hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode",
+     "tool_input":{"plan":"# Add caching\\n\\n1. Use Redis\\n","planFilePath":"/plans/add-caching.md"}}
+    """
+
+    private func decision(_ run: Run) throws -> [String: Any] {
+        #expect(run.out.get().count == 1)
+        let object = try JSONSerialization.jsonObject(with: Data(try #require(run.out.get().first).utf8)) as? [String: Any]
+        let specific = try #require(object?["hookSpecificOutput"] as? [String: Any])
+        return try #require(specific["decision"] as? [String: Any])
+    }
+
+    @Test func planIsSentForReview() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .approve) })
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+
+        let request = try #require(run.reviewRequest)
+        #expect(request.content == .text("# Add caching\n\n1. Use Redis\n", format: .markdown))
+        #expect(request.origin == .planHook)
+        #expect(request.reply == .hookDecision)
+        #expect(request.modes == [.feedback, .approve])
+        #expect(request.metadata.title == "Add caching")
+        #expect(request.metadata.sessionId == "s-1")
+    }
+
+    @Test func approvalPrintsAllow() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .approve) })
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+        #expect(try decision(run)["behavior"] as? String == "allow")
+        // Nothing but the decision may reach Claude Code.
+        #expect(run.err.get().isEmpty)
+    }
+
+    @Test func feedbackPrintsDenyWithTheFeedback() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .feedback, feedback: "## Feedback on Add caching\n\n### General\nNo Redis.\n") })
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+        let decision = try decision(run)
+        #expect(decision["behavior"] as? String == "deny")
+        #expect((decision["message"] as? String)?.contains("### General\nNo Redis.") == true)
+    }
+
+    // Every way of not getting an answer ends the same: no output, exit 0, and
+    // Claude Code shows its own dialog.
+
+    @Test func cancelPrintsNothing() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+        #expect(run.out.get().isEmpty && run.err.get().isEmpty)
+    }
+
+    @Test func unreachableAppPrintsNothing() {
+        let run = Run()
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+        #expect(run.out.get().isEmpty && run.err.get().isEmpty)
+    }
+
+    @Test func appCrashingMidReviewPrintsNothing() throws {
+        let run = Run()
+        try run.startApp { message, connection in
+            guard case .review(let request) = message else { return }
+            connection.send(.accepted(id: request.id))
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { connection.close() }
+        }
+        #expect(run.annotator("hook", stdin: hookInput) == 0)
+        #expect(run.out.get().isEmpty && run.err.get().isEmpty)
+    }
+
+    @Test func inputThatIsNotAPlanPrintsNothingAndOpensNothing() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .approve) })
+        let inputs = [
+            "",
+            "not json",
+            #"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}"#,
+            ##"{"hook_event_name":"PreToolUse","tool_name":"ExitPlanMode","tool_input":{"plan":"# P"}}"##,
+            #"{"hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode","tool_input":{}}"#,
+        ]
+        for input in inputs {
+            #expect(run.annotator("hook", stdin: input) == 0)
+        }
+        #expect(run.out.get().isEmpty && run.err.get().isEmpty)
+        #expect(run.received.get().isEmpty)
+    }
+}
+
+@Suite("annotator install")
+struct InstallCommandTests {
+    @Test func installsAndRemovesTheHookWithTheToolsOwnPath() throws {
+        let settings = try temporaryFile("settings.json", "{\n  \"model\": \"opus\"\n}\n")
+        let run = Run()
+        func annotator(_ arguments: String...) -> Int32 {
+            AnnotatorCLI.run(CLIEnvironment(
+                arguments: ["annotator"] + arguments,
+                out: { line in run.out.update { $0.append(line) } },
+                err: { line in run.err.update { $0.append(line) } },
+                socketPath: run.path,
+                toolPath: "/Applications/Annotator.app/Contents/Helpers/annotator"
+            ))
+        }
+
+        #expect(annotator("install", "--settings", settings) == 0)
+        let installed = try String(contentsOfFile: settings, encoding: .utf8)
+        #expect(installed.contains("\"command\": \"/Applications/Annotator.app/Contents/Helpers/annotator\""))
+        #expect(run.out.get().first == "Added the plan hook to \(settings).")
+        #expect(run.out.get().contains { $0.hasPrefix("The previous file is saved as ") })
+
+        #expect(annotator("install", "--settings", settings) == 0)
+        #expect(run.out.get().last == "The plan hook is already in \(settings). Nothing changed.")
+
+        #expect(annotator("uninstall", "--settings", settings) == 0)
+        #expect(try String(contentsOfFile: settings, encoding: .utf8) == "{\n  \"model\": \"opus\"\n}\n")
+        #expect(annotator("uninstall", "--settings", settings) == 0)
+        #expect(run.out.get().last == "There is no plan hook in \(settings). Nothing changed.")
+    }
+
+    @Test func refusesToTouchABrokenFile() throws {
+        let settings = try temporaryFile("settings.json", "{ broken")
+        let run = Run()
+        let code = AnnotatorCLI.run(CLIEnvironment(
+            arguments: ["annotator", "install", "--settings", settings],
+            out: { line in run.out.update { $0.append(line) } },
+            err: { line in run.err.update { $0.append(line) } },
+            socketPath: run.path
+        ))
+        #expect(code == ExitCode.failure)
+        #expect(run.err.get() == ["annotator: \(settings) is not valid JSON, so it was left untouched."])
+        #expect(try String(contentsOfFile: settings, encoding: .utf8) == "{ broken")
+    }
+}

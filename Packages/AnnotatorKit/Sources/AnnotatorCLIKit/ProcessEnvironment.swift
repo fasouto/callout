@@ -13,6 +13,7 @@ extension CLIEnvironment {
             out: { print($0) },
             err: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) },
             socketPath: AnnotatorPaths.socketPath(environment: variables),
+            toolPath: Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? CommandLine.arguments[0],
             launchApp: { AppLauncher.launch(variables: variables) }
         )
     }
