@@ -19,6 +19,8 @@ public enum AnnotatorApplication {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let coordinator = ReviewCoordinator()
+    private lazy var capture = CaptureController(coordinator: coordinator)
+    private lazy var settings = SettingsWindow(showOnboarding: { [weak self] in self?.capture.showOnboarding() })
     private var statusItem: StatusItemController?
     private var ipc: IPCService?
 
@@ -37,13 +39,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSApp.mainMenu = MainMenu.make()
-        statusItem = StatusItemController(reviewClipboard: { [weak self] in self?.reviewClipboard() })
+        // "Annotate with Annotator" in other apps' Services menus.
+        NSApp.servicesProvider = capture
+        capture.startHotkey()
+        statusItem = StatusItemController(actions: .init(
+            markUpSelection: { [weak self] in self?.capture.captureSelection() },
+            reviewClipboard: { [weak self] in self?.capture.reviewClipboard() },
+            openFile: { [weak self] url in self?.capture.review(file: url, origin: .fileDrop) },
+            showSettings: { [weak self] in self?.settings.show() }
+        ))
 
-        // Development aid: `AnnotatorApp --review <file>` opens that text file at launch.
+        // Development aid: `AnnotatorApp --review <file>` opens that file at launch.
         let arguments = CommandLine.arguments
         if let flag = arguments.firstIndex(of: "--review"), arguments.indices.contains(flag + 1) {
-            reviewFile(at: arguments[flag + 1])
+            capture.review(file: URL(fileURLWithPath: arguments[flag + 1]), origin: .fileDrop)
         }
+    }
+
+    /// Files opened with the app, and `annotator://` links from the Share extension.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { capture.open(url: url) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -51,35 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        HotkeyCenter.shared.unregister()
         ipc?.stop()
-    }
-
-    private func reviewClipboard() {
-        guard let text = NSPasteboard.general.string(forType: .string)?.nilIfBlank else {
-            Toast.show("The clipboard has no text")
-            return
-        }
-        coordinator.open(ReviewRequest(
-            content: .text(text, format: .markdown),
-            origin: .hotkey,
-            metadata: ReviewMetadata(title: "Clipboard"),
-            reply: .clipboard,
-            modes: [.feedback, .applyEdits]
-        ))
-    }
-
-    private func reviewFile(at path: String) {
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
-            Toast.show("Could not read \(URL(fileURLWithPath: path).lastPathComponent)")
-            return
-        }
-        let isMarkdown = ["md", "markdown"].contains(URL(fileURLWithPath: path).pathExtension.lowercased())
-        coordinator.open(ReviewRequest(
-            content: .text(text, format: isMarkdown ? .markdown : .plain),
-            origin: .fileDrop,
-            metadata: ReviewMetadata(filePath: path),
-            reply: .clipboard,
-            modes: [.feedback, .applyEdits]
-        ))
     }
 }

@@ -31,6 +31,8 @@ targets:
     dependencies:
       - package: AnnotatorKit
         product: AnnotatorUI
+      # The Share menu entry, embedded in Contents/PlugIns.
+      - target: AnnotatorShare
       # The command-line tool ships inside the bundle, at Contents/Helpers/annotator.
       - target: AnnotatorCLI
         embed: true
@@ -47,6 +49,20 @@ targets:
         # Menu-bar app: no Dock icon.
         LSUIElement: true
         NSHumanReadableCopyright: Licensed under the GNU General Public License v3.0.
+        # "Annotate with Annotator" in other apps' Services menus.
+        NSServices:
+          - NSMenuItem:
+              default: Annotate with Annotator
+            NSMessage: annotateSelection
+            NSPortName: Annotator
+            NSSendTypes:
+              - NSStringPboardType
+              - public.utf8-plain-text
+        # The Share extension hands files over with annotator://open?path=…
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.annotator.Annotator
+            CFBundleURLSchemes:
+              - annotator
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator
@@ -68,3 +84,35 @@ targets:
         PRODUCT_NAME: annotator
         PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator.cli
         SKIP_INSTALL: YES
+
+  # The Share menu entry in Finder and Preview. An extension must be sandboxed
+  # even though the app is not; it only passes the file's path on to the app.
+  AnnotatorShare:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: ShareExtension
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Annotator
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 1
+    entitlements:
+      path: ShareExtension/AnnotatorShare.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator.Share
+        PRODUCT_NAME: AnnotatorShare

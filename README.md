@@ -9,7 +9,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. Reviews of text and of PDFs work end to end: the review window, the `annotator` command-line tool, and the Claude Code plugin for plans, replies and generated documents. Capturing text from other apps (hotkey, Services, drag and drop, Share) is next.
+Status: early development. Reviews of text and of PDFs work end to end, from Claude Code (plans, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share). Comparing plan versions, reusable comments and history are next.
 
 ## Building
 
@@ -67,6 +67,17 @@ Replacements, insertions and comments open a note in the margin with the keyboar
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
 
+## From any app
+
+Outside Claude Code the result goes to the clipboard: the feedback with `⌘↩`, or the corrected text with `⌘⇧↩`, ready to paste back.
+
+- **Shortcut.** Select text anywhere and press `⌥⌘A` (change it in Settings). Annotator presses `⌘C` for you and then puts your clipboard back, which needs the Accessibility permission; the first use walks you through it.
+- **Services menu.** *Annotate with Annotator* on any selected text. No permission needed.
+- **Menu-bar icon.** Drop a `.md`, `.txt` or `.pdf` file on it.
+- **Share menu.** In Finder and Preview, share a file to Annotator. You may have to turn the extension on once in System Settings, under Extensions.
+
+Text selected in a terminal (Terminal, iTerm2, Ghostty) is cleaned up first: frames and bullets drawn by terminal interfaces are removed, and lines broken at the window's edge are joined again. *Show as Copied* in the review window switches to the untouched text.
+
 ## The command-line tool
 
 `annotator` is how anything outside the app asks for a review. It talks to the app over a Unix socket in `~/Library/Application Support/Annotator/`, starts the app if needed, and blocks until you respond.
@@ -111,6 +122,8 @@ Without the plugin, `annotator install` adds the same hook to `~/.claude/setting
 
 ```
 project.yml                 XcodeGen spec for the app bundle
+ShareExtension/             the Share menu entry
+scripts/                    the icon generator and the plan-hook check
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else

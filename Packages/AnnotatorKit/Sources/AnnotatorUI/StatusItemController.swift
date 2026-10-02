@@ -3,30 +3,85 @@ import AppKit
 /// The menu-bar icon and its menu. An `NSStatusItem` rather than SwiftUI's
 /// `MenuBarExtra`, because the icon has to accept dropped files.
 @MainActor
-final class StatusItemController: NSObject {
-    private let item: NSStatusItem
-    private let reviewClipboard: () -> Void
+final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
+    struct Actions {
+        var markUpSelection: () -> Void
+        var reviewClipboard: () -> Void
+        var openFile: (URL) -> Void
+        var showSettings: () -> Void
+    }
 
-    init(reviewClipboard: @escaping () -> Void) {
-        self.reviewClipboard = reviewClipboard
+    private let item: NSStatusItem
+    private let actions: Actions
+    private let hotkeyItem = NSMenuItem()
+
+    init(actions: Actions) {
+        self.actions = actions
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Annotator")
                 ?? NSImage(systemSymbolName: "pencil.line", accessibilityDescription: "Annotator")
-            button.toolTip = "Annotator"
+            button.toolTip = "Annotator: drop a .md, .txt or .pdf file here to mark it up"
+            // The status item's window takes the drop; its delegate gets the dragging calls.
+            button.window?.registerForDraggedTypes([.fileURL])
+            button.window?.delegate = self
         }
+
         let menu = NSMenu()
-        menu.addItem(withTitle: "Review Clipboard Text", action: #selector(reviewClipboardText), keyEquivalent: "")
-            .target = self
+        menu.delegate = self
+        hotkeyItem.title = "Mark Up Selection"
+        hotkeyItem.action = #selector(markUpSelection)
+        hotkeyItem.target = self
+        menu.addItem(hotkeyItem)
+        menu.addItem(withTitle: "Mark Up Clipboard Text", action: #selector(reviewClipboardText), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Annotator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
     }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Shown as a reminder of the shortcut; the menu item itself has no key equivalent.
+        hotkeyItem.title = "Mark Up Selection (\(Hotkey.stored.display))"
+    }
+
+    @objc private func markUpSelection() {
+        actions.markUpSelection()
+    }
+
     @objc private func reviewClipboardText() {
-        reviewClipboard()
+        actions.reviewClipboard()
+    }
+
+    @objc private func showSettings() {
+        actions.showSettings()
+    }
+
+    // MARK: Files dropped on the icon
+
+    private func droppedFile(_ sender: NSDraggingInfo) -> URL? {
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+        return urls?.first
+    }
+
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let url = droppedFile(sender), CaptureController.canOpen(url) else { return [] }
+        item.button?.highlight(true)
+        return .copy
+    }
+
+    func draggingExited(_ sender: NSDraggingInfo?) {
+        item.button?.highlight(false)
+    }
+
+    func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        item.button?.highlight(false)
+        guard let url = droppedFile(sender) else { return false }
+        actions.openFile(url)
+        return true
     }
 }
 

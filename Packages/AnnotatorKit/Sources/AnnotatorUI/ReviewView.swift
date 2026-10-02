@@ -10,14 +10,22 @@ enum ReviewOutcome {
 }
 
 /// The review window's content: the page with its margin, and the bar of actions under it.
+/// For text captured from a terminal: the switch between the cleaned-up text
+/// and the text as it was copied.
+struct CaptureSwitch {
+    var isShowingRaw: Bool
+    var toggle: () -> Void
+}
+
 struct ReviewView: View {
     @Bindable var session: ReviewSession
+    var capture: CaptureSwitch?
     let finish: (ReviewOutcome) -> Void
 
     var body: some View {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ActionBar(session: session, finish: finish)
+                ActionBar(session: session, capture: capture, finish: finish)
             }
             .frame(minWidth: 720, minHeight: 440)
     }
@@ -62,6 +70,7 @@ private struct PDFReview: View {
 
 private struct ActionBar: View {
     @Bindable var session: ReviewSession
+    var capture: CaptureSwitch?
     let finish: (ReviewOutcome) -> Void
 
     var body: some View {
@@ -88,6 +97,15 @@ private struct ActionBar: View {
                 }
                 Spacer(minLength: 8)
 
+                if let capture {
+                    Button(capture.isShowingRaw ? "Show Cleaned Up" : "Show as Copied", action: capture.toggle)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 1)
+                        .help(capture.isShowingRaw
+                            ? "Go back to the text with the terminal's frames and line breaks removed"
+                            : "See the text exactly as it was copied from the terminal")
+                }
                 MarksOverview(session: session)
                     .padding(.bottom, 1)
 

@@ -6,7 +6,9 @@ import SwiftUI
 /// or closes the window.
 @MainActor
 final class ReviewWindowController: NSObject, NSWindowDelegate {
-    let session: ReviewSession
+    private(set) var session: ReviewSession
+    /// For a capture that was cleaned up: whether the text as it was copied is showing instead.
+    private(set) var isShowingRawCapture = false
     private let window: NSWindow
     private var completion: ((ReviewResult) -> Void)?
     /// Each review has its own history of marks to undo.
@@ -30,12 +32,44 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = session.isPDF ? .underPageBackgroundColor : .textBackgroundColor
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: ReviewView(session: session) { [weak self] outcome in
-            self?.finish(outcome)
-        })
-        session.undoManager = undoManager
+        showSession()
         window.setFrameAutosaveName("ReviewWindow")
         if window.frame.origin == .zero { window.center() }
+    }
+
+    private func showSession() {
+        var capture: CaptureSwitch?
+        if session.request.metadata.rawCapture != nil {
+            capture = CaptureSwitch(isShowingRaw: isShowingRawCapture) { [weak self] in self?.switchCapture() }
+        }
+        window.contentView = NSHostingView(rootView: ReviewView(session: session, capture: capture) { [weak self] outcome in
+            self?.finish(outcome)
+        })
+        undoManager.removeAllActions()
+        session.undoManager = undoManager
+    }
+
+    /// Swaps between the cleaned-up text and the text as it was copied. Marks
+    /// belong to one text, so they do not survive the swap.
+    func switchCapture() {
+        guard let raw = session.request.metadata.rawCapture else { return }
+        if session.hasFeedback {
+            let alert = NSAlert()
+            alert.messageText = isShowingRawCapture ? "Show the cleaned-up text?" : "Show the text as it was copied?"
+            alert.informativeText = "Your marks were made on this version and will be lost."
+            alert.addButton(withTitle: "Switch")
+            alert.addButton(withTitle: "Keep Reviewing")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        var request = session.request
+        if isShowingRawCapture {
+            request.content = .text(TerminalCleanup.clean(raw), format: .markdown)
+        } else {
+            request.content = .text(raw, format: .plain)
+        }
+        isShowingRawCapture.toggle()
+        session = ReviewSession(request: request)
+        showSession()
     }
 
     func show() {

@@ -7,11 +7,11 @@ enum Toast {
     private static var panel: NSPanel?
     private static var dismissal: DispatchWorkItem?
 
-    static func show(_ message: String, for duration: TimeInterval = 2.2) {
+    static func show(_ message: String, symbol: String = "doc.on.clipboard", for duration: TimeInterval = 2.2) {
         dismissal?.cancel()
         panel?.orderOut(nil)
 
-        let host = NSHostingView(rootView: ToastView(message: message))
+        let host = NSHostingView(rootView: ToastView(message: message, symbol: symbol))
         let size = host.fittingSize
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -57,9 +57,10 @@ enum Toast {
 
 private struct ToastView: View {
     let message: String
+    let symbol: String
 
     var body: some View {
-        Label(message, systemImage: "doc.on.clipboard")
+        Label(message, systemImage: symbol)
             .font(.system(size: 13, weight: .medium))
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
