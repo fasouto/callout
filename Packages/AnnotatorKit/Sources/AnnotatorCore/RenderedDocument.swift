@@ -5,7 +5,10 @@ public struct SegmentStyle: Equatable, Sendable {
         case paragraph
         case heading(Int)
         case codeBlock(language: String?)
+        /// A table shown as it is written, because it is too wide to lay out.
         case table
+        /// One row of a table laid out in columns.
+        case tableRow(header: Bool)
         case html
         case thematicBreak
     }
@@ -20,6 +23,8 @@ public struct SegmentStyle: Equatable, Sendable {
     public var listDepth = 0
     /// A bullet, number or task box the renderer added.
     public var isListMarker = false
+    /// The column a table cell's text belongs to. Nil for the separators between cells.
+    public var tableColumn: Int?
 
     public init() {}
 }

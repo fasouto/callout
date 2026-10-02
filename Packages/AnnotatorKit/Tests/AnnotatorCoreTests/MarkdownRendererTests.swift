@@ -220,13 +220,58 @@ struct MarkdownRendererTests {
         #expect(sourceSpan(behind: "second", in: document) == span(of: "second", in: source))
     }
 
-    @Test func tablesAreShownAsWritten() {
-        let source = "Intro.\n\n| Name | Role |\n|---|---|\n| Ada | Engineer |\n\nOutro.\n"
+    @Test func tablesAreLaidOutInColumns() {
+        let source = "Intro.\n\n| Name | Role |\n|---|---|\n| Ada | **Lead** engineer |\n| Bo | Designer |\n\nOutro.\n"
         let document = MarkdownRenderer.render(source)
-        #expect(document.text == "Intro.\n| Name | Role |\n|---|---|\n| Ada | Engineer |\nOutro.")
+        #expect(document.text == "Intro.\nName\tRole\nAda\tLead engineer\nBo\tDesigner\nOutro.")
         expectFaithfulMapping(document)
-        #expect(document.segments.first { $0.text.hasPrefix("| Name") }?.style.block == .table)
-        #expect(sourceSpan(behind: "Engineer", in: document) == span(of: "Engineer", in: source))
+
+        let header = document.segments.first { $0.text == "Name" }
+        #expect(header?.style.block == .tableRow(header: true))
+        #expect(header?.style.bold == true)
+        #expect(header?.style.tableColumn == 0)
+        let cell = document.segments.first { $0.text == " engineer" }
+        #expect(cell?.style.block == .tableRow(header: false))
+        #expect(cell?.style.tableColumn == 1)
+        // The tab between cells is not part of the source.
+        #expect(document.segments.first { $0.text == "\t" }?.source == nil)
+
+        #expect(sourceSpan(behind: "Designer", in: document) == span(of: "Designer", in: source))
+        #expect(sourceText(behind: "Lead", in: document) == "**Lead**")
+        #expect(sourceSpan(behind: "Outro", in: document) == span(of: "Outro", in: source))
+    }
+
+    @Test func equalCellsMapToTheirOwnPlace() {
+        let source = "| Key | Old | New |\n|---|---|---|\n| a | yes | yes |\n| b | yes | no |\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text == "Key\tOld\tNew\na\tyes\tyes\nb\tyes\tno")
+        for occurrence in 1...3 {
+            #expect(sourceSpan(behind: "yes", in: document, occurrence: occurrence) == span(of: "yes", in: source, occurrence: occurrence))
+        }
+    }
+
+    @Test func emptyCellsKeepTheirColumn() {
+        let source = "| A | B | C |\n|---|---|---|\n| 1 |  | 3 |\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text == "A\tB\tC\n1\t\t3")
+        #expect(document.segments.first { $0.text == "3" }?.style.tableColumn == 2)
+    }
+
+    @Test func aLongLastColumnStillFits() {
+        let long = "A much longer explanation that will need to wrap over several lines in the last column."
+        let source = "| Topic | Finding |\n|---|---|\n| Hook timeout | \(long) |\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text == "Topic\tFinding\nHook timeout\t\(long)")
+        expectFaithfulMapping(document)
+    }
+
+    @Test func tablesTooWideForColumnsAreShownAsWritten() {
+        let wide = "a fairly long cell of text here"
+        let source = "Intro.\n\n| One | Two | Three |\n|---|---|---|\n| \(wide) | \(wide) | x |\n\nOutro.\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text == "Intro.\n| One | Two | Three |\n|---|---|---|\n| \(wide) | \(wide) | x |\nOutro.")
+        expectFaithfulMapping(document)
+        #expect(document.segments.first { $0.text.hasPrefix("| One") }?.style.block == .table)
         #expect(sourceSpan(behind: "Outro", in: document) == span(of: "Outro", in: source))
     }
 
@@ -337,13 +382,14 @@ struct MarkdownRendererTests {
 
         // Everything the reader sees, except list markers and block breaks, comes from the source.
         for segment in document.segments where segment.source == nil {
-            #expect(segment.text == "\n" || segment.style.isListMarker, "unmapped \(segment.text.debugDescription)")
+            #expect(segment.text == "\n" || segment.text == "\t" || segment.style.isListMarker, "unmapped \(segment.text.debugDescription)")
         }
         for phrase in ["no limits", "the incident report", "RateLimiter", "per API key", "429",
                        "unit tests for the bucket", "return self.bucket(key).take()", "websockets & streaming"] {
             #expect(sourceText(behind: phrase, in: document)?.contains(phrase) == true, "\(phrase)")
         }
         #expect(sourceText(behind: "per API key", in: document) == "*per API key*")
-        #expect(sourceSpan(behind: "RATE_LIMIT_RPS", in: document, occurrence: 2) == span(of: "RATE_LIMIT_RPS", in: source, occurrence: 2))
+        // The second one is inline code in a table cell: selecting all of it takes its backticks.
+        #expect(sourceSpan(behind: "RATE_LIMIT_RPS", in: document, occurrence: 2) == span(of: "`RATE_LIMIT_RPS`", in: source, occurrence: 2))
     }
 }

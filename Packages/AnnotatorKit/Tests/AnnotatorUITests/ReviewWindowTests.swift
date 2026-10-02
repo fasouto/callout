@@ -25,9 +25,10 @@ struct ReviewWindowTests {
             return self.bucket(key).take()
     ```
 
-    | Setting | Default |
-    |---|---|
-    | `RATE_LIMIT_RPS` | 10 |
+    | Setting | Default | Notes |
+    |---|---|---|
+    | `RATE_LIMIT_RPS` | 10 | Requests per second for each API key, refilled continuously |
+    | `RATE_LIMIT_BURST` | 20 | Bucket size |
 
     > Note: this does not cover websockets.
 

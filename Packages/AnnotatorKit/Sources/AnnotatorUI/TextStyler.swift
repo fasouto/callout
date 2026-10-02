@@ -17,6 +17,8 @@ enum BlockDecoration: Equatable {
     case quote(depth: Int, trim: CGFloat)
     /// A thematic break, drawn as a rule.
     case rule
+    /// A table row, with a hairline under it unless it is the last. `indent` is the table's left edge.
+    case tableRow(header: Bool, last: Bool, indent: CGFloat)
 }
 
 /// Builds what the text view shows from the rendered document and the marks.
@@ -26,13 +28,18 @@ enum TextStyler {
         let document = layout.document
         let result = NSMutableAttributedString()
 
-        for segment in document.segments {
+        var tableCells: [TableCell] = []
+        for (index, segment) in document.segments.enumerated() {
             let start = result.length
             result.append(NSAttributedString(string: segment.text, attributes: attributes(for: segment.style)))
             decoratePanel(segment, at: start, in: result)
+            if case .tableRow = segment.style.block {
+                tableCells.append(TableCell(segment: index, range: NSRange(location: start, length: result.length - start), style: segment.style, endsRow: segment.text == "\n"))
+            }
         }
 
         endQuoteBars(in: result)
+        layOutTables(tableCells, in: result)
 
         // Marks are applied in displayed offsets, before ghosts shift anything.
         for mark in marks {
@@ -131,7 +138,7 @@ enum TextStyler {
             attributes[.annotatorBlock] = BlockDecoration.rule
         case .paragraph, .heading:
             if style.quoteDepth > 0 { attributes[.annotatorBlock] = BlockDecoration.quote(depth: style.quoteDepth, trim: 0) }
-        case .codeBlock, .table, .html:
+        case .codeBlock, .table, .html, .tableRow:
             break
         }
         return attributes
@@ -152,6 +159,10 @@ enum TextStyler {
             return Theme.serif(size, weight: level <= 2 ? .bold : .semibold, italic: style.italic)
         case .codeBlock, .table, .html:
             return Theme.mono(13)
+        case .tableRow:
+            let size = Theme.bodySize - 1
+            if style.code { return Theme.mono(size - 2.5, weight: style.bold ? .semibold : .regular) }
+            return Theme.serif(size, weight: style.bold ? .semibold : .regular, italic: style.italic)
         case .paragraph, .thematicBreak:
             if style.code { return Theme.mono(Theme.bodySize - 2.5, weight: style.bold ? .semibold : .regular) }
             return Theme.serif(Theme.bodySize, weight: style.bold ? .semibold : .regular, italic: style.italic)
@@ -199,10 +210,83 @@ enum TextStyler {
         case .thematicBreak:
             paragraph.paragraphSpacing = 12
             paragraph.paragraphSpacingBefore = 4
-        case .paragraph:
+        case .paragraph, .tableRow:
+            // A table row gets its columns once the whole table is known.
             break
         }
         return paragraph
+    }
+
+    // MARK: - Tables
+
+    private struct TableCell {
+        var segment: Int
+        var range: NSRange
+        var style: SegmentStyle
+        var endsRow: Bool
+    }
+
+    private static let columnGap: CGFloat = 28
+    private static let rowPadding: CGFloat = 7
+
+    /// Gives each table its columns: a tab stop where each column starts, as wide
+    /// as its widest cell, with the last column wrapping under its own start.
+    private static func layOutTables(_ cells: [TableCell], in result: NSMutableAttributedString) {
+        // Segments of one table follow each other without a gap.
+        var tables: [[TableCell]] = []
+        for cell in cells {
+            if let last = tables.last?.last, last.segment + 1 == cell.segment {
+                tables[tables.count - 1].append(cell)
+            } else {
+                tables.append([cell])
+            }
+        }
+
+        for table in tables {
+            var rows: [[TableCell]] = [[]]
+            for cell in table {
+                rows[rows.count - 1].append(cell)
+                if cell.endsRow { rows.append([]) }
+            }
+            rows.removeAll(where: \.isEmpty)
+            guard let first = rows.first?.first else { continue }
+
+            var widths: [CGFloat] = []
+            for row in rows {
+                var rowWidths: [Int: CGFloat] = [:]
+                for cell in row {
+                    guard let column = cell.style.tableColumn else { continue }
+                    rowWidths[column, default: 0] += ceil(result.attributedSubstring(from: cell.range).size().width)
+                }
+                for (column, width) in rowWidths {
+                    while widths.count <= column { widths.append(0) }
+                    widths[column] = max(widths[column], width)
+                }
+            }
+            guard !widths.isEmpty else { continue }
+
+            let indent = blockIndent(for: first.style)
+            var starts: [CGFloat] = [indent]
+            for width in widths.dropLast() { starts.append((starts.last ?? indent) + width + columnGap) }
+
+            for (index, row) in rows.enumerated() {
+                guard let start = row.first?.range.location, let end = row.last.map({ NSMaxRange($0.range) }) else { continue }
+                let isLast = index == rows.count - 1
+                let isHeader: Bool = { if case .tableRow(let header) = row[0].style.block { return header } else { return false } }()
+
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.firstLineHeadIndent = indent
+                paragraph.headIndent = starts.last ?? indent
+                paragraph.tabStops = starts.dropFirst().map { NSTextTab(textAlignment: .left, location: $0) }
+                paragraph.lineSpacing = 3
+                paragraph.paragraphSpacingBefore = rowPadding + (index == 0 ? 4 : 0)
+                paragraph.paragraphSpacing = rowPadding + (isLast ? 12 : 0)
+
+                let range = NSRange(location: start, length: end - start)
+                result.addAttribute(.paragraphStyle, value: paragraph, range: range)
+                result.addAttribute(.annotatorBlock, value: BlockDecoration.tableRow(header: isHeader, last: isLast, indent: indent), range: range)
+            }
+        }
     }
 
     /// The bar beside a quotation runs unbroken from paragraph to paragraph, and

@@ -83,12 +83,59 @@ private struct Builder {
             let style = context.style(.thematicBreak)
             added("———", style)
             lineBreak(style)
-        case is Table:
-            raw(node, span, context.style(.table))
+        case let table as Table:
+            if Self.fitsInColumns(table) {
+                rows(of: table, context, limit)
+            } else {
+                raw(node, span, context.style(.table))
+            }
         default:
             raw(node, span, context.style(.html))
         }
         if let span { cursor = max(cursor, min(span.end, units.length)) }
+    }
+
+    // MARK: - Tables
+
+    /// Columns are laid out with tab stops, so only the last one can wrap. A
+    /// table fits when the columns before the last are short enough to leave it room.
+    private static func fitsInColumns(_ table: Table) -> Bool {
+        let rows = [Array(table.head.cells)] + table.body.rows.map { Array($0.cells) }
+        let columns = rows.map(\.count).max() ?? 0
+        guard columns > 0 else { return false }
+        var widths = [Int](repeating: 0, count: columns)
+        for row in rows {
+            for (index, cell) in row.enumerated() {
+                guard cell.colspan == 1, cell.rowspan == 1 else { return false }
+                widths[index] = max(widths[index], cell.plainText.count)
+            }
+        }
+        return widths.dropLast().reduce(0, +) + 3 * (columns - 1) <= 46
+    }
+
+    /// One line per row, with a tab between cells.
+    private mutating func rows(of table: Table, _ context: Context, _ limit: Int) {
+        var all: [(cells: [Table.Cell], range: SourceRange?, header: Bool)] = [(Array(table.head.cells), table.head.range, true)]
+        all += table.body.rows.map { (Array($0.cells), $0.range, false) }
+
+        for row in all {
+            if let span = lines.span(of: row.range), span.start > cursor { cursor = span.start }
+            var style = context.style(.tableRow(header: row.header))
+            for (index, cell) in row.cells.enumerated() {
+                style.tableColumn = nil
+                if index > 0 { added("\t", style) }
+                style.tableColumn = index
+                var cellStyle = style
+                cellStyle.bold = row.header
+                // A cell's text is looked for inside the cell, so equal cells do not swap places.
+                let cellSpan = lines.span(of: cell.range)
+                if let cellSpan, cellSpan.start > cursor { cursor = cellSpan.start }
+                inlines(of: cell, cellStyle, min(cellSpan?.end ?? limit, limit))
+                if let cellSpan { cursor = max(cursor, min(cellSpan.end, limit)) }
+            }
+            style.tableColumn = nil
+            lineBreak(style)
+        }
     }
 
     private mutating func listItem(_ item: ListItem, marker: String, _ context: Context) {
