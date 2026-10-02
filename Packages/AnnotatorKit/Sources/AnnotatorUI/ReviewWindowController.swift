@@ -50,7 +50,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Finishing
 
-    private func finish(_ outcome: ReviewOutcome) {
+    func finish(_ outcome: ReviewOutcome) {
         let id = session.request.id
         switch outcome {
         case .feedback:

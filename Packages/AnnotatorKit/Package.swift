@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "AnnotatorCore", targets: ["AnnotatorCore"]),
         .library(name: "AnnotatorUI", targets: ["AnnotatorUI"]),
+        .library(name: "AnnotatorCLIKit", targets: ["AnnotatorCLIKit"]),
     ],
     dependencies: [
         // Markdown parsing with source ranges for every node. 0.x minors may break API.
@@ -17,10 +18,24 @@ let package = Package(
             name: "AnnotatorCore",
             dependencies: [.product(name: "Markdown", package: "swift-markdown")]
         ),
+        // The socket protocol between the app and the command-line tool.
+        .target(
+            name: "AnnotatorIPC",
+            dependencies: ["AnnotatorCore"]
+        ),
+        // The command-line tool's logic, as a library so it can be tested.
+        .target(
+            name: "AnnotatorCLIKit",
+            dependencies: ["AnnotatorCore", "AnnotatorIPC"]
+        ),
+        .executableTarget(
+            name: "annotator",
+            dependencies: ["AnnotatorCLIKit"]
+        ),
         // The whole app except its bundle. A library so it also builds without Xcode.
         .target(
             name: "AnnotatorUI",
-            dependencies: ["AnnotatorCore"]
+            dependencies: ["AnnotatorCore", "AnnotatorIPC"]
         ),
         // Runs the app unbundled, for development without Xcode.
         .executableTarget(
@@ -32,8 +47,12 @@ let package = Package(
             dependencies: ["AnnotatorCore"]
         ),
         .testTarget(
+            name: "AnnotatorIPCTests",
+            dependencies: ["AnnotatorIPC", "AnnotatorCLIKit"]
+        ),
+        .testTarget(
             name: "AnnotatorUITests",
-            dependencies: ["AnnotatorUI"]
+            dependencies: ["AnnotatorUI", "AnnotatorIPC"]
         ),
     ]
 )

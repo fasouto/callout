@@ -7,7 +7,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development. The review window works for text: it renders markdown, takes all five marks, and copies either the feedback or the corrected text to the clipboard. The `annotator` command-line tool, the Claude Code plugin and PDF support are next.
+Status: early development. The review window works for text: it renders markdown, takes all five marks, and returns either the feedback or the corrected text. The `annotator` command-line tool sends it requests over a local socket. The Claude Code plugin and PDF support are next.
 
 ## Building
 
@@ -24,6 +24,8 @@ swift run AnnotatorApp --review path/to/some.md
 ```
 
 This runs the app unbundled: it has a menu-bar icon and the review window, but no app bundle, so nothing that needs one (Services, the Share extension, a stable identity for the Accessibility permission).
+
+`swift build` also produces the command-line tool at `.build/debug/annotator`. It starts the development app next to it when the app is not running.
 
 ### With Xcode
 
@@ -53,15 +55,33 @@ Select text in the document, then press a key:
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
 
+## The command-line tool
+
+`annotator` is how anything outside the app asks for a review. It talks to the app over a Unix socket in `~/Library/Application Support/Annotator/`, starts the app if needed, and blocks until you respond.
+
+```sh
+annotator review plan.md                  # feedback, or the corrected text, on standard output
+git log -1 --format=%B | annotator review - --title "Commit message"
+annotator review draft.md --reply clipboard
+annotator result                          # print the last finished review again
+```
+
+If the app cannot be reached, or quits in the middle of a review, the tool says so in one line and exits with status 0, so whatever called it carries on as if there had been no review.
+
+In the app bundle the tool is at `Annotator.app/Contents/Helpers/annotator`.
+
 ## Layout
 
 ```
-project.yml              XcodeGen spec for the app bundle
-App/                     the app target: only its entry point
-Packages/AnnotatorKit/   Swift package with everything else
-  Sources/AnnotatorCore/ contract, marks, formatter, apply-edits, markdown source mapping
-  Sources/AnnotatorUI/   the app: menu-bar item, review window, text view
-  Sources/AnnotatorApp/  runs the app unbundled, for development without Xcode
+project.yml                 XcodeGen spec for the app bundle
+App/, CLI/                  entry points of the two Xcode targets
+Packages/AnnotatorKit/      Swift package with everything else
+  Sources/AnnotatorCore/    contract, marks, formatter, apply-edits, markdown source mapping
+  Sources/AnnotatorIPC/     the socket protocol between the app and the tool
+  Sources/AnnotatorCLIKit/  the command-line tool's commands
+  Sources/AnnotatorUI/      the app: menu-bar item, review window, text view
+  Sources/AnnotatorApp/     runs the app unbundled, for development without Xcode
+  Sources/annotator/        the command-line tool built by SwiftPM
 ```
 
 ## License

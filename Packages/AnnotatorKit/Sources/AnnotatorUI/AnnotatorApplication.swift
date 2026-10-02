@@ -1,4 +1,5 @@
 import AnnotatorCore
+import AnnotatorIPC
 import AppKit
 
 /// The app's entry point, shared by the app bundle and the unbundled development build.
@@ -19,8 +20,22 @@ public enum AnnotatorApplication {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let coordinator = ReviewCoordinator()
     private var statusItem: StatusItemController?
+    private var ipc: IPCService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let ipc = IPCService(coordinator: coordinator)
+        do {
+            try ipc.start()
+            self.ipc = ipc
+        } catch SocketError.alreadyRunning {
+            // One copy of the app serves every request.
+            NSApp.terminate(nil)
+            return
+        } catch {
+            // Without the socket the app still works from its own menu.
+            NSLog("Annotator: could not listen for requests: \(error)")
+        }
+
         NSApp.mainMenu = MainMenu.make()
         statusItem = StatusItemController(reviewClipboard: { [weak self] in self?.reviewClipboard() })
 
@@ -33,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ipc?.stop()
     }
 
     private func reviewClipboard() {

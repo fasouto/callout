@@ -4,26 +4,29 @@ import AppKit
 /// Opens a window for each request and sends its result where the request asked.
 @MainActor
 final class ReviewCoordinator {
-    private var windows: [UUID: ReviewWindowController] = [:]
+    private(set) var windows: [UUID: ReviewWindowController] = [:]
+    /// False keeps windows off screen, for tests.
+    private let presentsWindows: Bool
 
-    /// - Parameter reply: receives the result for requests that are answered
-    ///   to their sender. Clipboard requests are handled here.
+    init(presentsWindows: Bool = true) {
+        self.presentsWindows = presentsWindows
+    }
+
+    /// - Parameter reply: receives the result, for requests that came from a
+    ///   sender waiting for it. Copying to the clipboard is handled here.
     func open(_ request: ReviewRequest, reply: ((ReviewResult) -> Void)? = nil) {
         let controller = ReviewWindowController(request: request) { [weak self] result in
             self?.windows[request.id] = nil
             self?.deliver(result, for: request, reply: reply)
         }
         windows[request.id] = controller
-        controller.show()
+        if presentsWindows { controller.show() }
     }
 
     private func deliver(_ result: ReviewResult, for request: ReviewRequest, reply: ((ReviewResult) -> Void)?) {
-        switch request.reply {
-        case .clipboard:
-            copyToClipboard(result)
-        case .stdout, .hookDecision:
-            reply?(result)
-        }
+        if request.reply == .clipboard { copyToClipboard(result) }
+        // A requester that is waiting always hears back, so it can stop waiting.
+        reply?(result)
     }
 
     private func copyToClipboard(_ result: ReviewResult) {
