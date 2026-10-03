@@ -43,6 +43,7 @@ enum TextStyler {
 
         endQuoteBars(in: result)
         layOutTables(tableCells, in: result)
+        Typography.setPunctuation(in: result)
 
         // New since the previous version: a quiet tint, under whatever the reviewer marks.
         for span in added {
@@ -228,6 +229,8 @@ enum TextStyler {
     private static func paragraphStyle(for style: SegmentStyle) -> NSParagraphStyle {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 5
+        // Break lines as a typesetter would: no word left alone on a paragraph's last line.
+        paragraph.lineBreakStrategy = .standard
         let base = CGFloat(style.quoteDepth) * quoteIndent + CGFloat(max(0, style.listDepth - 1)) * listIndent
 
         if style.listDepth > 0 {
