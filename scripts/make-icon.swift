@@ -2,8 +2,9 @@
 //
 //     swift scripts/make-icon.swift
 //
-// The icon is the app in miniature: a page of text with one phrase struck in
-// red pen, the words that replace it in blue ink, and a line under the highlighter.
+// The icon is the app in miniature: rows of text on a white tile, one under the
+// highlighter, one struck through in red pen, and words added in blue.
+// Coordinates are on the 1024-point macOS icon grid, measured from the top.
 
 import AppKit
 import CoreGraphics
@@ -20,78 +21,99 @@ func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     )
 }
 
-/// A bar of "text": a rounded rectangle, measured from the top of the canvas.
-func bar(_ context: CGContext, x: CGFloat, top: CGFloat, width: CGFloat, height: CGFloat, fill: CGColor) {
-    let rect = CGRect(x: x, y: canvas - top - height, width: width, height: height)
+let ink = color(0x3E3E44)
+let struck = color(0xCBCCD2)
+let pen = color(0xE5483D)
+let blue = color(0x3E86F0)
+let highlighter = color(0xFFE14D)
+
+/// The macOS icon shape: an 824-point square whose corners ease into the
+/// sides instead of meeting them in a circular arc.
+func tileShape() -> CGPath {
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: 382.7, y: 100))
+    path.addLine(to: CGPoint(x: 641.3, y: 100))
+    path.addCurve(to: CGPoint(x: 924, y: 382.7), control1: CGPoint(x: 873.7, y: 100), control2: CGPoint(x: 924, y: 150.3))
+    path.addLine(to: CGPoint(x: 924, y: 641.3))
+    path.addCurve(to: CGPoint(x: 641.3, y: 924), control1: CGPoint(x: 924, y: 873.7), control2: CGPoint(x: 873.7, y: 924))
+    path.addLine(to: CGPoint(x: 382.7, y: 924))
+    path.addCurve(to: CGPoint(x: 100, y: 641.3), control1: CGPoint(x: 150.3, y: 924), control2: CGPoint(x: 100, y: 873.7))
+    path.addLine(to: CGPoint(x: 100, y: 382.7))
+    path.addCurve(to: CGPoint(x: 382.7, y: 100), control1: CGPoint(x: 100, y: 150.3), control2: CGPoint(x: 150.3, y: 100))
+    path.closeSubpath()
+    return path
+}
+
+/// A row of "text": a bar with round ends.
+func bar(_ context: CGContext, x: CGFloat, top: CGFloat, width: CGFloat, fill: CGColor) {
+    let height: CGFloat = 56
+    let rect = CGRect(x: x, y: top, width: width, height: height)
     context.addPath(CGPath(roundedRect: rect, cornerWidth: height / 2, cornerHeight: height / 2, transform: nil))
     context.setFillColor(fill)
     context.fillPath()
 }
 
-func drawIcon(in context: CGContext) {
+func drawIcon(in context: CGContext, scale: CGFloat) {
     let space = CGColorSpace(name: CGColorSpace.sRGB)!
+    let shape = tileShape()
 
-    // The sheet: the standard macOS icon shape, with a soft shadow under it.
-    let body = CGRect(x: 100, y: 100, width: 824, height: 824)
-    let shape = CGPath(roundedRect: body, cornerWidth: 186, cornerHeight: 186, transform: nil)
+    // The tile, with a soft shadow under it. Shadows are set in device pixels,
+    // so they are scaled by hand; the y offset points down in the bitmap.
     context.saveGState()
-    context.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: color(0x000000, 0.28))
+    context.setShadow(offset: CGSize(width: 0, height: -12 * scale), blur: 28 * scale, color: color(0x000000, 0.22))
     context.addPath(shape)
-    context.setFillColor(color(0xFFFFFF))
+    context.setFillColor(color(0xFCFCFD))
     context.fillPath()
     context.restoreGState()
 
     context.saveGState()
     context.addPath(shape)
     context.clip()
-    let paper = CGGradient(colorsSpace: space, colors: [color(0xFFFFFF), color(0xEEEEEA)] as CFArray, locations: [0, 1])!
-    context.drawLinearGradient(paper, start: CGPoint(x: 0, y: body.maxY), end: CGPoint(x: 0, y: body.minY), options: [])
-
-    let ink = color(0x1D1D1F, 0.9)
-    let faded = color(0x1D1D1F, 0.26)
-    let left: CGFloat = 214
-
-    // A heading, then three lines of text.
-    bar(context, x: left, top: 280, width: 330, height: 74, fill: ink)
-
-    // Line one: some text, a phrase struck out, and the words that replace it.
-    let first: CGFloat = 442
-    bar(context, x: left, top: first, width: 196, height: 52, fill: ink)
-    bar(context, x: left + 234, top: first, width: 160, height: 52, fill: faded)
-    bar(context, x: left + 436, top: first, width: 160, height: 52, fill: color(0x0A7AFF))
-
-    // Line two: under the highlighter.
-    let second: CGFloat = 562
-    let highlight = CGRect(x: left - 22, y: canvas - second - 52 - 20, width: 430, height: 92)
-    context.addPath(CGPath(roundedRect: highlight, cornerWidth: 22, cornerHeight: 22, transform: nil))
-    context.setFillColor(color(0xFFD426, 0.62))
-    context.fillPath()
-    bar(context, x: left, top: second, width: 386, height: 52, fill: ink)
-    bar(context, x: left + 416, top: second, width: 150, height: 52, fill: ink)
-
-    // Line three.
-    bar(context, x: left, top: 682, width: 300, height: 52, fill: ink)
-
-    // The pen stroke: drawn by hand, so not quite level, and a little past the
-    // phrase at both ends without touching its neighbours.
-    context.setStrokeColor(color(0xFF3B30))
-    context.setLineWidth(28)
-    context.setLineCap(.round)
-    let strikeY = canvas - first - 26
-    context.move(to: CGPoint(x: left + 224, y: strikeY - 8))
-    context.addCurve(
-        to: CGPoint(x: left + 404, y: strikeY + 9),
-        control1: CGPoint(x: left + 286, y: strikeY + 6),
-        control2: CGPoint(x: left + 344, y: strikeY - 7)
-    )
-    context.strokePath()
+    let paper = CGGradient(colorsSpace: space, colors: [color(0xFCFCFD), color(0xE4E4E8)] as CFArray, locations: [0, 1])!
+    context.drawLinearGradient(paper, start: CGPoint(x: 0, y: 100), end: CGPoint(x: 0, y: 924), options: [])
     context.restoreGState()
 
-    // A hairline keeps the sheet's edge crisp on light backgrounds.
+    // The rim: light along the top edge, a faint shade along the bottom.
+    context.saveGState()
     context.addPath(shape)
-    context.setStrokeColor(color(0x000000, 0.08))
-    context.setLineWidth(2)
+    context.setLineWidth(4)
+    context.replacePathWithStrokedPath()
+    context.clip()
+    let rim = CGGradient(
+        colorsSpace: space,
+        colors: [color(0xFFFFFF, 1), color(0xFFFFFF, 0), color(0x4A5060, 0.18)] as CFArray,
+        locations: [0, 0.5, 1]
+    )!
+    context.drawLinearGradient(rim, start: CGPoint(x: 0, y: 100), end: CGPoint(x: 0, y: 924), options: [])
+    context.restoreGState()
+
+    // The highlighter: a swipe by hand, a little crooked and past the words.
+    context.move(to: CGPoint(x: 204, y: 350))
+    context.addLine(to: CGPoint(x: 628, y: 336))
+    context.addLine(to: CGPoint(x: 632, y: 434))
+    context.addLine(to: CGPoint(x: 208, y: 444))
+    context.closePath()
+    context.setFillColor(highlighter)
+    context.fillPath()
+
+    bar(context, x: 228, top: 244, width: 532, fill: ink)
+    bar(context, x: 228, top: 364, width: 380, fill: ink)
+
+    // A row struck out: the words recede and the pen stroke, not quite level,
+    // runs past both ends.
+    bar(context, x: 228, top: 484, width: 460, fill: struck)
+    context.move(to: CGPoint(x: 206, y: 518))
+    context.addCurve(to: CGPoint(x: 712, y: 502), control1: CGPoint(x: 360, y: 498), control2: CGPoint(x: 540, y: 530))
+    context.setStrokeColor(pen)
+    context.setLineWidth(18)
+    context.setLineCap(.round)
     context.strokePath()
+
+    // Words added in blue ink.
+    bar(context, x: 228, top: 604, width: 148, fill: ink)
+    bar(context, x: 420, top: 604, width: 236, fill: blue)
+
+    bar(context, x: 228, top: 724, width: 340, fill: ink)
 }
 
 func render(size: Int) -> Data {
@@ -101,8 +123,11 @@ func render(size: Int) -> Data {
         space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     )!
     context.interpolationQuality = .high
-    context.scaleBy(x: CGFloat(size) / canvas, y: CGFloat(size) / canvas)
-    drawIcon(in: context)
+    let scale = CGFloat(size) / canvas
+    // Draw top-down, as on the design grid.
+    context.translateBy(x: 0, y: CGFloat(size))
+    context.scaleBy(x: scale, y: -scale)
+    drawIcon(in: context, scale: scale)
     let image = NSBitmapImageRep(cgImage: context.makeImage()!)
     return image.representation(using: .png, properties: [:])!
 }
