@@ -62,7 +62,7 @@ private struct PDFReview: View {
                 .frame(width: Theme.marginWidth + 16)
                 .clipped()
         }
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(Color(nsColor: Theme.desk))
     }
 }
 

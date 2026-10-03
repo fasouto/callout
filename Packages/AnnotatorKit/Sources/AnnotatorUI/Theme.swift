@@ -51,6 +51,15 @@ enum Theme {
 
     // MARK: Page
 
+    /// What a PDF's pages lie on, the margin notes beside them included.
+    static var desk: NSColor {
+        NSColor(name: "desk") { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(white: 0.14, alpha: 1)
+                : NSColor(white: 0.91, alpha: 1)
+        }
+    }
+
     /// Width of the text column: about seventy characters of body text.
     static let measure: CGFloat = 640
     static let minimumMeasure: CGFloat = 360

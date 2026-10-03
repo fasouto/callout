@@ -254,6 +254,21 @@ struct PDFReviewTests {
         snapshot(page: 0, of: session, named: "pdf-page-written")
     }
 
+    @Test func thePageGrowsWithTheWindowUpToAComfortableSize() throws {
+        let harness = try makeHarness()
+        settle(harness.window)
+        // At 1040 points the page, with the desk around it, fills the width beside the margin.
+        let fitted = harness.view.scaleFactor
+        let visible = try #require(AnnotationPDFView.clipView(in: harness.view)).frame.width
+        #expect(fitted < PDFPane.Coordinator.largestScale)
+        #expect(abs(fitted * 595 + 72 - visible) < 1)
+
+        // A wide window shows more desk instead of a bigger page.
+        harness.window.setContentSize(NSSize(width: 2000, height: 760))
+        settle(harness.window)
+        #expect(abs(harness.view.scaleFactor - PDFPane.Coordinator.largestScale) < 0.01)
+    }
+
     @Test func insertionGoesAfterTheSelectedWords() throws {
         let harness = try makeHarness()
         let session = harness.session

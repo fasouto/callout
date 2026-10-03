@@ -182,9 +182,10 @@ final class MarkAnnotation: PDFAnnotation {
             context.addLine(to: CGPoint(x: rect.maxX, y: y))
             context.strokePath()
         case .highlight:
-            // Multiplied over the page, as a highlighter is.
+            // On screen the mark is drawn over the text rather than blended into
+            // the page, so it stays light enough for the words to keep their ink.
             context.setBlendMode(.multiply)
-            context.setFillColor(Theme.highlighter.withAlphaComponent(isSelected ? 0.75 : 0.45).cgColor)
+            context.setFillColor(Theme.highlighter.withAlphaComponent(isSelected ? 0.5 : 0.34).cgColor)
             context.fill(rect.insetBy(dx: -1, dy: -0.5))
         case .keep:
             context.setBlendMode(.multiply)
@@ -274,9 +275,9 @@ struct PDFPane: NSViewRepresentable {
             view.displaysPageBreaks = true
             // A sheet on the desk: room around every page, so its edges show.
             view.pageBreakMargins = NSEdgeInsets(top: 24, left: 36, bottom: 24, right: 36)
-            view.autoScales = true
+            view.autoScales = false
             view.pageShadowsEnabled = true
-            view.backgroundColor = .underPageBackgroundColor
+            view.backgroundColor = Theme.desk
             view.setAccessibilityLabel("Document")
 
             view.onCommand = { [weak self] command in
@@ -312,12 +313,18 @@ struct PDFPane: NSViewRepresentable {
             center.addObserver(self, selector: #selector(viewChanged), name: .PDFViewScaleChanged, object: view)
             center.addObserver(self, selector: #selector(viewChanged), name: .PDFViewVisiblePagesChanged, object: view)
             center.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: view)
+            view.postsFrameChangedNotifications = true
+            center.addObserver(self, selector: #selector(frameChanged), name: NSView.frameDidChangeNotification, object: view)
             // The page scrolls inside the PDF view's own scroll view.
             DispatchQueue.main.async { [weak self, weak view] in
                 guard let self, let view, let clip = AnnotationPDFView.clipView(in: view) else { return }
                 clip.postsBoundsChangedNotifications = true
                 center.addObserver(self, selector: #selector(self.viewChanged), name: NSView.boundsDidChangeNotification, object: clip)
+                // A scroller that comes or goes changes the width the page has.
+                clip.postsFrameChangedNotifications = true
+                center.addObserver(self, selector: #selector(self.frameChanged), name: NSView.frameDidChangeNotification, object: clip)
                 view.window?.makeFirstResponder(view)
+                self.fitPage()
                 self.updateAnchors()
             }
             refresh(revision: session.revision)
@@ -433,6 +440,37 @@ struct PDFPane: NSViewRepresentable {
         @objc private func viewChanged() {
             toolbar.hide()
             updateAnchors()
+        }
+
+        @objc private func frameChanged() {
+            fitPage()
+            viewChanged()
+        }
+
+        /// The largest the page is drawn: a typical document's text then reads
+        /// about the size of the text page's. Wider windows show more desk.
+        static let largestScale: CGFloat = 1.5
+
+        /// The page takes the width it is given, up to the largest scale.
+        func fitPage() {
+            guard let scale = Self.fittingScale(for: view), abs(view.scaleFactor - scale) > 0.001 else { return }
+            view.scaleFactor = scale
+        }
+
+        /// The scale at which the widest page, with the desk around it, fills the
+        /// visible width, but no more than the largest scale. Worked out here rather
+        /// than asked of PDFKit, whose answer lags behind the page margins.
+        static func fittingScale(for view: PDFView) -> CGFloat? {
+            guard let document = view.document, document.pageCount > 0 else { return nil }
+            let visible = AnnotationPDFView.clipView(in: view)?.frame.width ?? view.bounds.width
+            let margins = view.pageBreakMargins
+            let widest = (0..<document.pageCount).compactMap { document.page(at: $0) }.map { page in
+                let box = page.bounds(for: view.displayBox)
+                return page.rotation % 180 == 0 ? box.width : box.height
+            }.max() ?? 0
+            let room = visible - margins.left - margins.right
+            guard widest > 0, room > 0 else { return nil }
+            return min(room / widest, largestScale)
         }
 
         // MARK: Selection
