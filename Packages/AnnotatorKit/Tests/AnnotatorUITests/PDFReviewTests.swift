@@ -207,6 +207,53 @@ struct PDFReviewTests {
         snapshot(page: 0, of: session, named: "pdf-page-marked")
     }
 
+    /// Writes the whole window as a PNG when a snapshot folder is set. Drawn
+    /// through the print path, which also draws PDFKit's pages.
+    private func snapshot(_ window: NSWindow, named name: String) {
+        guard let directory = ProcessInfo.processInfo.environment["ANNOTATOR_SNAPSHOT_DIR"],
+              let content = window.contentView,
+              let image = NSImage(data: content.dataWithPDF(inside: content.bounds)) else { return }
+        let scale: CGFloat = 2
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(content.bounds.width * scale), pixelsHigh: Int(content.bounds.height * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return }
+        bitmap.size = content.bounds.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: content.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
+    }
+
+    @Test func theWindowLaysOutPageAndMargin() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        try select("with a proven track record", page: 0, in: harness)
+        try press("r", keyCode: 15, in: harness)
+        session.update(try #require(session.selectedMarkID), text: "who ships reliable systems")
+        session.endEditing()
+        try select("Passionate, results-driven", page: 0, in: harness)
+        try press("d", keyCode: 2, in: harness)
+        try select("browser automation", page: 0, in: harness)
+        try press("c", keyCode: 8, in: harness)
+        session.update(try #require(session.selectedMarkID), note: "Say which insurer, and how many quotes a day.")
+        session.endEditing()
+        try select("Mentored a team", page: 0, in: harness)
+        try press("i", keyCode: 34, in: harness)
+        session.update(try #require(session.selectedMarkID), text: "and hired")
+        session.endEditing()
+        session.selectedMarkID = nil
+        settle(harness.window)
+
+        #expect(session.marks.count == 4)
+        // Replace and Insert also write their words above the line: a strike and
+        // its words, a strike, a highlight, a caret and its words.
+        #expect(session.pdf?.page(at: 0)?.annotations.count == 6)
+        snapshot(harness.window, named: "pdf-window")
+        snapshot(page: 0, of: session, named: "pdf-page-written")
+    }
+
     @Test func insertionGoesAfterTheSelectedWords() throws {
         let harness = try makeHarness()
         let session = harness.session
