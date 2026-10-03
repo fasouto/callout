@@ -40,6 +40,42 @@ enum Theme {
     /// What changed since the previous version. Not one of the reviewer's inks.
     static var revision: NSColor { .systemPurple }
 
+    /// The highlighter behind marked words. A translucent yellow over a dark
+    /// page turns olive, so in dark mode the wash stays faint and the words
+    /// themselves take the highlighter's colour (see `highlightedText`).
+    static func highlightWash(selected: Bool) -> NSColor {
+        NSColor(name: nil) { appearance in
+            if isDark(appearance) {
+                return NSColor.systemYellow.withAlphaComponent(selected ? 0.3 : increasesContrast ? 0.2 : 0.13)
+            }
+            return NSColor.systemYellow.withAlphaComponent(selected ? 0.62 : increasesContrast ? 0.5 : 0.34)
+        }
+    }
+
+    /// The colour of highlighted words: the page's ink in light mode, the
+    /// highlighter's yellow in dark mode.
+    static var highlightedText: NSColor {
+        NSColor(name: nil) { appearance in
+            isDark(appearance) ? .systemYellow : .labelColor
+        }
+    }
+
+    /// The wash behind words marked to keep.
+    static func keepWash(selected: Bool) -> NSColor {
+        NSColor(name: nil) { _ in
+            NSColor.systemGreen.withAlphaComponent(selected ? 0.3 : increasesContrast ? 0.22 : 0.12)
+        }
+    }
+
+    /// Increase Contrast in Accessibility settings: tints get stronger.
+    static var increasesContrast: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    }
+
+    static func isDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     static func color(for kind: MarkKind) -> NSColor {
         switch kind {
         case .delete: pen
@@ -54,9 +90,7 @@ enum Theme {
     /// What a PDF's pages lie on, the margin notes beside them included.
     static var desk: NSColor {
         NSColor(name: "desk") { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? NSColor(white: 0.14, alpha: 1)
-                : NSColor(white: 0.91, alpha: 1)
+            isDark(appearance) ? NSColor(white: 0.14, alpha: 1) : NSColor(white: 0.91, alpha: 1)
         }
     }
 

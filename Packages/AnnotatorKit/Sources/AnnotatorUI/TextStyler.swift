@@ -97,11 +97,12 @@ enum TextStyler {
         case .comment, .expand, .summarize:
             // All three are notes to the author about a passage: the highlighter
             // says "look here", the margin says what about it.
-            attributes[.backgroundColor] = Theme.highlighter.withAlphaComponent(selected ? 0.62 : 0.34)
+            attributes[.backgroundColor] = Theme.highlightWash(selected: selected)
+            attributes[.foregroundColor] = Theme.highlightedText
         case .keep:
             attributes[.underlineStyle] = NSUnderlineStyle.thick.rawValue
             attributes[.underlineColor] = Theme.keep
-            attributes[.backgroundColor] = Theme.keep.withAlphaComponent(selected ? 0.30 : 0.12)
+            attributes[.backgroundColor] = Theme.keepWash(selected: selected)
         case .insert:
             break
         }
