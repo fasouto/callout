@@ -40,6 +40,7 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "History…", action: #selector(showHistory), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "About Annotator", action: #selector(showAbout), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit Annotator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
     }
@@ -64,6 +65,27 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
     @objc private func showSettings() {
         actions.showSettings()
     }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Annotator", .credits: Self.credits])
+    }
+
+    /// What the About panel says under the version.
+    static let credits: NSAttributedString = {
+        let centred = NSMutableParagraphStyle()
+        centred.alignment = .center
+        centred.paragraphSpacing = 6
+        let text = NSMutableAttributedString(
+            string: "Mark up what Claude writes, the way a teacher marks an essay.\n",
+            attributes: [.font: Theme.serif(13, italic: true), .foregroundColor: NSColor.labelColor, .paragraphStyle: centred]
+        )
+        text.append(NSAttributedString(
+            string: "Free software under the GNU General Public License, version 3. Nothing you review leaves this Mac except what you send back.",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: centred]
+        ))
+        return text
+    }()
 
     // MARK: Files dropped on the icon
 

@@ -1,5 +1,7 @@
 # Annotator
 
+![Annotator: mark up what Claude writes, the way a teacher marks an essay](docs/banner.png)
+
 A native macOS menu-bar app for correcting AI-written text the way a teacher marks up an essay: strike out, replace, insert, comment, mark as good. The result goes back to the AI as structured feedback, or to you as the corrected text.
 
 ![The review window: a page with marks, and notes in the margin beside the lines they refer to](docs/review-window.png)
@@ -9,7 +11,7 @@ It has two parts:
 - **The app** shows the text or PDF, lets you annotate it, and returns the result.
 - **A Claude Code plugin** hands plans, replies and generated documents to the app and returns your feedback to Claude.
 
-Status: early development, feature-complete for a first version. Reviews of text and of PDFs work end to end, from Claude Code (plans with their changes between versions, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share), with saved comments and a searchable history.
+Status: early development, feature-complete for a first version. Reviews of text and of PDFs work end to end, from Claude Code (plans with their changes between versions, replies, generated documents) and from any other app (hotkey, Services, drag and drop, Share), with saved comments and a searchable history. It works in light and dark mode, with VoiceOver, Reduce Motion and Increase Contrast.
 
 ## Building
 
@@ -44,7 +46,11 @@ To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, sel
 
 ## Using it
 
-The document is a page; your notes go in its margin, beside the lines they refer to.
+**The first time** it opens, a short practice plan teaches the marks: strike the filler, replace a word, question a claim, and hand it in to see what Claude would receive. Nothing is sent and nothing is kept. *Practice review* in Settings shows it again.
+
+![The practice review: a short plan, and the lesson above the buttons ticking off each step](docs/first-review.png)
+
+The document is a page; your notes go in its margin, beside the lines they refer to. Quotes and dashes are set as in print, but the text that goes back is exactly what was written.
 
 **Just type.** With the caret in the text and nothing selected, typing adds words there and `⌫` strikes out what is before the caret. Your words show in blue, what you struck shows in red, and the document itself is never changed: every edit is a mark, so it can be undone, and Claude gets each one as a separate correction. Typing is for words; it does not restructure lists or tables.
 
@@ -75,13 +81,17 @@ Comments open a note in the margin with the keyboard already in it; `↩` finish
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
 
-In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin.
+In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin. They also appear on the page, in blue above the line, as a proofreader would write them. `scripts/run.sh docs/sample-cv.pdf` opens a sample to try.
 
 **Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `i` and `a` start typing and `Esc` stops; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, letters only type in insert mode, Keep moves to `⇧K` (a plain `k` moves up), `o` opens the overall comment, and `Esc` never cancels the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
 
 **Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `S` on a selection to pick one; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
 
-**History.** Every finished review is kept: what was reviewed, each mark, and what went back. *History…* in the menu-bar menu lists them, searchable by title, text, feedback and overall comment. It all stays on this Mac, in `~/Library/Application Support/Annotator/annotator.sqlite`.
+**History.** Every finished review is kept: what was reviewed, each mark, and what went back. *History…* in the menu-bar menu shows them as a shelf of the pages you marked, searchable by title, text, feedback and overall comment; select one to see what was sent back. It all stays on this Mac, in `~/Library/Application Support/Annotator/annotator.sqlite`.
+
+![History: each review as its page, with its marks](docs/history.png)
+
+**Accessibility.** With VoiceOver, the *Marks* rotor goes from mark to mark, each read as what was done to which words ("Replaced: leverage, with: use"), and making or removing a mark is announced. Reduce Motion turns off the window's movements, and Increase Contrast strengthens the highlighter. Every mark can be made from the keyboard.
 
 ## From any app
 
