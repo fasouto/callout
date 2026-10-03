@@ -269,11 +269,7 @@ private struct OverviewRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: mark.kind.symbol)
-                .font(.system(size: 10.5, weight: .bold))
-                .foregroundStyle(mark.kind.tint)
-                .frame(width: 14)
+        HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 1) {
                 if !quote.isEmpty {
                     Text(quote)
@@ -296,6 +292,7 @@ private struct OverviewRow: View {
             }
             Spacer(minLength: 0)
         }
+        .markColourBar(mark.kind)
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .contentShape(Rectangle())

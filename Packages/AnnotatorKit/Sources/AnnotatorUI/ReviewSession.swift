@@ -572,18 +572,6 @@ extension MarkKind {
         self == .keep && vim ? "⇧K" : key
     }
 
-    var symbol: String {
-        switch self {
-        case .delete: "strikethrough"
-        case .replace: "arrow.2.squarepath"
-        case .insert: "plus"
-        case .comment: "highlighter"
-        case .expand: "arrow.up.left.and.arrow.down.right"
-        case .summarize: "arrow.down.right.and.arrow.up.left"
-        case .keep: "checkmark"
-        }
-    }
-
     /// An instruction is said by the mark itself; a note is only an addition to it.
     var isInstruction: Bool {
         self == .expand || self == .summarize

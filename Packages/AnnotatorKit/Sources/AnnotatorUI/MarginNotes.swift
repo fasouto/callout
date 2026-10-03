@@ -98,22 +98,15 @@ private struct MarginNote: View {
     private var hasText: Bool { mark.kind == .replace || mark.kind == .insert }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: mark.kind.symbol)
-                .font(.system(size: 10.5, weight: .bold))
-                .foregroundStyle(mark.kind.tint)
-                .frame(width: 14)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if isSelected {
-                    editor
-                } else {
-                    summary
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            if isSelected {
+                editor
+            } else {
+                summary
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .markColourBar(mark.kind)
         .padding(.vertical, Self.topPadding)
         .padding(.horizontal, 8)
         .background(mark.kind.tint.opacity(isSelected ? 0.11 : 0), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -221,37 +214,25 @@ private struct MarginGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
-                ? "Press v and move to select, then press a key. Press i to type."
-                : "Select text, then press a key. Or just type to add text where the caret is.")
+                ? "Press v and move to select, then press a mark's bold letter. Press i to type."
+                : "Select text, then press a mark's bold letter. Or just type to add text where the caret is.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
                 ForEach(MarkKind.allCases, id: \.self) { kind in
                     GridRow {
-                        KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
-                        HStack(spacing: 7) {
-                            Image(systemName: kind.symbol)
-                                .font(.system(size: 10.5, weight: .bold))
-                                .foregroundStyle(kind.tint)
-                                .frame(width: 14)
-                            Text(kind.hint)
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                GridRow {
-                    KeyCap("S")
-                    HStack(spacing: 7) {
-                        Image(systemName: "text.badge.plus")
-                            .font(.system(size: 10.5, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 14)
-                        Text("Use a saved comment")
+                        MarkWord(kind: kind)
+                        Text(kind.hint)
                             .font(.system(size: 12.5))
                             .foregroundStyle(.secondary)
                     }
+                }
+                GridRow {
+                    MarkWord.savedComments()
+                    Text("Use a saved comment")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
                 }
             }
         }

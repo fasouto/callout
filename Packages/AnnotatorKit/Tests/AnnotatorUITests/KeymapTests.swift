@@ -20,6 +20,19 @@ struct KeymapTests {
         #expect(Keymap.command(for: "", vim: false) == nil)
     }
 
+    @Test func everyMarkShowsItsKeyInsideItsName() throws {
+        // The toolbar sets the key letter in bold within the word, so each
+        // name has to contain its key.
+        for kind in MarkKind.allCases {
+            let parts = try #require(MarkWord.split(kind.label, key: kind.key), "\(kind.label) has no \(kind.key)")
+            #expect(String(parts.before + parts.key + parts.after) == kind.label)
+            #expect(parts.key.uppercased() == kind.key)
+        }
+        #expect(MarkWord.split("Expand", key: "X").map { String($0.before) } == "E")
+        #expect(MarkWord.split("Summarize", key: "M").map { String($0.key) } == "m")
+        #expect(MarkWord.split("Saved…", key: "S") != nil)
+    }
+
     @Test func withVimKeysAPlainKMovesAndShiftKKeeps() {
         #expect(Keymap.command(for: "k", vim: true) == nil)
         #expect(Keymap.command(for: "K", vim: true) == .mark(.keep))

@@ -78,15 +78,10 @@ private struct SelectionToolbarView: View {
                 Button {
                     perform(kind)
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: kind.symbol)
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundStyle(kind.tint)
-                        KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
+                    MarkWord(kind: kind)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("\(kind.hint) (\(kind.keyLabel(vim: Keymap.usesVimKeys)))")
@@ -94,15 +89,10 @@ private struct SelectionToolbarView: View {
             }
             Divider().frame(height: 16).padding(.horizontal, 2)
             Button(action: pickSnippet) {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.badge.plus")
-                        .font(.system(size: 11.5, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    KeyCap("S")
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+                MarkWord.savedComments()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Comment with one of your saved comments (S)")
