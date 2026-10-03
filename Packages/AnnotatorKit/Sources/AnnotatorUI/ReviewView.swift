@@ -304,6 +304,6 @@ private struct OverviewRow: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(mark.kind.label): \(quote)")
+        .accessibilityLabel(mark.spokenDescription)
     }
 }

@@ -47,7 +47,7 @@ struct DocumentPane: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSAccessibilityCustomRotorItemSearchDelegate {
         private let session: ReviewSession
         private let onCancel: () -> Void
         private let margin = MarginModel()
@@ -98,6 +98,8 @@ struct DocumentPane: NSViewRepresentable {
             textView.autoresizingMask = []
             textView.setAccessibilityLabel("Document")
 
+            // VoiceOver's rotor goes from mark to mark, each read as what it is.
+            textView.setAccessibilityCustomRotors([NSAccessibilityCustomRotor(label: "Marks", itemSearchDelegate: self)])
             textView.onCommand = { [weak self] command in self?.run(command) }
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
             textView.onInsertModeChange = { [weak self] isOn in self?.session.isTypingMode = isOn }
@@ -226,6 +228,37 @@ struct DocumentPane: NSViewRepresentable {
             if let ghost = session.layout.ghosts.first(where: { $0.markID == mark.id }) { return NSRange(ghost.range) }
             guard let displayed = session.document.displayedOffset(forSource: mark.anchor.span.start) else { return nil }
             return NSRange(location: session.layout.viewOffset(forDisplayed: displayed), length: 0)
+        }
+
+        // MARK: VoiceOver
+
+        /// The marks in document order, as the rotor offers them.
+        var rotorItems: [(label: String, range: NSRange)] {
+            session.orderedMarks.compactMap { mark in viewRange(of: mark).map { (mark.spokenDescription, $0) } }
+        }
+
+        func rotor(
+            _ rotor: NSAccessibilityCustomRotor, resultFor parameters: NSAccessibilityCustomRotor.SearchParameters
+        ) -> NSAccessibilityCustomRotor.ItemResult? {
+            var items = rotorItems
+            if !parameters.filterString.isEmpty {
+                items = items.filter { $0.label.localizedCaseInsensitiveContains(parameters.filterString) }
+            }
+            let current = parameters.currentItem?.targetRange.location
+            let found: (label: String, range: NSRange)?
+            switch parameters.searchDirection {
+            case .next:
+                found = current.map { at in items.first { $0.range.location > at } } ?? items.first
+            case .previous:
+                found = current.map { at in items.last { $0.range.location < at } } ?? items.last
+            @unknown default:
+                found = nil
+            }
+            guard let found else { return nil }
+            let result = NSAccessibilityCustomRotor.ItemResult(targetElement: textView)
+            result.targetRange = found.range
+            result.customLabel = found.label
+            return result
         }
 
         private func reveal(_ mark: Mark) {

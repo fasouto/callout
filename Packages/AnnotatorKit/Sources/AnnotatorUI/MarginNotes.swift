@@ -200,12 +200,7 @@ private struct MarginNote: View {
     }
 
     private var accessibilityLabel: String {
-        let quote = mark.anchor.quote.trimmingCharacters(in: .whitespacesAndNewlines)
-        var parts = [mark.kind.label]
-        if !quote.isEmpty { parts.append(quote) }
-        if let text = mark.text?.nilIfBlank { parts.append("with \(text)") }
-        if let note = mark.note { parts.append(note) }
-        return parts.joined(separator: ", ")
+        mark.spokenDescription
     }
 }
 

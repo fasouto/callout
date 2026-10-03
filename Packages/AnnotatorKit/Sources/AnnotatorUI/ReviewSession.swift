@@ -63,6 +63,8 @@ final class ReviewSession {
     @ObservationIgnored private(set) var snippetUses: [UUID: Int64] = [:]
     /// The window's undo manager, so ⌘Z takes back marks.
     @ObservationIgnored weak var undoManager: UndoManager?
+    /// Tells VoiceOver users about marks made and removed.
+    @ObservationIgnored var announce: (String) -> Void = Announcer.post
     /// A mark that was added to be written and has nothing written yet, with the
     /// marks as they were before it.
     @ObservationIgnored private var unwritten: (id: UUID, before: Snapshot)?
@@ -333,6 +335,7 @@ final class ReviewSession {
         statusMessage = nil
         selectedMarkID = mark.id
         marksChanged()
+        announce(mark.spokenDescription)
         return mark
     }
 
@@ -405,13 +408,14 @@ final class ReviewSession {
     }
 
     func remove(_ id: UUID) {
-        guard marks.contains(where: { $0.id == id }) else { return }
+        guard let mark = marks.first(where: { $0.id == id }) else { return }
         if unwritten?.id == id {
             unwritten = nil
         } else {
             registerUndo("Remove Mark")
         }
         drop(id)
+        announce("Removed. \(mark.spokenDescription)")
         if editing?.markID == id {
             editing = nil
             documentFocusToken += 1
