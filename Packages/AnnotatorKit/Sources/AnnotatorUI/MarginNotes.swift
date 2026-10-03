@@ -214,25 +214,37 @@ private struct MarginGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
-                ? "Press v and move to select, then press a mark's bold letter. Press i to type."
-                : "Select text, then press a mark's bold letter. Or just type to add text where the caret is.")
+                ? "Press v and move to select, then press a key. Press i to type."
+                : "Select text, then press a key. Or just type to add text where the caret is.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
                 ForEach(MarkKind.allCases, id: \.self) { kind in
                     GridRow {
-                        MarkWord(kind: kind)
-                        Text(kind.hint)
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(.secondary)
+                        KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
+                        HStack(spacing: 7) {
+                            Image(systemName: kind.symbol)
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundStyle(kind.tint)
+                                .frame(width: 14)
+                            Text(kind.hint)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 GridRow {
-                    MarkWord.savedComments()
-                    Text("Use a saved comment")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.secondary)
+                    KeyCap("S")
+                    HStack(spacing: 7) {
+                        Image(systemName: "text.badge.plus")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14)
+                        Text("Use a saved comment")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
