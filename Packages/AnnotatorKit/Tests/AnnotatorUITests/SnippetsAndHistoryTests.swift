@@ -193,21 +193,51 @@ struct SnippetsAndHistoryTests {
 
     @Test func windowsLayOut() throws {
         let store = try Store()
-        let text = "We will leverage a very robust approach here."
-        for (index, title) in ["Plan: rate limiting", "Cover letter for Acme", "Selection from Safari"].enumerated() {
-            let origin: ReviewOrigin = [.planHook, .agentRequest, .hotkey][index]
+        let samples: [(title: String, origin: ReviewOrigin, text: String, marks: [(MarkKind, String, String?)], approved: Bool)] = [
+            ("Plan: rate limiting", .planHook, """
+            # Plan: add rate limiting
+
+            The API has no limits today, so a single client can exhaust the pool.
+
+            1. Add a RateLimiter middleware with a token bucket per API key.
+            2. Return 429 with a Retry-After header.
+            3. We will leverage a very robust approach to testing it.
+            """, [(.delete, "very robust ", nil), (.replace, "leverage", "use"), (.comment, "token bucket", "Why not a sliding window?")], false),
+            ("Cover letter for Acme", .agentRequest, """
+            Dear hiring team,
+
+            I am a passionate, results-driven engineer with a proven track record in delivery. I built browser automation for insurance price comparison and mentored a team of five.
+            """, [(.delete, "passionate, results-driven ", nil), (.keep, "mentored a team of five", nil)], false),
+            ("Plan: search cache", .planHook, """
+            # Plan: make search faster
+
+            Put a cache in front of the session store, so repeated queries skip the disk. Measure latency before and after.
+            """, [], true),
+        ]
+        for (index, sample) in samples.enumerated() {
             let request = ReviewRequest(
-                content: .text(text, format: .markdown), origin: origin,
-                metadata: ReviewMetadata(projectPath: "/Users/ada/projects/api", title: title), reply: .stdout, modes: [.feedback]
+                content: .text(sample.text, format: .markdown), origin: sample.origin,
+                metadata: ReviewMetadata(projectPath: "/Users/ada/projects/api", title: sample.title), reply: .stdout, modes: [.feedback]
             )
-            let range = (text as NSString).range(of: "very robust ")
-            let mark = Mark(kind: .delete, anchor: Anchor.make(in: text, span: TextSpan(range.location, NSMaxRange(range)))!, note: "filler")
-            let feedback = FeedbackFormatter.format(.init(title: title, document: .text(text), marks: [mark], generalComment: "Too complex, simplify."))
+            let marks = sample.marks.map { kind, quote, text in
+                let range = (sample.text as NSString).range(of: quote)
+                return Mark(kind: kind, anchor: Anchor.make(in: sample.text, span: TextSpan(range.location, NSMaxRange(range)))!,
+                            text: text, note: kind == .comment ? text : nil)
+            }
+            let feedback = FeedbackFormatter.format(.init(title: sample.title, document: .text(sample.text), marks: marks, generalComment: ""))
+            let result = sample.approved
+                ? ReviewResult(id: request.id, decision: .approve)
+                : ReviewResult(id: request.id, decision: .feedback, feedback: feedback)
             try store.saveReview(
-                request, result: ReviewResult(id: request.id, decision: .feedback, feedback: feedback),
-                marks: [mark], generalComment: "Too complex, simplify.", at: Date().addingTimeInterval(Double(-3600 * (index * 30 + 1)))
+                request, result: result, marks: marks, generalComment: "",
+                at: Date().addingTimeInterval(Double(-3600 * (index * 30 + 1)))
             )
         }
+        // Each card shows its page, drawn with its marks.
+        let first = try #require(try store.history().first)
+        let detail = try #require(try store.review(first.id))
+        let thumbnail = try #require(HistoryThumbnails.draw(detail))
+        #expect(thumbnail.size == HistoryThumbnails.size)
         snapshot(HistoryView(store: store), size: NSSize(width: 860, height: 520), named: "history")
         snapshot(SnippetSettings(store: store).frame(width: 520, height: 560), size: NSSize(width: 520, height: 560), named: "snippet-settings")
         snapshot(

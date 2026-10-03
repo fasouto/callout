@@ -1,6 +1,7 @@
 import AnnotatorCore
 import AnnotatorStore
 import AppKit
+import PDFKit
 import SwiftUI
 
 @MainActor
@@ -35,7 +36,8 @@ final class HistoryWindow: NSObject, NSWindowDelegate {
     }
 }
 
-/// Every finished review: a searchable list, and what was sent back for the selected one.
+/// Every finished review, as a shelf of marked pages: each card shows the page
+/// as it was marked. Selecting one shows what was sent back, beside the shelf.
 struct HistoryView: View {
     let store: Store?
 
@@ -44,37 +46,45 @@ struct HistoryView: View {
     @State private var selection: UUID?
     @State private var detail: ReviewDetail?
     @State private var copied = false
+    @State private var thumbnails = HistoryThumbnails()
+
+    private let columns = [GridItem(.adaptive(minimum: 168, maximum: 210), spacing: 28, alignment: .top)]
 
     var body: some View {
-        NavigationSplitView {
-            List(reviews, selection: $selection) { review in
-                HistoryRow(review: review)
-                    .tag(review.id)
-            }
-            .searchable(text: $query, placement: .sidebar, prompt: "Search reviews")
-            .navigationSplitViewColumnWidth(min: 240, ideal: 300)
-            .overlay {
-                if reviews.isEmpty {
-                    ContentUnavailableView(
-                        query.isEmpty ? "No reviews yet" : "No review matches",
-                        systemImage: query.isEmpty ? "tray" : "magnifyingglass",
-                        description: Text(query.isEmpty ? "Reviews you finish are kept here." : "Titles, text, feedback and overall comments are searched.")
-                    )
+        ScrollView {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 30) {
+                ForEach(reviews) { review in
+                    HistoryCard(review: review, thumbnail: thumbnails.image(for: review.id, store: store), isSelected: selection == review.id)
+                        .onTapGesture { selection = selection == review.id ? nil : review.id }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAddTraits(selection == review.id ? .isSelected : [])
                 }
             }
-        } detail: {
+            .padding(28)
+        }
+        .background(Color(nsColor: Theme.desk))
+        .overlay {
+            if reviews.isEmpty {
+                ContentUnavailableView(
+                    query.isEmpty ? "No reviews yet" : "No review matches",
+                    systemImage: query.isEmpty ? "tray" : "magnifyingglass",
+                    description: Text(query.isEmpty ? "Reviews you finish are kept here, as the pages you marked." : "Titles, text, feedback and overall comments are searched.")
+                )
+            }
+        }
+        .searchable(text: $query, prompt: "Search reviews")
+        .inspector(isPresented: Binding(get: { selection != nil }, set: { if !$0 { selection = nil } })) {
             if let detail {
                 HistoryDetail(detail: detail, copied: $copied) {
                     try? store?.deleteReview(detail.summary.id)
                     selection = nil
                     reload()
                 }
-            } else {
-                Text("Select a review")
-                    .foregroundStyle(.secondary)
+                .inspectorColumnWidth(min: 300, ideal: 380, max: 520)
             }
         }
         .frame(minWidth: 680, minHeight: 400)
+        .environment(\.locale, .interface)
         .onAppear(perform: reload)
         .onChange(of: query) { reload() }
         .onChange(of: selection) { _, id in
@@ -86,6 +96,113 @@ struct HistoryView: View {
     private func reload() {
         reviews = (try? store?.history(matching: query)) ?? []
         if let selection, !reviews.contains(where: { $0.id == selection }) { self.selection = nil }
+    }
+}
+
+/// One review on the shelf: its page, marked, with what it was and when.
+private struct HistoryCard: View {
+    let review: ReviewSummary
+    let thumbnail: NSImage?
+    let isSelected: Bool
+
+    private var outcome: String {
+        if review.decision == .approve { return "Approved" }
+        return review.markCount == 1 ? "1 mark" : "\(review.markCount) marks"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                Color.white
+                if let thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                }
+            }
+            .aspectRatio(3 / 4, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if review.decision == .approve {
+                    Text("Approved")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color(nsColor: Theme.keep))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: Theme.keep), lineWidth: 1.5))
+                        .rotationEffect(.degrees(-8))
+                        .padding(10)
+                }
+            }
+            .shadow(color: .black.opacity(0.14), radius: 3, y: 1.5)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .padding(-5)
+                    .opacity(isSelected ? 1 : 0)
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(review.title)
+                    .font(.system(size: 13.5, weight: .semibold, design: .serif))
+                    .lineLimit(2)
+                Text("\(review.origin.label), \(outcome)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(review.createdAt, format: .relative(presentation: .named))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(review.title). \(review.origin.label), \(outcome)")
+    }
+}
+
+/// Thumbnails of reviewed pages, drawn once and kept while the window is open.
+@MainActor
+@Observable
+final class HistoryThumbnails {
+    @ObservationIgnored private var cache: [UUID: NSImage] = [:]
+
+    func image(for id: UUID, store: Store?) -> NSImage? {
+        if let cached = cache[id] { return cached }
+        guard let detail = try? store?.review(id), let image = Self.draw(detail) else { return nil }
+        cache[id] = image
+        return image
+    }
+
+    /// The size thumbnails are drawn at, in points: a sheet in proportion.
+    static let size = NSSize(width: 240, height: 320)
+
+    /// The page as it was marked: the text with its marks, on white, at under half
+    /// of its size. A PDF shows its first page.
+    static func draw(_ detail: ReviewDetail) -> NSImage? {
+        if let text = detail.contentText {
+            let document = MarkdownRenderer.render(text, format: .markdown)
+            let layout = DisplayLayout(document: document, marks: detail.marks, removals: [])
+            let styled = TextStyler.attributedString(layout: layout, marks: detail.marks, selectedMarkID: nil, added: [])
+            return NSImage(size: size, flipped: true) { rect in
+                // Paper, whatever the appearance.
+                NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+                    NSColor.white.setFill()
+                    rect.fill()
+                    let scale: CGFloat = 0.46
+                    let inset: CGFloat = 16
+                    NSGraphicsContext.current?.cgContext.scaleBy(x: scale, y: scale)
+                    styled.draw(
+                        with: NSRect(x: inset / scale, y: inset / scale, width: (rect.width - 2 * inset) / scale, height: (rect.height - inset) / scale),
+                        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
+                    )
+                }
+                return true
+            }
+        }
+        if let path = detail.filePath, let page = PDFDocument(url: URL(fileURLWithPath: path))?.page(at: 0) {
+            return page.thumbnail(of: size, for: .mediaBox)
+        }
+        return nil
     }
 }
 
@@ -105,31 +222,6 @@ extension ReviewOrigin {
         case .hotkey, .service: "Selection"
         case .fileDrop, .share: "File"
         }
-    }
-}
-
-private struct HistoryRow: View {
-    let review: ReviewSummary
-
-    private var outcome: String {
-        if review.decision == .approve { return "Approved" }
-        return review.markCount == 1 ? "1 mark" : "\(review.markCount) marks"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(review.title)
-                .lineLimit(1)
-            HStack(spacing: 6) {
-                Text(review.origin.label)
-                Text(outcome)
-                Spacer(minLength: 4)
-                Text(review.createdAt, format: .relative(presentation: .named).locale(.interface))
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
     }
 }
 
