@@ -150,8 +150,39 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     private func respond(_ result: ReviewResult) {
         guard let completion else { return }
         self.completion = nil
-        window.close()
+        // The answer goes out at once; the window takes a moment to leave.
         completion(result)
+        handIn(result.decision)
+    }
+
+    /// The review is handed in: the sheet lifts off the desk and goes, an
+    /// approval stamped first. A cancelled review just closes, and so does
+    /// everything when motion is reduced.
+    private func handIn(_ decision: ReviewDecision) {
+        guard window.isVisible, decision != .cancel, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            window.close()
+            return
+        }
+        if decision == .approve, let content = window.contentView {
+            let stamp = NSHostingView(rootView: ApprovalStamp())
+            stamp.frame = content.bounds
+            stamp.autoresizingMask = [.width, .height]
+            content.addSubview(stamp)
+        }
+        let window = window
+        DispatchQueue.main.asyncAfter(deadline: .now() + (decision == .approve ? 0.5 : 0.05)) {
+            var frame = window.frame
+            frame.origin.y += 28
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.24
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                window.animator().alphaValue = 0
+                window.animator().setFrame(frame, display: true)
+            }, completionHandler: {
+                window.close()
+                window.alphaValue = 1
+            })
+        }
     }
 
     /// Cancelling with marks on the page asks first; they cannot be brought back.
@@ -187,5 +218,28 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         guard completion != nil else { return true }
         finish(.cancel)
         return false
+    }
+}
+
+/// Pressed onto the page when a plan is approved, just before it goes.
+struct ApprovalStamp: View {
+    @State private var landed = false
+
+    var body: some View {
+        Text("Approved")
+            .font(.system(size: 34, weight: .heavy, design: .rounded))
+            .foregroundStyle(Color(nsColor: Theme.keep))
+            .padding(.horizontal, 22)
+            .padding(.vertical, 8)
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(nsColor: Theme.keep), lineWidth: 4))
+            .rotationEffect(.degrees(-8))
+            .scaleEffect(landed ? 1 : 1.6)
+            .opacity(landed ? 0.92 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityLabel("Approved")
+            .onAppear {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.6)) { landed = true }
+            }
     }
 }

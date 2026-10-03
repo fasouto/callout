@@ -16,6 +16,8 @@ struct MarginNotes: View {
                 ForEach(session.orderedMarks) { mark in
                     MarginNote(session: session, mark: mark)
                         .layoutValue(key: AnchorKey.self, value: (model.anchors[mark.id] ?? 0) - MarginNote.topPadding - MarginNote.firstLineCentre)
+                        // A new note is written in from the page's side.
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -10)), removal: .opacity))
                 }
             }
         }
