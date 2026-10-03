@@ -38,7 +38,7 @@ brew install xcodegen
 scripts/run.sh docs/sample-plan.md
 ```
 
-That builds the app, launches it and opens a sample plan for review. Annotator has no Dock icon and no window of its own: it is a pencil icon in the menu bar until something is sent to it.
+That builds the app, launches it and opens a sample plan for review. Annotator has no Dock icon and no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it.
 
 To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, select your team under Signing & Capabilities, and run the `Annotator` scheme (`⌘R`). Change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` to a prefix you own.
 

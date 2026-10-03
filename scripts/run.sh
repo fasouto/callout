@@ -27,4 +27,4 @@ if [ -n "$1" ]; then
 else
   open "$app"
 fi
-echo "Annotator is running: look for the pencil icon in the menu bar."
+echo "Annotator is running: look for its icon in the menu bar, a rounded square with lines in it."

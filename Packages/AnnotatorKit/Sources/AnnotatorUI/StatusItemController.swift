@@ -22,8 +22,7 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         super.init()
 
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Annotator")
-                ?? NSImage(systemSymbolName: "pencil.line", accessibilityDescription: "Annotator")
+            button.image = MenuBarIcon.image()
             button.toolTip = "Annotator: drop a .md, .txt or .pdf file here to mark it up"
             // The status item's window takes the drop; its delegate gets the dragging calls.
             button.window?.registerForDraggedTypes([.fileURL])
@@ -88,6 +87,49 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         guard let url = droppedFile(sender) else { return false }
         actions.openFile(url)
         return true
+    }
+}
+
+/// The app icon in miniature: the tile in outline, with rows of text and the
+/// middle one struck out. A template image, so the menu bar colours it.
+enum MenuBarIcon {
+    static let size = NSSize(width: 18, height: 18)
+
+    static func image() -> NSImage {
+        let image = NSImage(size: size, flipped: true) { _ in
+            draw()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Annotator"
+        return image
+    }
+
+    /// Drawn top-down on the 18-point grid.
+    private static func draw() {
+        NSColor.black.setStroke()
+        let tile = NSBezierPath(roundedRect: NSRect(x: 1.75, y: 1.75, width: 14.5, height: 14.5), xRadius: 4.3, yRadius: 4.3)
+        tile.lineWidth = 1.5
+        tile.stroke()
+
+        NSColor.black.setFill()
+        row(y: 5, width: 8.5)
+        row(y: 11.4, width: 5)
+        // Struck words recede, as on the page.
+        NSColor.black.withAlphaComponent(0.4).setFill()
+        row(y: 8.2, width: 7.5)
+
+        // The pen stroke: not quite level, and a little past both ends.
+        let strike = NSBezierPath()
+        strike.move(to: NSPoint(x: 3.9, y: 9.15))
+        strike.curve(to: NSPoint(x: 12.7, y: 8.75), controlPoint1: NSPoint(x: 6.3, y: 8.6), controlPoint2: NSPoint(x: 9, y: 9.4))
+        strike.lineWidth = 1.3
+        strike.lineCapStyle = .round
+        strike.stroke()
+    }
+
+    private static func row(y: CGFloat, width: CGFloat) {
+        NSBezierPath(roundedRect: NSRect(x: 4.5, y: y, width: width, height: 1.6), xRadius: 0.8, yRadius: 0.8).fill()
     }
 }
 
