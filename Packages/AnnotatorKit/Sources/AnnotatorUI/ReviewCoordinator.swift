@@ -39,6 +39,21 @@ final class ReviewCoordinator {
         if presentsWindows { controller.show() }
     }
 
+    /// Opens the first review. It is practice: the result goes to `completion`
+    /// only, and is neither kept in the history nor copied.
+    @discardableResult
+    func openWelcome(completion: @escaping (ReviewResult) -> Void) -> UUID {
+        let request = Welcome.request()
+        let controller = ReviewWindowController(request: request, isWelcome: true) { [weak self] result in
+            self?.windows[request.id] = nil
+            completion(result)
+        }
+        controller.loadSnippets = { [store] in (try? store?.snippets()) ?? [] }
+        windows[request.id] = controller
+        if presentsWindows { controller.show() }
+        return request.id
+    }
+
     /// Keeps a finished review in the history. A cancelled one produced nothing to keep.
     private func remember(_ result: ReviewResult, of session: ReviewSession) {
         guard result.decision != .cancel else { return }

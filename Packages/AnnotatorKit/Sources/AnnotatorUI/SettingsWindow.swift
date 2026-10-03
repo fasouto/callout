@@ -7,10 +7,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let store: Store?
     private let showOnboarding: () -> Void
+    private let showWelcome: () -> Void
 
-    init(store: Store?, showOnboarding: @escaping () -> Void) {
+    init(store: Store?, showOnboarding: @escaping () -> Void, showWelcome: @escaping () -> Void = {}) {
         self.store = store
         self.showOnboarding = showOnboarding
+        self.showWelcome = showWelcome
     }
 
     func show() {
@@ -23,7 +25,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.contentView = NSHostingView(rootView: TabView {
-                SettingsView(showOnboarding: showOnboarding)
+                SettingsView(showOnboarding: showOnboarding, showWelcome: showWelcome)
                     .tabItem { Label("General", systemImage: "gearshape") }
                 SnippetSettings(store: store)
                     .tabItem { Label("Saved Comments", systemImage: "text.badge.plus") }
@@ -43,6 +45,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
 struct SettingsView: View {
     let showOnboarding: () -> Void
+    var showWelcome: () -> Void = {}
 
     @State private var hotkey = Hotkey.stored
     @State private var isAllowed = SelectionCapture.isAllowed
@@ -91,6 +94,9 @@ struct SettingsView: View {
             Section {
                 Toggle("Move with vim keys", isOn: $vimKeys)
                     .onChange(of: vimKeys) { _, isOn in Keymap.usesVimKeys = isOn }
+                LabeledContent("Practice review") {
+                    Button("Show Again", action: showWelcome)
+                }
             } header: {
                 Text("In a review")
             } footer: {

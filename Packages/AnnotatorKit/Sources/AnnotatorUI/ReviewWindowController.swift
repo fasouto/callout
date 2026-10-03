@@ -22,10 +22,10 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     /// - Parameter previousVersion: the previous plan of the same session, and
     ///   the number of this one, when the request is a revised plan.
     init(
-        request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil,
+        request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil, isWelcome: Bool = false,
         completion: @escaping (ReviewResult) -> Void
     ) {
-        session = ReviewSession(request: request, previousVersion: previousVersion, planVersion: planVersion)
+        session = ReviewSession(request: request, previousVersion: previousVersion, planVersion: planVersion, isWelcome: isWelcome)
         self.completion = completion
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700),
@@ -36,7 +36,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.title = session.title
-        window.subtitle = Self.subtitle(for: request, planVersion: planVersion)
+        window.subtitle = isWelcome ? "Practice: nothing is sent" : Self.subtitle(for: request, planVersion: planVersion)
         // The title bar is part of the sheet of paper, not a strip above it.
         window.titlebarAppearsTransparent = true
         window.backgroundColor = session.isPDF ? .underPageBackgroundColor : .textBackgroundColor

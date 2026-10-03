@@ -22,8 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store: Store?
     private let coordinator: ReviewCoordinator
     private lazy var capture = CaptureController(coordinator: coordinator)
-    private lazy var settings = SettingsWindow(store: store, showOnboarding: { [weak self] in self?.capture.showOnboarding() })
+    private lazy var settings = SettingsWindow(
+        store: store,
+        showOnboarding: { [weak self] in self?.capture.showOnboarding() },
+        showWelcome: { [weak self] in self?.showWelcome() }
+    )
     private lazy var history = HistoryWindow(store: store)
+    private let welcomeFinish = WelcomeFinish()
 
     override init() {
         // Without its database the app still reviews; it only forgets.
@@ -65,6 +70,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let arguments = CommandLine.arguments
         if let flag = arguments.firstIndex(of: "--review"), arguments.indices.contains(flag + 1) {
             capture.review(file: URL(fileURLWithPath: arguments[flag + 1]), origin: .fileDrop)
+        } else if !Welcome.hasBeenShown {
+            // The first launch opens a practice review that teaches the marks.
+            showWelcome()
+        }
+    }
+
+    private func showWelcome() {
+        Welcome.hasBeenShown = true
+        coordinator.openWelcome { [weak self] result in
+            guard let self, result.decision != .cancel, let feedback = result.feedback else { return }
+            self.welcomeFinish.show(feedback: feedback) { [weak self] in self?.capture.showOnboarding() }
         }
     }
 

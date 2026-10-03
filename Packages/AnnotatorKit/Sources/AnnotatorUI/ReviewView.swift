@@ -79,6 +79,10 @@ private struct ActionBar: View {
         VStack(spacing: 0) {
             Divider()
             VStack(alignment: .leading, spacing: 10) {
+                if session.isWelcome {
+                    LessonStrip(session: session)
+                        .padding(.bottom, 2)
+                }
                 overallComment
                 HStack(spacing: 12) {
                     if session.isSelectingByKeyboard || session.isTypingMode {

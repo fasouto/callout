@@ -22,6 +22,8 @@ final class ReviewSession {
     let changes: PlanChanges?
     /// Which version of the plan this is, counting from 1.
     let planVersion: Int?
+    /// The first review, which teaches the marks as they are made.
+    let isWelcome: Bool
     /// Whether the changes since the previous version are pointed out.
     var showsChanges = true {
         didSet { if showsChanges != oldValue { marksChanged() } }
@@ -70,9 +72,10 @@ final class ReviewSession {
     /// - Parameters:
     ///   - previousVersion: the plan as it was before this revision, to compare against.
     ///   - planVersion: which version this one is.
-    init(request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil) {
+    init(request: ReviewRequest, previousVersion: String? = nil, planVersion: Int? = nil, isWelcome: Bool = false) {
         self.request = request
         self.planVersion = planVersion
+        self.isWelcome = isWelcome
         if case .text(let text, _) = request.content, let previousVersion {
             let found = PlanDiff.changes(from: previousVersion, to: text)
             changes = found.isEmpty ? nil : found
