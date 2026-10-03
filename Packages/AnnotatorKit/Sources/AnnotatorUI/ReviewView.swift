@@ -73,6 +73,7 @@ private struct ActionBar: View {
     var capture: CaptureSwitch?
     let finish: (ReviewOutcome) -> Void
     @FocusState private var writingOverall: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,7 +136,8 @@ private struct ActionBar: View {
     }
 
     /// What the reviewer says about the whole document: the note a teacher
-    /// writes at the end of the essay. Always in view, with room to write.
+    /// writes at the end of the essay. Always in view; it opens up while being
+    /// written, and folds back to a few lines when the page has the keyboard.
     private var overallComment: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "text.alignleft")
@@ -145,7 +147,7 @@ private struct ActionBar: View {
             TextField("Overall comment: what should change in general?", text: $session.generalComment, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
-                .lineLimit(2...6)
+                .lineLimit(writingOverall ? 3...12 : 2...3)
                 .focused($writingOverall)
                 .onExitCommand { session.endEditing() }
                 .accessibilityLabel("Overall comment")
@@ -163,6 +165,7 @@ private struct ActionBar: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { writingOverall = true }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: writingOverall)
     }
 }
 
