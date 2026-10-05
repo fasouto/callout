@@ -156,6 +156,8 @@ struct CaptureTests {
     @Test func onboardingAndSettingsLayOut() {
         let onboarding = OnboardingView(hotkey: "⌥⌘A") {}
         snapshot(onboarding, size: NSSize(width: 480, height: 420), named: "onboarding")
+        // Still waiting after Settings was opened: the switch is probably an earlier copy's.
+        snapshot(OnboardingView(hotkey: "⌥⌘A", looksStale: true) {}, size: NSSize(width: 480, height: 420), named: "onboarding-stale")
         let settings = SettingsView {}
         snapshot(settings, size: NSSize(width: 500, height: 330), named: "settings")
     }

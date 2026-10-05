@@ -38,7 +38,21 @@ struct OnboardingView: View {
     let close: () -> Void
 
     @State private var isAllowed = SelectionCapture.isAllowed
+    /// When Settings was opened from here.
+    @State private var askedAt: Date?
+    /// Still waiting well after Settings was opened: the switch that is on
+    /// probably belongs to an earlier copy of the app.
+    @State private var looksStale = false
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// How long after opening Settings the hint about an earlier copy appears.
+    static let staleAfter: TimeInterval = 12
+
+    init(hotkey: String, looksStale: Bool = false, close: @escaping () -> Void) {
+        self.hotkey = hotkey
+        self.close = close
+        _looksStale = State(initialValue: looksStale)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,6 +82,16 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if looksStale, !isAllowed {
+                // macOS remembers the permission for one exact copy of the app,
+                // and each new build is a new copy.
+                Label("Annotator already switched on? That is an earlier copy of the app. Select it in the list, remove it with −, then press Open Settings again.", systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            }
+
             Spacer(minLength: 18)
 
             HStack {
@@ -87,6 +111,8 @@ struct OnboardingView: View {
                     Button("Not Now", action: close)
                         .keyboardShortcut(.cancelAction)
                     Button("Open Settings") {
+                        askedAt = Date()
+                        looksStale = false
                         SelectionCapture.requestPermission()
                         SelectionCapture.openSettings()
                     }
@@ -98,7 +124,10 @@ struct OnboardingView: View {
         .padding(.top, 36)
         .padding(.bottom, 22)
         .frame(width: 480, height: 420, alignment: .topLeading)
-        .onReceive(timer) { _ in isAllowed = SelectionCapture.isAllowed }
+        .onReceive(timer) { now in
+            isAllowed = SelectionCapture.isAllowed
+            if !isAllowed, let askedAt, now.timeIntervalSince(askedAt) > Self.staleAfter { looksStale = true }
+        }
     }
 
     private func step(_ number: Int, _ text: String, done: Bool) -> some View {
