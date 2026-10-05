@@ -33,12 +33,24 @@ targets:
         product: AnnotatorUI
       # The Share menu entry, embedded in Contents/PlugIns.
       - target: AnnotatorShare
-      # The command-line tool ships inside the bundle, at Contents/Helpers/annotator.
+      # The command-line tool ships inside the bundle, at Contents/Helpers/annotator;
+      # the script below puts it there.
       - target: AnnotatorCLI
-        embed: true
-        copy:
-          destination: wrapper
-          subpath: Contents/Helpers
+        embed: false
+    postBuildScripts:
+      # A copy phase would look for a product named after the target, AnnotatorCLI,
+      # and quietly copy nothing. The tool is signed like the app, before the app.
+      - name: Embed the command-line tool
+        basedOnDependencyAnalysis: true
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/annotator
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Helpers/annotator
+        script: |
+          helpers="$TARGET_BUILD_DIR/$WRAPPER_NAME/Contents/Helpers"
+          mkdir -p "$helpers"
+          cp -f "$BUILT_PRODUCTS_DIR/annotator" "$helpers/annotator"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime --timestamp=none "$helpers/annotator"
     info:
       path: App/Info.plist
       properties:

@@ -42,6 +42,8 @@ scripts/run.sh docs/sample-plan.md
 
 That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. Annotator has no Dock icon and no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it.
 
+`scripts/run.sh` signs with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
+
 To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, select your team under Signing & Capabilities, and run the `Annotator` scheme (`⌘R`). Change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` to a prefix you own.
 
 ## Using it
