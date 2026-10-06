@@ -244,11 +244,25 @@ struct ReviewCommandTests {
         #expect(run.err.get() == ["annotator: Annotator could not be reached, so no review was done."])
     }
 
+    @Test func aFileThatCannotBeReadIsSaidInOneLine() {
+        // The command was understood, so the usage text would only bury the message.
+        let run = Run()
+        let code = AnnotatorCLI.run(CLIEnvironment(
+            arguments: ["annotator", "review", "/nonexistent/file.md"],
+            standardInputIsTerminal: false,
+            out: { line in run.out.update { $0.append(line) } },
+            err: { line in run.err.update { $0.append(line) } },
+            socketPath: run.path
+        ))
+        #expect(code == ExitCode.noInput)
+        #expect(run.err.get() == ["annotator: /nonexistent/file.md does not exist or cannot be read."])
+        #expect(run.out.get().isEmpty)
+    }
+
     // MARK: Usage errors
 
     @Test func badInvocationsExplainThemselves() {
         let cases: [([String], String)] = [
-            (["review", "/nonexistent/file.md"], "does not exist"),
             (["review", "-", "--origin", "nowhere"], "Unknown origin"),
             (["review", "-", "--reply", "hook-decision"], "--reply takes"),
             (["review", "-", "--modes", "feedback,destroy"], "Unknown mode"),

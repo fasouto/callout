@@ -70,14 +70,14 @@ struct ReviewCommand {
         if let file, file != "-" {
             let url = URL(fileURLWithPath: file, relativeTo: URL(fileURLWithPath: environment.currentDirectory)).standardizedFileURL
             guard FileManager.default.isReadableFile(atPath: url.path) else {
-                throw UsageError("\(file) does not exist or cannot be read.")
+                throw InputError("\(file) does not exist or cannot be read.")
             }
             metadata.title = title ?? url.lastPathComponent
             if url.pathExtension.lowercased() == "pdf" {
                 content = .file(path: url.path)
             } else {
                 guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-                    throw UsageError("\(file) is not UTF-8 text.")
+                    throw InputError("\(file) is not UTF-8 text.")
                 }
                 metadata.filePath = url.path
                 let isMarkdown = ["md", "markdown", "mdown"].contains(url.pathExtension.lowercased())
@@ -88,7 +88,7 @@ struct ReviewCommand {
                 throw UsageError("Give a file to review, or pipe text in.")
             }
             guard let text = String(data: environment.readStandardInput(), encoding: .utf8) else {
-                throw UsageError("Standard input is not UTF-8 text.")
+                throw InputError("Standard input is not UTF-8 text.")
             }
             content = .text(text, format: format ?? .markdown)
         }

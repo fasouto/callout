@@ -56,6 +56,8 @@ public enum ExitCode {
     public static let failure: Int32 = 1
     /// The command line could not be understood.
     public static let usage: Int32 = 64
+    /// What was to be reviewed could not be read.
+    public static let noInput: Int32 = 66
 }
 
 public enum AnnotatorCLI {
@@ -115,6 +117,10 @@ public enum AnnotatorCLI {
         } catch let error as UsageError {
             environment.err("annotator: \(error.message)\n\n\(usage)")
             return ExitCode.usage
+        } catch let error as InputError {
+            // The command was understood: the usage would only bury what went wrong.
+            environment.err("annotator: \(error.message)")
+            return ExitCode.noInput
         } catch {
             environment.err("annotator: \(error.localizedDescription)")
             return ExitCode.usage
@@ -123,6 +129,15 @@ public enum AnnotatorCLI {
 }
 
 struct UsageError: Error {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+}
+
+/// The file or the text to review could not be read.
+struct InputError: Error {
     let message: String
 
     init(_ message: String) {
