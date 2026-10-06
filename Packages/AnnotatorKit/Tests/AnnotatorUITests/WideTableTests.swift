@@ -58,7 +58,7 @@ struct WideTableTests {
         let range = (Self.source as NSString).range(of: "as long as it needs")
         session.addMark(.comment, span: TextSpan(range.location, NSMaxRange(range)), note: "Up to the two-hour limit.")
         session.selectedMarkID = nil
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = SnapshotWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
         window.contentView?.layoutSubtreeIfNeeded()

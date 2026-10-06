@@ -42,7 +42,7 @@ struct PlanChangesTests {
 
     private func makeWindow(_ session: ReviewSession) -> (NSWindow, AnnotationTextView)? {
         _ = NSApplication.shared
-        let window = NSWindow(
+        let window = SnapshotWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 620),
             styleMask: [.titled, .resizable], backing: .buffered, defer: false
         )

@@ -142,7 +142,7 @@ struct CaptureTests {
     private func snapshot(_ view: some View, size: NSSize, named name: String) {
         _ = NSApplication.shared
         guard let directory = ProcessInfo.processInfo.environment["ANNOTATOR_SNAPSHOT_DIR"] else { return }
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = SnapshotWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let host = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
         window.contentView = host

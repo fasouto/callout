@@ -14,3 +14,9 @@ extension NSView {
         return bitmap
     }
 }
+
+/// A window that draws at two pixels a point even with no Retina screen
+/// attached, so SwiftUI's layers come out as sharp as the text.
+final class SnapshotWindow: NSWindow {
+    override var backingScaleFactor: CGFloat { 2 }
+}

@@ -71,7 +71,7 @@ struct WelcomeTests {
         _ = NSApplication.shared
         let session = ReviewSession(request: Welcome.request(), isWelcome: true)
         _ = session.addMark(.delete, span: try span(of: "very robust and comprehensive", in: session))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 640), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = SnapshotWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 640), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
         window.contentView?.layoutSubtreeIfNeeded()
@@ -89,7 +89,7 @@ struct WelcomeTests {
 
         let finish = NSHostingView(rootView: WelcomeFinishView(feedback: session.feedback(), setUpHotkey: {}, close: {}))
         finish.frame = NSRect(origin: .zero, size: finish.fittingSize)
-        let finishWindow = NSWindow(contentRect: finish.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        let finishWindow = SnapshotWindow(contentRect: finish.frame, styleMask: [.titled], backing: .buffered, defer: false)
         finishWindow.isReleasedWhenClosed = false
         finishWindow.contentView = finish
         finish.layoutSubtreeIfNeeded()

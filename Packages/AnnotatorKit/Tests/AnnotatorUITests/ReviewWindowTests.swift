@@ -51,7 +51,7 @@ struct ReviewWindowTests {
             modes: [.feedback, .applyEdits]
         )
         let session = ReviewSession(request: request)
-        let window = NSWindow(
+        let window = SnapshotWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700),
             styleMask: [.titled, .resizable], backing: .buffered, defer: false
         )
@@ -427,7 +427,7 @@ struct ReviewWindowTests {
         #expect(view.fittingSize.width > 150 && view.fittingSize.height < 40)
 
         guard let directory = ProcessInfo.processInfo.environment["ANNOTATOR_SNAPSHOT_DIR"] else { return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: view.frame.width + 40, height: 70), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = SnapshotWindow(contentRect: NSRect(x: 0, y: 0, width: view.frame.width + 40, height: 70), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let backdrop = NSView(frame: window.contentLayoutRect)
         backdrop.wantsLayer = true
@@ -479,7 +479,7 @@ struct ReviewWindowTests {
             metadata: ReviewMetadata(title: "Plan"), reply: .hookDecision, modes: [.feedback, .approve]
         )
         let session = ReviewSession(request: request)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = SnapshotWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
         settle(window)
