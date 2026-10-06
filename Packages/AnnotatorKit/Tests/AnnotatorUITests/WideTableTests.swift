@@ -69,8 +69,7 @@ struct WideTableTests {
             window.appearance = NSAppearance(named: appearance)
             view.layoutSubtreeIfNeeded()
             RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let bitmap = view.snapshotBitmap() else { continue }
             try? bitmap.representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: directory).appendingPathComponent("wide-table-\(suffix).png"))
         }

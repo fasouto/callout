@@ -151,8 +151,7 @@ struct CaptureTests {
             window.appearance = NSAppearance(named: appearance)
             host.layoutSubtreeIfNeeded()
             RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-            guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
-            host.cacheDisplay(in: host.bounds, to: bitmap)
+            guard let bitmap = host.snapshotBitmap() else { continue }
             try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name)\(suffix).png"))
         }
     }

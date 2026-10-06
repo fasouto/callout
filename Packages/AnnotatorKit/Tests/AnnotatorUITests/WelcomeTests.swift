@@ -82,8 +82,7 @@ struct WelcomeTests {
             window.appearance = NSAppearance(named: appearance)
             view.layoutSubtreeIfNeeded()
             RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let bitmap = view.snapshotBitmap() else { continue }
             try? bitmap.representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: directory).appendingPathComponent("welcome-\(suffix).png"))
         }
@@ -95,8 +94,7 @@ struct WelcomeTests {
         finishWindow.contentView = finish
         finish.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        if let bitmap = finish.bitmapImageRepForCachingDisplay(in: finish.bounds) {
-            finish.cacheDisplay(in: finish.bounds, to: bitmap)
+        if let bitmap = finish.snapshotBitmap() {
             try? bitmap.representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: directory).appendingPathComponent("welcome-handed-in.png"))
         }

@@ -95,8 +95,7 @@ struct ReviewWindowTests {
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             window.appearance = NSAppearance(named: appearance)
             settle(window)
-            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let bitmap = view.snapshotBitmap() else { continue }
             let url = URL(fileURLWithPath: directory).appendingPathComponent("\(name)-\(suffix).png")
             try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
         }
@@ -437,8 +436,7 @@ struct ReviewWindowTests {
         backdrop.addSubview(view)
         window.contentView = backdrop
         settle(window)
-        guard let bitmap = backdrop.bitmapImageRepForCachingDisplay(in: backdrop.bounds) else { return }
-        backdrop.cacheDisplay(in: backdrop.bounds, to: bitmap)
+        guard let bitmap = backdrop.snapshotBitmap() else { return }
         try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("selection-bar.png"))
     }
 
