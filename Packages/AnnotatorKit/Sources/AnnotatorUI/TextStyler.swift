@@ -40,7 +40,10 @@ enum TextStyler {
             let start = result.length
             let attributes = known[segment.style] ?? attributes(for: segment.style)
             known[segment.style] = attributes
-            result.append(NSAttributedString(string: segment.text, attributes: attributes))
+            // A line broken by hand stays in its paragraph: a new line, without
+            // the space that parts one paragraph from the next. One character for one.
+            let isHardBreak = segment.text == "\n" && segment.source != nil && !isPanel(segment.style) && !isTableLine(segment.style)
+            result.append(NSAttributedString(string: isHardBreak ? "\u{2028}" : segment.text, attributes: attributes))
             let range = NSRange(location: start, length: result.length - start)
             if segment.style.isListMarker { hang(markerIn: range, in: result, widths: &markerWidths) }
             if isPanel(segment.style) {

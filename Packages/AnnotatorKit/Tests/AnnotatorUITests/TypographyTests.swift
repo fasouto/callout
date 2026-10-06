@@ -41,6 +41,22 @@ struct TypographyTests {
         #expect(panels("```\none\n```\n```\ntwo\n```") == [["one"], ["two"]])
     }
 
+    @Test func aLineBrokenByHandStaysInItsParagraph() throws {
+        // An address or a sign-off: lines, not paragraphs with space between them.
+        let source = "Kind regards,  \nAda Lovelace\\\nLondon\n\nNext paragraph."
+        #expect(shown(source) == "Kind regards,\u{2028}Ada Lovelace\u{2028}London\nNext paragraph.")
+
+        // The words after the break are still themselves in the source.
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text(source, format: .markdown), origin: .lastReply, reply: .clipboard, modes: [.feedback]
+        ))
+        session.announce = { _ in }
+        let page = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil).string as NSString
+        let range = page.range(of: "London")
+        let span = try #require(session.sourceSpan(forView: range.location..<NSMaxRange(range)))
+        #expect(session.addMark(.delete, span: span)?.anchor.quote == "London")
+    }
+
     @Test func quotesAndDashesAreSetAsInPrint() {
         #expect(shown("We don't say \"never\" - we say 'rarely'.") == "We don\u{2019}t say \u{201C}never\u{201D} \u{2013} we say \u{2018}rarely\u{2019}.")
         // A hyphen inside a word stays a hyphen.
