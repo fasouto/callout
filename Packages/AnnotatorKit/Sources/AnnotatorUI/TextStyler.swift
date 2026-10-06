@@ -336,7 +336,9 @@ enum TextStyler {
             paragraph.tailIndent = -Theme.panelPadding
             paragraph.paragraphSpacing = 0
             paragraph.lineSpacing = 3
-            paragraph.lineBreakMode = .byCharWrapping
+            // A line of code too long for the page breaks between words, as an
+            // editor wraps it. A table shown as written keeps its grid: it breaks anywhere.
+            if case .table = style.block { paragraph.lineBreakMode = .byCharWrapping }
         case .thematicBreak:
             paragraph.paragraphSpacing = 12
             paragraph.paragraphSpacingBefore = 4
