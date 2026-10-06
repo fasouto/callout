@@ -53,7 +53,7 @@ enum Lesson {
         LessonStep(id: 0, title: "Strike the filler", instruction: "Select **very robust and comprehensive** and press D.") { session in
             session.marks.contains { $0.kind == .delete }
         },
-        LessonStep(id: 1, title: "Use a plainer word", instruction: "Select **leverage**, press R and type *use*. Or just type over it.") { session in
+        LessonStep(id: 1, title: "Use a plainer word", instruction: "Select **leverage**, press R and type *use*.") { session in
             session.marks.contains { $0.kind == .replace && $0.text?.nilIfBlank != nil }
         },
         LessonStep(id: 2, title: "Question a claim", instruction: "Select **keeps every result forever**, press C and say what worries you.") { session in

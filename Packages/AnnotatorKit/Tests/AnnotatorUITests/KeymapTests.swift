@@ -226,6 +226,10 @@ struct VimReviewTests {
         harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
         try type("k", in: harness)
         #expect(harness.session.marks.map(\.kind) == [.keep])
+        // On a selection a letter that is no command does nothing: it does not type over it.
+        harness.textView.setSelectedRange(NSRange(location: 19, length: 4))
+        try type("u", in: harness)
+        #expect(harness.session.marks.count == 1)
         // At a caret, w, h and j are just letters to type.
         harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
         try type("whj", in: harness)
