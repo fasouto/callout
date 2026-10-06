@@ -327,6 +327,25 @@ struct PDFReviewTests {
         #expect(session.pdf?.page(at: 0)?.annotations.count == 1)
     }
 
+    @Test func theTitleBarIsTheSameGreyAsTheDeskUnderThePages() throws {
+        _ = NSApplication.shared
+        let request = ReviewRequest(
+            content: .file(path: try makePDF(pages: Self.pages)), origin: .agentRequest,
+            metadata: ReviewMetadata(title: "cv.pdf"), reply: .stdout, modes: [.feedback]
+        )
+        let controller = ReviewWindowController(request: request) { _ in }
+        // The title bar is see-through: what shows there is the window's own colour.
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            var window: CGFloat?
+            var desk: CGFloat?
+            NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
+                window = controller.window.backgroundColor.usingColorSpace(.deviceGray)?.whiteComponent
+                desk = Theme.desk.usingColorSpace(.deviceGray)?.whiteComponent
+            }
+            #expect(window != nil && window == desk)
+        }
+    }
+
     @Test func aFileThatIsNotAPDFSaysSo() throws {
         _ = NSApplication.shared
         let path = NSTemporaryDirectory() + "not-a-pdf-\(UUID().uuidString.prefix(8)).pdf"

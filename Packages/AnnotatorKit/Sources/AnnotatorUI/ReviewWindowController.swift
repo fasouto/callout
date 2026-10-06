@@ -14,7 +14,7 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     }
     /// For a capture that was cleaned up: whether the text as it was copied is showing instead.
     private(set) var isShowingRawCapture = false
-    private let window: NSWindow
+    let window: NSWindow
     private var completion: ((ReviewResult) -> Void)?
     /// Each review has its own history of marks to undo.
     private let undoManager = UndoManager()
@@ -39,7 +39,8 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
         window.subtitle = isWelcome ? "Practice: nothing is sent" : Self.subtitle(for: request, planVersion: planVersion)
         // The title bar is part of the sheet of paper, not a strip above it.
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = session.isPDF ? .underPageBackgroundColor : .textBackgroundColor
+        // The same desk as around the PDF's pages, so the title bar is not a strip of another grey.
+        window.backgroundColor = session.isPDF ? Theme.desk : .textBackgroundColor
         window.isReleasedWhenClosed = false
         window.delegate = self
         showSession()
