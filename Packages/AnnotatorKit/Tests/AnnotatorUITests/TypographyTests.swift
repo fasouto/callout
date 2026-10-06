@@ -57,6 +57,24 @@ struct TypographyTests {
         #expect(session.addMark(.delete, span: span)?.anchor.quote == "London")
     }
 
+    @Test func plainTextIsSetLineForLine() {
+        func spacing(_ text: String, _ format: TextFormat) -> [CGFloat] {
+            let session = ReviewSession(request: ReviewRequest(
+                content: .text(text, format: format), origin: .fileDrop, reply: .clipboard, modes: [.feedback]
+            ))
+            let styled = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil)
+            var found: [CGFloat] = []
+            styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { value, _, _ in
+                found.append((value as? NSParagraphStyle)?.paragraphSpacing ?? -1)
+            }
+            return found
+        }
+        // A commit message or a .txt file, wrapped by hand: its lines are not paragraphs.
+        #expect(spacing("Fix the race\n\nThe store read the file\nbefore taking the lock.", .plain) == [0])
+        // Markdown paragraphs keep the space between them.
+        #expect(spacing("One.\n\nTwo.", .markdown).allSatisfy { $0 == 12 })
+    }
+
     @Test func quotesAndDashesAreSetAsInPrint() {
         #expect(shown("We don't say \"never\" - we say 'rarely'.") == "We don\u{2019}t say \u{201C}never\u{201D} \u{2013} we say \u{2018}rarely\u{2019}.")
         // A hyphen inside a word stays a hyphen.

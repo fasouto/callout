@@ -68,6 +68,15 @@ enum TextStyler {
         }
         if let panel { decorate(panel, in: result) }
 
+        // Plain text is shown line for line, as in its file: a line is not a
+        // paragraph to set apart from the next, and an empty line is the space there is.
+        if isPlainText(document), result.length > 0,
+           let current = result.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle,
+           let style = current.mutableCopy() as? NSMutableParagraphStyle {
+            style.paragraphSpacing = 0
+            result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: result.length))
+        }
+
         endQuoteBars(in: result)
         layOutTables(tableCells, in: result)
         Typography.setPunctuation(in: result)
@@ -231,6 +240,11 @@ enum TextStyler {
             if style.tableColumn == 0 { attributes[.foregroundColor] = NSColor.secondaryLabelColor }
         }
         return attributes
+    }
+
+    /// Text that was not read as Markdown: the whole of it is one run, as written.
+    private static func isPlainText(_ document: RenderedDocument) -> Bool {
+        document.segments.count == 1 && document.segments[0].style == SegmentStyle() && document.segments[0].text.contains("\n")
     }
 
     /// A line of a table that is laid out in columns: a row, or one cell of a wide table.
