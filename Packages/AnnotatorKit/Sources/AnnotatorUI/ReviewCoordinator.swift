@@ -54,6 +54,11 @@ final class ReviewCoordinator {
         return request.id
     }
 
+    /// A review finished before the app was last started, from the history.
+    func rememberedResult(id: UUID?, sessionId: String?) -> ReviewResult? {
+        try? store?.result(id: id, sessionId: sessionId)
+    }
+
     /// Keeps a finished review in the history. A cancelled one produced nothing to keep.
     private func remember(_ result: ReviewResult, of session: ReviewSession) {
         guard result.decision != .cancel else { return }

@@ -79,18 +79,21 @@ final class IPCService {
     }
 
     private func answer(id: UUID?, sessionId: String?) -> ServerMessage {
+        // What this run of the app finished, then what is still open, then the
+        // history: a review finished before the app was restarted is still an answer.
+        let remembered = { self.coordinator.rememberedResult(id: id, sessionId: sessionId).map(ServerMessage.result) }
         if let id {
             if let match = finished.last(where: { $0.result.id == id }) { return .result(match.result) }
-            return openRequests[id] != nil ? .pending(id: id) : .unknown
+            return openRequests[id] != nil ? .pending(id: id) : remembered() ?? .unknown
         }
         if let sessionId {
             if let match = finished.last(where: { $0.sessionId == sessionId }) { return .result(match.result) }
             if let open = openRequests.values.first(where: { $0.metadata.sessionId == sessionId }) {
                 return .pending(id: open.id)
             }
-            return .unknown
+            return remembered() ?? .unknown
         }
         if let latest = finished.last { return .result(latest.result) }
-        return openRequests.keys.first.map { .pending(id: $0) } ?? .unknown
+        return openRequests.keys.first.map { .pending(id: $0) } ?? remembered() ?? .unknown
     }
 }

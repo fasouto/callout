@@ -117,6 +117,24 @@ extension Store {
         }
     }
 
+    /// What a finished review was answered with: the review with this id, else
+    /// the latest of this session, else the latest of all.
+    public func result(id: UUID? = nil, sessionId: String? = nil) throws -> ReviewResult? {
+        try read { db in
+            let columns = "SELECT id, decision, feedback, editedText FROM review"
+            let row: Row?
+            if let id {
+                row = try Row.fetchOne(db, sql: "\(columns) WHERE id = ?", arguments: [id.uuidString])
+            } else if let sessionId {
+                row = try Row.fetchOne(db, sql: "\(columns) WHERE sessionId = ? ORDER BY createdAt DESC LIMIT 1", arguments: [sessionId])
+            } else {
+                row = try Row.fetchOne(db, sql: "\(columns) ORDER BY createdAt DESC LIMIT 1")
+            }
+            guard let row, let id = UUID(uuidString: row["id"]), let decision = ReviewDecision(rawValue: row["decision"]) else { return nil }
+            return ReviewResult(id: id, decision: decision, feedback: row["feedback"], editedText: row["editedText"])
+        }
+    }
+
     public func deleteReview(_ id: UUID) throws {
         try write { db in
             try db.execute(sql: "DELETE FROM review WHERE id = ?", arguments: [id.uuidString])

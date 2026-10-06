@@ -101,6 +101,27 @@ struct SnippetsAndHistoryTests {
         #expect(try store.history(matching: "shorter").count == 1)
     }
 
+    @Test func aFinishedReviewCanBeAskedForAfterTheAppRestarts() throws {
+        _ = NSApplication.shared
+        let store = try Store()
+        let first = ReviewCoordinator(presentsWindows: false, store: store)
+        let request = request()
+        first.open(request)
+        let window = try #require(first.windows[request.id])
+        window.session.addMark(.delete, span: TextSpan(19, 31))
+        window.finish(.feedback)
+
+        // Another run of the app, with the same database and nothing in memory.
+        let later = ReviewCoordinator(presentsWindows: false, store: store)
+        let byID = try #require(later.rememberedResult(id: request.id, sessionId: nil))
+        #expect(byID.decision == .feedback)
+        #expect(byID.feedback?.hasPrefix("## Feedback on Plan: rate limiting") == true)
+        #expect(later.rememberedResult(id: nil, sessionId: "s-1")?.id == request.id)
+        #expect(later.rememberedResult(id: nil, sessionId: nil)?.id == request.id)
+        #expect(later.rememberedResult(id: nil, sessionId: "another-session") == nil)
+        #expect(later.rememberedResult(id: UUID(), sessionId: nil) == nil)
+    }
+
     @Test func approvalsAreKeptAndCancelledReviewsAreNot() throws {
         _ = NSApplication.shared
         let store = try Store()
