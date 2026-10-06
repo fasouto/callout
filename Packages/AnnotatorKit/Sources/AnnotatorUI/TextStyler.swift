@@ -34,16 +34,34 @@ enum TextStyler {
         var tableCells: [TableCell] = []
         // A page has thousands of segments and a handful of styles: each is worked out once.
         var known: [SegmentStyle: [NSAttributedString.Key: Any]] = [:]
+        var panel: Panel?
         for (index, segment) in document.segments.enumerated() {
             let start = result.length
             let attributes = known[segment.style] ?? attributes(for: segment.style)
             known[segment.style] = attributes
             result.append(NSAttributedString(string: segment.text, attributes: attributes))
-            decoratePanel(segment, at: start, in: result)
+            let range = NSRange(location: start, length: result.length - start)
+            if isPanel(segment.style) {
+                if let source = segment.source, range.length > 0 {
+                    if let open = panel, open.style == segment.style, isInsideBlock(document.source, from: open.source.end, to: source.start) {
+                        panel = Panel(range: NSUnionRange(open.range, range), source: source, style: open.style)
+                    } else {
+                        if let panel { decorate(panel, in: result) }
+                        panel = Panel(range: range, source: source, style: segment.style)
+                    }
+                } else if segment.text != "\n" || segment.style != panel?.style {
+                    if let panel { decorate(panel, in: result) }
+                    panel = nil
+                }
+            } else if let open = panel {
+                decorate(open, in: result)
+                panel = nil
+            }
             if isTableLine(segment.style) {
-                tableCells.append(TableCell(segment: index, range: NSRange(location: start, length: result.length - start), style: segment.style, endsRow: segment.text == "\n"))
+                tableCells.append(TableCell(segment: index, range: range, style: segment.style, endsRow: segment.text == "\n"))
             }
         }
+        if let panel { decorate(panel, in: result) }
 
         endQuoteBars(in: result)
         layOutTables(tableCells, in: result)
@@ -391,13 +409,32 @@ enum TextStyler {
         close()
     }
 
-    /// Code and tables are one segment of several lines. Each line learns where it
-    /// sits in the block, so the background is drawn as one panel with room around it.
-    private static func decoratePanel(_ segment: RenderSegment, at start: Int, in result: NSMutableAttributedString) {
-        guard isPanel(segment.style), segment.source != nil else { return }
-        let text = segment.text as NSString
+    /// A block drawn on a panel: code, or a table or HTML shown as written.
+    private struct Panel {
+        /// Where it is in the styled text.
+        var range: NSRange
+        /// The source of its last segment so far.
+        var source: TextSpan
+        var style: SegmentStyle
+    }
+
+    /// Whether the source between two segments is only what a line of one block
+    /// starts with: the line break, indentation, and the `>` of a quotation. Code
+    /// inside a list item or a quotation comes as one segment per line, and a
+    /// fence in between means the next segment is another block.
+    private static func isInsideBlock(_ source: String, from start: Int, to end: Int) -> Bool {
+        let units = source as NSString
+        guard start <= end, end <= units.length else { return false }
+        return (start..<end).allSatisfy { " \t\r\n>".utf16.contains(units.character(at: $0)) }
+    }
+
+    /// Each line learns where it sits in the block, so the background is drawn
+    /// as one panel with room around it.
+    private static func decorate(_ panel: Panel, in result: NSMutableAttributedString) {
+        let text = result.attributedSubstring(from: panel.range).string as NSString
         guard text.length > 0 else { return }
-        let indent = blockIndent(for: segment.style)
+        let start = panel.range.location
+        let indent = blockIndent(for: panel.style)
 
         var lines: [NSRange] = []
         var location = 0

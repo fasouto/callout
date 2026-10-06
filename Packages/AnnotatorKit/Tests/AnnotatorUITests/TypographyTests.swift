@@ -13,6 +13,34 @@ struct TypographyTests {
         return TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil).string
     }
 
+    /// The panels of a page: for each, the lines it has.
+    private func panels(_ markdown: String) -> [[String]] {
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text(markdown, format: .markdown), origin: .lastReply, reply: .clipboard, modes: [.feedback]
+        ))
+        let styled = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil)
+        var panels: [[String]] = []
+        styled.enumerateAttribute(.annotatorBlock, in: NSRange(location: 0, length: styled.length)) { value, range, _ in
+            guard case .panel(let first, _, _)? = value as? BlockDecoration else { return }
+            let line = (styled.string as NSString).substring(with: range).trimmingCharacters(in: .newlines)
+            if first { panels.append([line]) } else { panels[panels.count - 1].append(line) }
+        }
+        return panels
+    }
+
+    @Test func codeInsideAListItemIsOnePanel() {
+        // Its lines come one by one, each after the item's indentation.
+        let nested = "1. Read first:\n   ```swift\n   let a = 1\n\n   let b = 2\n   ```\n2. Done."
+        #expect(panels(nested) == [["let a = 1", "", "let b = 2"]])
+        #expect(panels("> ```\n> one\n> two\n> ```") == [["one", "two"]])
+        #expect(panels("```\none\ntwo\n```") == [["one", "two"]])
+    }
+
+    @Test func twoCodeBlocksInARowAreTwoPanels() {
+        #expect(panels("- A:\n  ```\n  one\n  ```\n  ```\n  two\n  ```") == [["one"], ["two"]])
+        #expect(panels("```\none\n```\n```\ntwo\n```") == [["one"], ["two"]])
+    }
+
     @Test func quotesAndDashesAreSetAsInPrint() {
         #expect(shown("We don't say \"never\" - we say 'rarely'.") == "We don\u{2019}t say \u{201C}never\u{201D} \u{2013} we say \u{2018}rarely\u{2019}.")
         // A hyphen inside a word stays a hyphen.
