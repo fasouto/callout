@@ -2,6 +2,7 @@ import AnnotatorCore
 import AnnotatorIPC
 import AnnotatorStore
 import AppKit
+import CoreServices
 
 /// The app's entry point, shared by the app bundle and the unbundled development build.
 @MainActor
@@ -14,6 +15,24 @@ public enum AnnotatorApplication {
         // A menu-bar app: no Dock icon, and windows only when there is something to review.
         application.setActivationPolicy(.accessory)
         application.run()
+    }
+}
+
+/// What the app does when a person opens it, from Finder, Spotlight or
+/// Launchpad. A menu-bar app that answered only with its icon would look as
+/// if nothing had happened, so it shows the history of reviews.
+enum Opening {
+    /// Whether a launch was a person opening the app: not the command-line
+    /// tool or a script starting it for a review, not a start at login, and
+    /// not a launch to open a file, a link or a Services request.
+    static func isByHand(arguments: [String], isDefaultLaunch: Bool, atLogin: Bool) -> Bool {
+        isDefaultLaunch && !atLogin && !arguments.contains("--background") && !arguments.contains("--review")
+    }
+
+    /// A window the app already has, on screen or minimized: opening the app
+    /// again brings that back instead.
+    @MainActor static func hasWindow(_ windows: [NSWindow]) -> Bool {
+        windows.contains { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }
     }
 }
 
@@ -75,7 +94,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !Welcome.hasBeenShown {
             // The first launch opens a practice review that teaches the marks.
             showWelcome()
+        } else if Opening.isByHand(
+            arguments: arguments,
+            isDefaultLaunch: notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true,
+            atLogin: Self.wasLaunchedAtLogin
+        ) {
+            history.show()
         }
+    }
+
+    /// macOS says so in the event that launched the app.
+    private static var wasLaunchedAtLogin: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+    }
+
+    /// Opened again while it is running. AppKit brings back a window that is
+    /// open or minimized; with none, the history is the window there is.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !Opening.hasWindow(sender.windows) else { return true }
+        history.show()
+        return false
     }
 
     // The app's own menu bar, shown while a window is open.

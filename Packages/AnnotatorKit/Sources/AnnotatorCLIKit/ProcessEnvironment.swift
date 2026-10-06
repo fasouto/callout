@@ -38,10 +38,14 @@ enum AppLauncher {
         return open(["-g", "-b", AnnotatorPaths.bundleIdentifier])
     }
 
+    /// Tells the app that a tool started it, not a person: it then opens no
+    /// window of its own, only the review that follows.
+    static let background = "--background"
+
     private static func open(_ arguments: [String]) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = arguments
+        process.arguments = arguments + ["--args", background]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do {
@@ -57,6 +61,7 @@ enum AppLauncher {
     private static func spawn(_ path: String) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = [background]
         // The app must not hold this tool's pipes open, or whoever reads them
         // would wait for the app to quit.
         process.standardInput = FileHandle.nullDevice

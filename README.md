@@ -45,7 +45,7 @@ brew install xcodegen
 scripts/run.sh docs/sample-plan.md
 ```
 
-That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. To keep it, `scripts/install.sh` builds a release copy into `/Applications`, where the Claude Code plugin finds it. Annotator has no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it. While a window is open it also has a Dock icon, a menu bar of its own and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
+That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. To keep it, `scripts/install.sh` builds a release copy into `/Applications`, where the Claude Code plugin finds it. Annotator lives in the menu bar: its icon is a rounded square with lines of text and one struck out. Opening the app yourself, from Finder or Spotlight, shows the History of your reviews; when Claude Code starts it, it opens nothing until there is something to review. While a window is open it also has a Dock icon, a menu bar of its own and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
 
 Both scripts sign with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
 

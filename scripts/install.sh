@@ -33,7 +33,8 @@ for copy in build/DerivedData/Build/Products/Debug/Annotator.app "$built"; do
 done
 "$lsregister" -f "$target"
 
-open "$target"
+# Started for you, not opened by you: just the menu-bar icon, no window.
+open -g "$target" --args --background
 version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$target/Contents/Info.plist")
 echo "Annotator $version is installed in /Applications and running."
 if [ "$identity" = - ]; then

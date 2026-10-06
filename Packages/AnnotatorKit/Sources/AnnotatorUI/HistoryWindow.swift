@@ -68,7 +68,9 @@ struct HistoryView: View {
                 ContentUnavailableView(
                     query.isEmpty ? "No reviews yet" : "No review matches",
                     systemImage: query.isEmpty ? "tray" : "magnifyingglass",
-                    description: Text(query.isEmpty ? "Reviews you finish are kept here, as the pages you marked." : "Titles, text, feedback and overall comments are searched.")
+                    description: Text(query.isEmpty
+                        ? "Reviews you finish are kept here, as the pages you marked. To start one, select text in any app and press \(Hotkey.stored.display), or drop a file on the icon in the menu bar."
+                        : "Titles, text, feedback and overall comments are searched.")
                 )
             }
         }
