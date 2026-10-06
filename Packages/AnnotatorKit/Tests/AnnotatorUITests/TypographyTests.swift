@@ -81,6 +81,14 @@ struct TypographyTests {
         #expect(shown("A well-known plan.") == "A well-known plan.")
     }
 
+    @Test func aHyphenThatStartsALineOfPlainTextStaysAHyphen() {
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text("Changes - all small:\n  - one thing\n- another", format: .plain), origin: .fileDrop, reply: .clipboard, modes: [.feedback]
+        ))
+        let page = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil).string
+        #expect(page == "Changes \u{2013} all small:\n  - one thing\n- another")
+    }
+
     @Test func codeKeepsItsStraightQuotes() {
         #expect(shown("Run `echo \"hi\"` - it's quick.").contains("echo \"hi\""))
         #expect(shown("Run `echo \"hi\"` - it's quick.").contains("it\u{2019}s"))
