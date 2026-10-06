@@ -35,12 +35,14 @@ enum TextStyler {
         // A page has thousands of segments and a handful of styles: each is worked out once.
         var known: [SegmentStyle: [NSAttributedString.Key: Any]] = [:]
         var panel: Panel?
+        var markerWidths: [String: CGFloat] = [:]
         for (index, segment) in document.segments.enumerated() {
             let start = result.length
             let attributes = known[segment.style] ?? attributes(for: segment.style)
             known[segment.style] = attributes
             result.append(NSAttributedString(string: segment.text, attributes: attributes))
             let range = NSRange(location: start, length: result.length - start)
+            if segment.style.isListMarker { hang(markerIn: range, in: result, widths: &markerWidths) }
             if isPanel(segment.style) {
                 if let source = segment.source, range.length > 0 {
                     if let open = panel, open.style == segment.style, isInsideBlock(document.source, from: open.source.end, to: source.start) {
@@ -255,6 +257,21 @@ enum TextStyler {
     private static let quoteIndent: CGFloat = 18
     private static let listIndent: CGFloat = 22
     private static let markerWidth: CGFloat = 22
+
+    /// A list's bullets and numbers hang in a column of their own, set against
+    /// the text: numbers line up on their points, and every line of an item,
+    /// the first included, starts at the same edge.
+    private static func hang(markerIn range: NSRange, in result: NSMutableAttributedString, widths: inout [String: CGFloat]) {
+        let marker = result.attributedSubstring(from: range)
+        let width = widths[marker.string] ?? ceil(marker.size().width)
+        widths[marker.string] = width
+        // The paragraph takes its style from its first character, which is the marker.
+        guard width < markerWidth,
+              let current = marker.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle,
+              let style = current.mutableCopy() as? NSMutableParagraphStyle else { return }
+        style.firstLineHeadIndent += markerWidth - width
+        result.addAttribute(.paragraphStyle, value: style, range: range)
+    }
 
     private static func blockIndent(for style: SegmentStyle) -> CGFloat {
         CGFloat(style.quoteDepth) * quoteIndent + CGFloat(max(0, style.listDepth - 1)) * listIndent
