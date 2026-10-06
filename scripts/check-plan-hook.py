@@ -73,7 +73,12 @@ def main():
     # A fresh session, not a child of the one this may be running in.
     environment = {k: v for k, v in os.environ.items() if k != "CLAUDECODE" and not k.startswith("CLAUDE_")}
     environment["TERM"] = "xterm-256color"
-    arguments = [claude, "--permission-mode", "plan", "--settings", settings, "--model", "haiku"]
+    # Only this script's hook may answer the plan: your own settings are left out,
+    # so an installed Annotator plugin does not open the test plan for review too.
+    arguments = [
+        claude, "--permission-mode", "plan", "--setting-sources", "project",
+        "--settings", settings, "--model", "haiku",
+    ]
 
     pid, terminal = pty.fork()
     if pid == 0:
