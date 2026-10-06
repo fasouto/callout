@@ -42,7 +42,7 @@ brew install xcodegen
 scripts/run.sh docs/sample-plan.md
 ```
 
-That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. To keep it, `scripts/install.sh` builds a release copy into `/Applications`, where the Claude Code plugin finds it. Annotator has no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it. While a window is open it also has a Dock icon and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
+That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. To keep it, `scripts/install.sh` builds a release copy into `/Applications`, where the Claude Code plugin finds it. Annotator has no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it. While a window is open it also has a Dock icon, a menu bar of its own and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
 
 Both scripts sign with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
 
@@ -50,7 +50,7 @@ To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, sel
 
 ## Using it
 
-**The first time** it opens, a short practice plan teaches the marks: strike the filler, replace a word, question a claim, and hand it in to see what Claude would receive. Nothing is sent and nothing is kept. *Practice review* in Settings shows it again.
+**The first time** it opens, a short practice plan teaches the marks: strike the filler, replace a word, question a claim, and hand it in to see what Claude would receive. Nothing is sent and nothing is kept. *Practice Review* in the Help menu, or in Settings, shows it again.
 
 ![The practice review: a short plan, and the lesson above the buttons ticking off each step](docs/first-review.png)
 
