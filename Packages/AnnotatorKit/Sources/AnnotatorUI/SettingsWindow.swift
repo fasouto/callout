@@ -100,7 +100,10 @@ struct SettingsView: View {
             } header: {
                 Text("In a review")
             } footer: {
-                Text("h j k l, w b e, 0 $, { }, gg and G move the caret; v starts a selection and V takes the line; i and a start typing and Esc stops; n and N go to the next and previous mark; u undoes. Keep moves to ⇧K, and Esc never cancels the review.")
+                // The keys are only worth reading once they are on.
+                Text(vimKeys
+                    ? "h j k l, w b e, 0 $, { }, gg and G move the caret; v starts a selection and V takes the line; i and a start typing and Esc stops; n and N go to the next and previous mark; u undoes. Keep moves to ⇧K, and Esc never cancels the review."
+                    : "Move the caret, select and start typing from the keyboard alone, with the keys vim uses.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
