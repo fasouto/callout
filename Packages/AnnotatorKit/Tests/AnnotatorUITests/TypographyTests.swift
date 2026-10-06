@@ -28,6 +28,30 @@ struct TypographyTests {
         return panels
     }
 
+    @Test func everyLineOfAListItemStartsAtOneEdge() {
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text("1. One\n2. Two\n   - nested\n\n   Its second paragraph.\n- [ ] A task", format: .markdown),
+            origin: .lastReply, reply: .clipboard, modes: [.feedback]
+        ))
+        let page = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil)
+        let text = page.string as NSString
+        var checked = 0
+        var location = 0
+        while location < text.length {
+            let paragraph = text.paragraphRange(for: NSRange(location: location, length: 0))
+            location = NSMaxRange(paragraph)
+            guard let style = page.attribute(.paragraphStyle, at: paragraph.location, effectiveRange: nil) as? NSParagraphStyle,
+                  style.headIndent > 0 else { continue }
+            // The marker, up to and with its space, then the text: at the edge wrapped lines come back to.
+            let line = text.substring(with: paragraph)
+            let marker = line.hasPrefix("Its") ? 0 : (line as NSString).range(of: " ").location + 1
+            let width = ceil(page.attributedSubstring(from: NSRange(location: paragraph.location, length: marker)).size().width)
+            #expect(style.firstLineHeadIndent + width == style.headIndent, "\(line)")
+            checked += 1
+        }
+        #expect(checked == 5)
+    }
+
     @Test func codeInsideAListItemIsOnePanel() {
         // Its lines come one by one, each after the item's indentation.
         let nested = "1. Read first:\n   ```swift\n   let a = 1\n\n   let b = 2\n   ```\n2. Done."
