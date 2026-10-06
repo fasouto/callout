@@ -37,8 +37,6 @@ enum Theme {
     static var ink: NSColor { .systemBlue }
     static var highlighter: NSColor { .systemYellow }
     static var keep: NSColor { .systemGreen }
-    /// What changed since the previous version. Not one of the reviewer's inks.
-    static var revision: NSColor { .systemPurple }
 
     /// The highlighter behind marked words. A translucent yellow over a dark
     /// page turns olive, so in dark mode the wash stays faint and the words
@@ -64,6 +62,24 @@ enum Theme {
     static func keepWash(selected: Bool) -> NSColor {
         NSColor(name: nil) { _ in
             NSColor.systemGreen.withAlphaComponent(selected ? 0.3 : increasesContrast ? 0.22 : 0.12)
+        }
+    }
+
+    /// The tint behind text that is new since the previous version of a plan:
+    /// purple, which is none of the reviewer's inks. A dark page needs more of
+    /// it to show at all.
+    static var revisionWash: NSColor {
+        NSColor(name: nil) { appearance in
+            let base: CGFloat = isDark(appearance) ? 0.3 : 0.13
+            return NSColor.systemPurple.withAlphaComponent(increasesContrast ? base + 0.12 : base)
+        }
+    }
+
+    /// The highlighter's colour for a small symbol. Yellow on a white page is
+    /// too faint to read as a shape, so in light mode it is a darker amber.
+    static var highlighterSymbol: NSColor {
+        NSColor(name: nil) { appearance in
+            isDark(appearance) ? .systemYellow : NSColor(srgbRed: 0.72, green: 0.52, blue: 0.0, alpha: 1)
         }
     }
 
@@ -117,5 +133,13 @@ enum Theme {
 extension MarkKind {
     var tint: Color {
         Color(nsColor: Theme.color(for: self))
+    }
+
+    /// The mark's colour for a small symbol, which has to read against the page.
+    var symbolTint: Color {
+        switch self {
+        case .comment, .expand, .summarize: Color(nsColor: Theme.highlighterSymbol)
+        default: tint
+        }
     }
 }

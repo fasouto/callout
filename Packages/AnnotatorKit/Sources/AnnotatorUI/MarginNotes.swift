@@ -223,7 +223,7 @@ private struct MarginGuide: View {
                         HStack(spacing: 7) {
                             Image(systemName: kind.symbol)
                                 .font(.system(size: 10.5, weight: .bold))
-                                .foregroundStyle(kind.tint)
+                                .foregroundStyle(kind.symbolTint)
                                 .frame(width: 14)
                             Text(kind.hint)
                                 .font(.system(size: 12.5))

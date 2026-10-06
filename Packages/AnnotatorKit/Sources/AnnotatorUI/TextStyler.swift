@@ -48,7 +48,7 @@ enum TextStyler {
         // New since the previous version: a quiet tint, under whatever the reviewer marks.
         for span in added {
             for range in document.displayedRanges(forSource: span) {
-                result.addAttribute(.backgroundColor, value: Theme.revision.withAlphaComponent(0.13), range: NSRange(range))
+                result.addAttribute(.backgroundColor, value: Theme.revisionWash, range: NSRange(range))
             }
         }
 
