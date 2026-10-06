@@ -11,7 +11,10 @@ public enum MarkdownRenderer {
     public static func render(_ source: String, format: TextFormat = .markdown) -> RenderedDocument {
         guard format == .markdown else { return RenderedDocument(plain: source) }
         var builder = Builder(source: source)
-        builder.blocks(of: Document(parsing: source), Context())
+        // The parser would otherwise turn quotes curly and `--`, `...` into single
+        // characters. Text that no longer matches the source maps only as a
+        // whole, and a word selected in it would stand for its whole paragraph.
+        builder.blocks(of: Document(parsing: source, options: [.disableSmartOpts]), Context())
         builder.dropTrailingLineBreak()
         return RenderedDocument(source: source, segments: builder.segments, containers: builder.containers)
     }

@@ -25,6 +25,24 @@ struct TypographyTests {
         #expect(shown("```\nlet name = \"Ada\"\n```").contains("\"Ada\""))
     }
 
+    @Test func aWordSelectedOnThePageIsMarkedAlone() throws {
+        // A paragraph with apostrophes once mapped only as a whole, so marking
+        // one word marked all of it.
+        let source = "What's actually slow is this conversation. It's very long by now, and that's fine."
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text(source, format: .markdown), origin: .lastReply, reply: .clipboard, modes: [.feedback]
+        ))
+        session.announce = { _ in }
+        let shown = TextStyler.attributedString(layout: session.layout, marks: [], selectedMarkID: nil).string as NSString
+        for word in ["slow", "long", "fine"] {
+            let range = shown.range(of: word)
+            let span = try #require(session.sourceSpan(forView: range.location..<NSMaxRange(range)))
+            let mark = try #require(session.addMark(.keep, span: span))
+            #expect(mark.anchor.quote == word)
+        }
+        #expect(session.feedback().contains("> slow\n"))
+    }
+
     @Test func thePageCountsAsTheSourceDoes() throws {
         let source = "We don't \"leverage\" things."
         let session = ReviewSession(request: ReviewRequest(

@@ -37,6 +37,25 @@ struct MarkdownRendererTests {
         #expect(sourceSpan(behind: "world", in: document) == TextSpan(6, 11))
     }
 
+    @Test func aWordMapsToItselfWhateverPunctuationIsAround() {
+        // The parser must not rewrite quotes, dashes or dots: text that no
+        // longer matches the source maps only as a whole, and a selected word
+        // would then stand for its whole paragraph.
+        let sources = [
+            "What's actually slow is this conversation. It's very long by now.",
+            "She said \"it is slow\" and left -- quickly... then came back.",
+            "- **Bold start.** It doesn't run on normal turns, and that's fine.",
+        ]
+        for source in sources {
+            let document = MarkdownRenderer.render(source)
+            expectFaithfulMapping(document)
+            #expect(document.segments.allSatisfy { $0.source == nil || $0.isExact }, "every run of \(source.debugDescription) maps one to one")
+            for word in ["slow", "normal", "quickly"] where source.contains(word) {
+                #expect(sourceSpan(behind: word, in: document) == span(of: word, in: source), "\(word) in \(source.debugDescription)")
+            }
+        }
+    }
+
     @Test func inlineStylesAreHiddenButMapped() {
         let source = "This is **very important** and *subtle* with `code` and ~~old~~ text."
         let document = MarkdownRenderer.render(source)
