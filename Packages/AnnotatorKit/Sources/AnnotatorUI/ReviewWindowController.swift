@@ -179,8 +179,11 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
                 window.animator().alphaValue = 0
                 window.animator().setFrame(frame, display: true)
             }, completionHandler: {
-                window.close()
-                window.alphaValue = 1
+                // AppKit calls this on the main thread.
+                MainActor.assumeIsolated {
+                    window.close()
+                    window.alphaValue = 1
+                }
             })
         }
     }

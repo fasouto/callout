@@ -41,6 +41,7 @@ extension Mark {
 
 /// Speaks to VoiceOver users about something that happened without moving
 /// their cursor, such as a mark being made.
+@MainActor
 enum Announcer {
     static func post(_ message: String) {
         guard let element = NSApp.keyWindow ?? NSApp.mainWindow else { return }

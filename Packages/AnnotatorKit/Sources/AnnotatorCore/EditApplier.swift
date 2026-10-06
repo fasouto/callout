@@ -134,7 +134,19 @@ enum DeletionTidier {
             // "good |really|.", "foo |bar|\n" and "**very |important|**", but not a
             // two-space hard line break.
             let twoBefore = start > 1 ? text.character(at: start - 2) : newline
-            if !isBlank(twoBefore) { start -= 1 }
+            if isBlank(twoBefore) {
+                // Left as it is.
+            } else if !separators.contains(twoBefore) {
+                start -= 1
+            } else if separators.contains(after) {
+                // One of several, "a, |b|, c": it goes with the separator after it.
+                end += 1
+                if end < text.length, isBlank(text.character(at: end)) { end += 1 }
+            } else {
+                // The last of them, "hooks, |with no maximum|.": the separator
+                // before it would be left with nothing to separate.
+                start -= 2
+            }
         }
         return NSRange(location: start, length: end - start)
     }
@@ -174,6 +186,8 @@ enum DeletionTidier {
 
     private static let newline: unichar = 0x0A
     private static let closingPunctuation: Set<unichar> = Set(",.;:!?)]".utf16)
+    /// What stands between the parts of a sentence or the items of a list.
+    private static let separators: Set<unichar> = Set(",;:".utf16)
     private static let emphasisDelimiters: Set<unichar> = Set("*_~".utf16)
 
     /// Whether the delimiters right before `offset` start an emphasised run.

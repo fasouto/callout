@@ -154,6 +154,22 @@ struct EditApplierTests {
         #expect(try EditApplier.apply([mark(.delete, "really", in: source)], to: source) == "This is good.")
     }
 
+    @Test func deletingAClauseTakesTheSeparatorThatWouldDangle() throws {
+        func deleting(_ quote: String, from source: String) throws -> String {
+            try EditApplier.apply([mark(.delete, quote, in: source)], to: source)
+        }
+        // The last of them: the separator before it has nothing left to separate.
+        #expect(try deleting("with no documented maximum", from: "For command hooks, with no documented maximum.") == "For command hooks.")
+        #expect(try deleting("maybe", from: "Ship on Friday; maybe\nThen rest.") == "Ship on Friday\nThen rest.")
+        #expect(try deleting("b", from: "(a, b)") == "(a)")
+        #expect(try deleting("something vague", from: "Note: something vague.") == "Note.")
+        // One of several: it goes with the separator after it, and the list keeps its shape.
+        #expect(try deleting("b", from: "a, b, c") == "a, c")
+        #expect(try deleting("fast", from: "Options: fast, safe") == "Options: safe")
+        // A comma that belongs to the sentence stays.
+        #expect(try deleting("really", from: "It was good really, and then it ended.") == "It was good, and then it ended.")
+    }
+
     @Test func deletingTheLastWordOfALineDropsTheSpace() throws {
         let source = "foo bar\nbaz"
         #expect(try EditApplier.apply([mark(.delete, "bar", in: source)], to: source) == "foo\nbaz")
