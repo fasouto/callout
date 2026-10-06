@@ -383,8 +383,9 @@ private struct Builder {
         found = found ?? find(shown, in: TextSpan(cursor, limit))
 
         guard let found else {
-            segments.append(RenderSegment(text: shown, source: hint, isExact: false, style: style))
-            return hint
+            // Code in a table cell writes a pipe as `\|`. Matched as text is,
+            // the escape maps as a whole and everything around it one to one.
+            return text(shown, hint: hint, style, limit)
         }
         segments.append(RenderSegment(text: shown, source: found, isExact: true, style: style))
         cursor = found.end

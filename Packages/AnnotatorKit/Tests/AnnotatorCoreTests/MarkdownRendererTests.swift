@@ -323,6 +323,16 @@ struct MarkdownRendererTests {
         #expect(ends.contains(true) && ends.contains(false))
     }
 
+    @Test func codeInATableCellWithAnEscapedPipeMapsWordByWord() {
+        let source = "| What | How |\n|---|---|\n| Review | `echo plan \\| annotator review -` |\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text.contains("echo plan | annotator review -"))
+        expectFaithfulMapping(document)
+        #expect(sourceSpan(behind: "annotator", in: document) == span(of: "annotator", in: source))
+        // The pipe stands for its escape as a whole.
+        #expect(sourceText(behind: "|", in: document) == "\\|")
+    }
+
     @Test func tablesWithNothingUnderTheirNamesAreShownAsWritten() {
         let wide = "a fairly long name for a column"
         let source = "| \(wide) | \(wide) | x |\n|---|---|---|\n"
