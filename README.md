@@ -4,7 +4,10 @@
 
 A native macOS menu-bar app for correcting AI-written text the way a teacher marks up an essay: strike out, replace, insert, comment, mark as good. The result goes back to the AI as structured feedback, or to you as the corrected text.
 
-![The review window: a page with marks, and notes in the margin beside the lines they refer to](docs/review-window.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/review-window-dark.png">
+  <img src="docs/review-window.png" alt="The review window: a page with marks, and notes in the margin beside the lines they refer to">
+</picture>
 
 It has two parts:
 
