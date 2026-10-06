@@ -1,5 +1,6 @@
 import AnnotatorCore
 import AnnotatorIPC
+import AnnotatorStore
 import AppKit
 import Testing
 @testable import AnnotatorUI
@@ -11,13 +12,14 @@ struct IPCServiceTests {
     @MainActor
     private final class Harness {
         let path = NSTemporaryDirectory() + "ant-\(UUID().uuidString.prefix(8)).sock"
-        let coordinator = ReviewCoordinator(presentsWindows: false)
+        let coordinator: ReviewCoordinator
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("annotator-test-\(UUID().uuidString)"))
         var notices: [String] = []
         private(set) var service: IPCService!
 
-        init() throws {
+        init(store: Store? = nil) throws {
             _ = NSApplication.shared
+            coordinator = ReviewCoordinator(presentsWindows: false, store: store)
             service = IPCService(coordinator: coordinator, socketPath: path, pasteboard: pasteboard) { [weak self] in
                 self?.notices.append($0)
             }
@@ -194,6 +196,27 @@ struct IPCServiceTests {
             return
         }
         #expect(result.id == request.id)
+    }
+
+    @Test func aReviewFinishedBeforeTheAppRestartedIsStillAnAnswer() async throws {
+        // In the history, and in nothing this run of the app remembers.
+        let store = try Store()
+        let request = request(session: "s-9")
+        let finished = ReviewResult(id: request.id, decision: .feedback, feedback: "## Feedback on Plan\n")
+        try store.saveReview(request, result: finished, marks: [], generalComment: "")
+        let harness = try Harness(store: store)
+        defer { harness.tearDown() }
+
+        for query in [ClientMessage.resultQuery(id: nil, sessionId: "s-9"), .resultQuery(id: request.id, sessionId: nil)] {
+            let asker = try SocketClient(path: harness.path)
+            try asker.send(query)
+            var answer: ServerMessage?
+            await wait {
+                answer = try? asker.receive(timeout: 0.01)
+                return answer != nil
+            }
+            #expect(answer == .result(finished))
+        }
     }
 
     @Test func cancellingForAGoneRequesterCopiesNothing() async throws {
