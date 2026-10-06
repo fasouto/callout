@@ -28,6 +28,7 @@ When the command finishes, read its output.
   - A comment or an inserted note may instead be an instruction ("yes, do this"), a question, or something new the user is telling you. Carry out the instruction, answer the question, take up the new point.
 
   Then reply with what you did about every item. Write out a revised version of the reply only when the feedback corrects its text; when the user was answering the reply, do the work it asks for instead of rewriting the reply. Do not defend the original wording, and do not change anything the feedback did not ask to change.
+- **It says a sandbox blocks the socket** (exit status 77). The app is running, but this command was not allowed to talk to it, so nothing was opened. Run the same command once more with the sandbox disabled for it, again in the background with the same timeout; the user may be asked to allow that. If that is refused or not possible, tell the user in two lines: the review could not open because the sandbox blocks Annotator's socket, and the setting the message names lifts it for good. Do not try anything else.
 - **It says the review was cancelled, or that Annotator could not be reached.** Say so in one line and carry on. Do not retry.
 
 If the background command was stopped before it finished (for example at its time limit), the review may still have been completed. Run `annotator result --session ${CLAUDE_SESSION_ID}` once to collect it.

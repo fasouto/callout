@@ -58,6 +58,8 @@ public enum ExitCode {
     public static let usage: Int32 = 64
     /// What was to be reviewed could not be read.
     public static let noInput: Int32 = 66
+    /// The app is there, but this process may not talk to it.
+    public static let notPermitted: Int32 = 77
 }
 
 public enum AnnotatorCLI {
@@ -84,7 +86,8 @@ public enum AnnotatorCLI {
     A file ending in .pdf is opened as a PDF; any other file is read as text.
     If the app cannot be reached, the tool says so and exits successfully.
     Exit status: 0 done, or no review; 1 no finished review to print, or
-    settings left untouched; 64 the command line is wrong; 66 the file cannot be read.
+    settings left untouched; 64 the command line is wrong; 66 the file cannot be read;
+    77 a sandbox keeps the tool from reaching the app.
     """
 
     public static func run(_ environment: CLIEnvironment) -> Int32 {
@@ -172,7 +175,8 @@ enum AppConnection {
     /// Connects to the app, starting it when it is not running. Nil when it stays unreachable.
     static func open(_ environment: CLIEnvironment) -> SocketClient? {
         if let client = try? SocketClient(path: environment.socketPath) { return client }
-        guard environment.launchApp() else { return nil }
+        // Starting the app and waiting for it would not help: it is this process that is kept out.
+        guard !isBlocked(environment), environment.launchApp() else { return nil }
 
         let deadline = Date().addingTimeInterval(environment.launchTimeout)
         while Date() < deadline {
@@ -183,6 +187,30 @@ enum AppConnection {
     }
 
     static let acceptTimeout: TimeInterval = 5
+
+    /// Whether connecting is refused to this process in particular. The app may
+    /// well be running: a sandbox, such as the one Claude Code can run shell
+    /// commands in, does not let the socket be used.
+    static func isBlocked(_ environment: CLIEnvironment) -> Bool {
+        do {
+            try SocketClient(path: environment.socketPath).close()
+            return false
+        } catch SocketError.system(_, let code) {
+            return code == EPERM || code == EACCES
+        } catch {
+            return false
+        }
+    }
+
+    /// Says what is in the way and what lifts it, for a person or for Claude to act on.
+    static func sayBlocked(_ environment: CLIEnvironment) -> Int32 {
+        environment.err("""
+        annotator: this command is not allowed to reach the Annotator app: a sandbox blocks its socket.
+        Run the command again outside the sandbox, or allow this path under sandbox.network.allowUnixSockets in Claude Code's settings:
+        \(environment.socketPath)
+        """)
+        return ExitCode.notPermitted
+    }
 }
 
 enum Output {

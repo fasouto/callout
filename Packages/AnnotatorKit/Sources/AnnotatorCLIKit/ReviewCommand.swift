@@ -111,6 +111,8 @@ struct ReviewExchange {
 
     func run(_ request: ReviewRequest) -> Int32 {
         guard let client = AppConnection.open(environment) else {
+            // Kept out is not the same as nobody home: the caller can do something about it.
+            if AppConnection.isBlocked(environment) { return AppConnection.sayBlocked(environment) }
             return finishWithout(request, "Annotator could not be reached, so no review was done.")
         }
         defer { client.close() }
@@ -224,6 +226,7 @@ struct ResultCommand {
 
     func run() throws -> Int32 {
         guard let client = AppConnection.open(environment) else {
+            if AppConnection.isBlocked(environment) { return AppConnection.sayBlocked(environment) }
             environment.out("Annotator could not be reached.")
             return ExitCode.nothingFound
         }

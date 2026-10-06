@@ -128,9 +128,21 @@ If the app cannot be reached, or quits in the middle of a review, the tool says 
 
 `annotator result` prints a finished review again: by its id, the latest of a session with `--session`, or the latest of all. Reviews finished before the app was last started come from History, so quitting the app loses nothing but cancelled reviews, which are not kept.
 
-The other exit statuses are for what the caller got wrong: 64 for a command line the tool cannot understand, which also prints the usage, and 66 for a file that is missing or is not text. `annotator result` exits with 1 when there is no finished review to print, and so does `annotator install` when it leaves a settings file it cannot edit safely.
+The other exit statuses are for what the caller got wrong: 64 for a command line the tool cannot understand, which also prints the usage, and 66 for a file that is missing or is not text. 77 means the tool was kept from the app: see the sandbox note below. `annotator result` exits with 1 when there is no finished review to print, and so does `annotator install` when it leaves a settings file it cannot edit safely.
 
 In the app bundle the tool is at `Annotator.app/Contents/Helpers/annotator`.
+
+**With Claude Code's sandbox on,** shell commands may not use Unix sockets, so `/annotate-last` and document reviews cannot reach the app: the tool says so and exits with 77. (Plan reviews are not affected: hooks run outside the sandbox.) To let the tool through while it stays sandboxed, allow its socket in `~/.claude/settings.json`, with your own home folder in the path:
+
+```json
+{
+  "sandbox": {
+    "network": {
+      "allowUnixSockets": ["/Users/you/Library/Application Support/Annotator/annotator.sock"]
+    }
+  }
+}
+```
 
 ## The Claude Code plugin
 

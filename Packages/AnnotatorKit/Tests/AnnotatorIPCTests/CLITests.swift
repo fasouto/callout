@@ -193,6 +193,34 @@ struct ReviewCommandTests {
         #expect(elapsed >= 0.4 && elapsed < 2)
     }
 
+    @Test func aSocketThisProcessMayNotUseIsSaidSoAtOnce() throws {
+        // What a sandbox does to the tool: the app is listening, and the
+        // connection is refused to this process. A socket nobody may use stands in for it.
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .approve) })
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: run.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: run.path) }
+
+        let launches = Locked(0)
+        let started = Date()
+        let launch: @Sendable () -> Bool = {
+            launches.update { $0 += 1 }
+            return true
+        }
+        #expect(run.annotator("review", "-", stdin: "x", launchApp: launch, launchTimeout: 3) == ExitCode.notPermitted)
+        #expect(run.annotator("result", launchApp: launch, launchTimeout: 3) == ExitCode.notPermitted)
+
+        // No waiting for an app that is already there, and no second copy started.
+        #expect(Date().timeIntervalSince(started) < 1)
+        #expect(launches.get() == 0)
+        #expect(run.out.get().isEmpty)
+        let said = run.err.get()
+        #expect(said.count == 2)
+        #expect(said.first?.contains("a sandbox blocks its socket") == true)
+        #expect(said.first?.contains("sandbox.network.allowUnixSockets") == true)
+        #expect(said.first?.hasSuffix(run.path) == true)
+    }
+
     @Test func appIsLaunchedWhenItIsNotRunning() throws {
         let run = Run()
         let launches = Locked(0)
