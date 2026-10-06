@@ -34,6 +34,8 @@ enum Toast {
         }
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        // The message is gone in two seconds and never has the VoiceOver cursor.
+        Announcer.post(message)
         panel.animator().alphaValue = 1
         self.panel = panel
 

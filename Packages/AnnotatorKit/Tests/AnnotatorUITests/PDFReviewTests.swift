@@ -89,7 +89,7 @@ struct PDFReviewTests {
         let page = try #require(harness.session.pdf?.page(at: index))
         let range = ((page.string ?? "") as NSString).range(of: phrase)
         #expect(range.location != NSNotFound, "\(phrase) is on the page")
-        harness.view.setCurrentSelection(try #require(page.selection(for: range)), animate: false)
+        harness.view.setCurrentSelection(page.selection(for: range), animate: false)
     }
 
     private func press(_ characters: String, keyCode: UInt16, in harness: Harness) throws {

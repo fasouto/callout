@@ -44,7 +44,12 @@ final class ReviewSession {
         }
     }
     /// A short note for the status line, such as why an action did nothing.
-    var statusMessage: String?
+    /// Spoken as well: the line appears without the VoiceOver cursor going there.
+    var statusMessage: String? {
+        didSet {
+            if let statusMessage, statusMessage != oldValue { announce(statusMessage) }
+        }
+    }
     /// The margin field that should have the keyboard, if any.
     private(set) var editing: EditTarget?
     /// Bumped to hand the keyboard back to the document.

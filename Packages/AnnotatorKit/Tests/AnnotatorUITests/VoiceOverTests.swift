@@ -43,6 +43,21 @@ struct VoiceOverTests {
         #expect(heard == ["Struck out: very robust", "Removed. Struck out: very robust"])
     }
 
+    @Test func whyNothingHappenedIsSpokenOnce() {
+        let session = session()
+        var heard: [String] = []
+        session.announce = { heard.append($0) }
+        session.statusMessage = "Select some text of the document first."
+        session.statusMessage = "Select some text of the document first."
+        session.statusMessage = nil
+        #expect(heard == ["Select some text of the document first."])
+
+        // A mark that cannot be placed says why.
+        session.addMark(.delete, span: span("very robust"))
+        session.addMark(.replace, span: span("robust approach"), text: "plan")
+        #expect(heard.last == "That overlaps another edit. Remove it first.")
+    }
+
     @Test func theRotorGoesFromMarkToMarkInOrder() throws {
         _ = NSApplication.shared
         let session = session()

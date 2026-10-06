@@ -44,8 +44,9 @@ extension Mark {
 @MainActor
 enum Announcer {
     static func post(_ message: String) {
-        // Nothing to speak to before the app is up, or with no window open.
-        guard let app = NSApp, let element = app.keyWindow ?? app.mainWindow else { return }
+        // Nothing to speak to before the app is up. With no window open, the app itself speaks.
+        guard let app = NSApp else { return }
+        let element: Any = app.keyWindow ?? app.mainWindow ?? app
         NSAccessibility.post(element: element, notification: .announcementRequested, userInfo: [
             .announcement: message,
             .priority: NSAccessibilityPriorityLevel.high.rawValue,

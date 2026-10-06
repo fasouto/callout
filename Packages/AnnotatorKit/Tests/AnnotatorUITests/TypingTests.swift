@@ -11,7 +11,7 @@ import Testing
 struct TypingTests {
     private static let source = "We will leverage a very robust approach here.\n\n- first item\n- second item\n"
 
-    private struct Harness {
+    @MainActor private struct Harness {
         let session: ReviewSession
         let window: NSWindow
         let textView: AnnotationTextView

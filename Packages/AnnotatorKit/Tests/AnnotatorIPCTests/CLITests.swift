@@ -5,7 +5,8 @@ import Testing
 @testable import AnnotatorIPC
 
 /// Runs the tool against a stand-in for the app and records what it prints.
-private final class Run {
+/// Sendable by hand: the one thing in it that changes, the stand-in app, is set once per test.
+private final class Run: @unchecked Sendable {
     let path = temporarySocketPath()
     let out = Locked<[String]>([])
     let err = Locked<[String]>([])
