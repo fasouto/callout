@@ -121,6 +121,8 @@ annotator result                          # print the last finished review again
 
 If the app cannot be reached, or quits in the middle of a review, the tool says so in one line and exits with status 0, so whatever called it carries on as if there had been no review.
 
+The other exit statuses are for what the caller got wrong: 64 for a command line the tool cannot understand, which also prints the usage, and 66 for a file that is missing or is not text. `annotator result` exits with 1 when there is no finished review to print, and so does `annotator install` when it leaves a settings file it cannot edit safely.
+
 In the app bundle the tool is at `Annotator.app/Contents/Helpers/annotator`.
 
 ## The Claude Code plugin

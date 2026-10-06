@@ -83,6 +83,8 @@ public enum AnnotatorCLI {
 
     A file ending in .pdf is opened as a PDF; any other file is read as text.
     If the app cannot be reached, the tool says so and exits successfully.
+    Exit status: 0 done, or no review; 1 no finished review to print, or
+    settings left untouched; 64 the command line is wrong; 66 the file cannot be read.
     """
 
     public static func run(_ environment: CLIEnvironment) -> Int32 {
