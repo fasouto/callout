@@ -72,11 +72,11 @@ final class BlockFragment: NSTextLayoutFragment {
             context.fillPath()
         case .quote(let depth, _):
             context.setFillColor(NSColor.tertiaryLabelColor.withAlphaComponent(0.5).cgColor)
+            // Square ends: each paragraph draws its own length of the bar, and
+            // rounded ones would leave a nick wherever two of them meet.
             for level in 0..<depth {
-                let bar = CGRect(x: rect.minX + CGFloat(level) * 18 + 1, y: rect.minY, width: 3, height: rect.height)
-                context.addPath(CGPath(roundedRect: bar, cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
+                context.fill(CGRect(x: rect.minX + CGFloat(level) * 18 + 1, y: rect.minY, width: 3, height: rect.height))
             }
-            context.fillPath()
         case .rule:
             context.setFillColor(NSColor.separatorColor.cgColor)
             context.fill(CGRect(x: rect.minX, y: rect.midY.rounded(), width: rect.width, height: 1))
