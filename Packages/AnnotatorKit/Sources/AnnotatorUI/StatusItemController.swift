@@ -113,7 +113,8 @@ enum AboutPanel {
             attributes: [.font: Theme.serif(13, italic: true), .foregroundColor: NSColor.labelColor, .paragraphStyle: centred]
         )
         text.append(NSAttributedString(
-            string: "Free software under the GNU General Public License, version 3. Nothing you review leaves this Mac except what you send back.",
+            // The licence is the panel's last line, from the Info.plist: once is enough.
+            string: "Nothing you review leaves this Mac except what you send back.",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: centred]
         ))
         return text

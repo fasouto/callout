@@ -60,7 +60,8 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         # Menu-bar app: no Dock icon.
         LSUIElement: true
-        NSHumanReadableCopyright: Licensed under the GNU General Public License v3.0.
+        NSHumanReadableCopyright: Free software under the GNU General Public License, version 3.
+        LSApplicationCategoryType: public.app-category.productivity
         # "Annotate with Annotator" in other apps' Services menus.
         NSServices:
           - NSMenuItem:
