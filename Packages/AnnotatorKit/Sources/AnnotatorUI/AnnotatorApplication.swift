@@ -92,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history.show()
     }
 
+    @objc func showPracticeReview(_ sender: Any?) {
+        showWelcome()
+    }
+
     private func showWelcome() {
         Welcome.hasBeenShown = true
         coordinator.openWelcome { [weak self] result in

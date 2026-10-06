@@ -177,8 +177,21 @@ enum MainMenu {
         app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         app.addItem(withTitle: "History…", action: #selector(AppDelegate.showHistory(_:)), keyEquivalent: "y")
         app.addItem(.separator())
+        let services = NSMenu(title: "Services")
+        app.addItem(submenu(services, title: "Services"))
+        NSApp.servicesMenu = services
+        app.addItem(.separator())
+        app.addItem(withTitle: "Hide Annotator", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+            .keyEquivalentModifierMask = [.command, .option]
+        app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        app.addItem(.separator())
         app.addItem(withTitle: "Quit Annotator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         main.addItem(submenu(app, title: "Annotator"))
+
+        let file = NSMenu(title: "File")
+        file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        main.addItem(submenu(file, title: "File"))
 
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -190,10 +203,20 @@ enum MainMenu {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         main.addItem(submenu(edit, title: "Edit"))
 
+        // AppKit lists the open windows at the end of this one.
         let window = NSMenu(title: "Window")
-        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        window.addItem(.separator())
+        window.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         main.addItem(submenu(window, title: "Window"))
+        NSApp.windowsMenu = window
+
+        // AppKit adds the search field that finds any command by name.
+        let help = NSMenu(title: "Help")
+        help.addItem(withTitle: "Practice Review", action: #selector(AppDelegate.showPracticeReview(_:)), keyEquivalent: "")
+        main.addItem(submenu(help, title: "Help"))
+        NSApp.helpMenu = help
 
         return main
     }
