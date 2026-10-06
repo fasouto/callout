@@ -212,7 +212,7 @@ private struct MarginGuide: View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
                 ? "Press v and move to select, then press a key. Press i to type."
-                : "Select text, then press a key. Or just type to add text where the caret is.")
+                : "To add words, click where they go and type. To mark text, select it, then press a key.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +272,7 @@ extension MarkKind {
         switch self {
         case .delete: "Strike it out"
         case .replace: "Replace it"
-        case .insert: "Add text here"
+        case .insert: "Add text after it"
         case .comment: "Comment on it"
         case .expand: "Ask for more here"
         case .summarize: "Ask for it shorter"

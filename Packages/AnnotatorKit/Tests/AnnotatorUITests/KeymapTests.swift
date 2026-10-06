@@ -233,6 +233,22 @@ struct VimReviewTests {
         #expect(harness.textView.string.hasPrefix("We whjwill"))
     }
 
+    @Test func withoutVimKeysIOnASelectionOnlyPlacesTheCaret() throws {
+        // I is a command on a selection: the caret goes after it and the letter
+        // itself is not typed. At a caret, i is a letter like any other.
+        let harness = try makeHarness(vim: false)
+        harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
+        try type("i", in: harness)
+        #expect(harness.session.marks.isEmpty)
+        #expect(harness.textView.selectedRange() == NSRange(location: 16, length: 0))
+        try type("now", in: harness)
+        #expect(harness.session.marks.map(\.text) == ["now"])
+
+        harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
+        try type("is", in: harness)
+        #expect(harness.session.marks.contains { $0.text == "is" })
+    }
+
     // MARK: Insert mode
 
     private func insert(_ text: String, in harness: Harness) {
