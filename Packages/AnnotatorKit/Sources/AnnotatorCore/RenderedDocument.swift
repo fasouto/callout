@@ -1,7 +1,7 @@
 import Foundation
 
-public struct SegmentStyle: Equatable, Sendable {
-    public enum Block: Equatable, Sendable {
+public struct SegmentStyle: Hashable, Sendable {
+    public enum Block: Hashable, Sendable {
         case paragraph
         case heading(Int)
         case codeBlock(language: String?)

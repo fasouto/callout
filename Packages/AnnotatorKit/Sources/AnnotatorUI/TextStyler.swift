@@ -32,9 +32,13 @@ enum TextStyler {
         let result = NSMutableAttributedString()
 
         var tableCells: [TableCell] = []
+        // A page has thousands of segments and a handful of styles: each is worked out once.
+        var known: [SegmentStyle: [NSAttributedString.Key: Any]] = [:]
         for (index, segment) in document.segments.enumerated() {
             let start = result.length
-            result.append(NSAttributedString(string: segment.text, attributes: attributes(for: segment.style)))
+            let attributes = known[segment.style] ?? attributes(for: segment.style)
+            known[segment.style] = attributes
+            result.append(NSAttributedString(string: segment.text, attributes: attributes))
             decoratePanel(segment, at: start, in: result)
             if isTableLine(segment.style) {
                 tableCells.append(TableCell(segment: index, range: NSRange(location: start, length: result.length - start), style: segment.style, endsRow: segment.text == "\n"))
