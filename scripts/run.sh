@@ -4,21 +4,11 @@
 #     scripts/run.sh                      just the menu-bar icon
 #     scripts/run.sh docs/sample-plan.md  with a review window
 #
-# Signs with your Apple Development certificate when there is one, so macOS
-# keeps the Accessibility permission from one build to the next. Without one
-# it signs ad hoc, and every build has to be allowed again.
+# A development build, run from the build folder. scripts/install.sh puts a
+# release build in /Applications instead.
 set -e
 cd "$(dirname "$0")/.."
-
-identity=$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)
-if [ -n "$identity" ]; then
-  # The team is the certificate's organisational unit.
-  team=$(security find-certificate -c "$identity" -p | openssl x509 -noout -subject -nameopt multiline \
-    | sed -n 's/^ *organizationalUnitName *= *//p' | head -1)
-else
-  identity=-
-  team=
-fi
+. scripts/signing.sh
 
 xcodegen generate >/dev/null
 xcodebuild -project Annotator.xcodeproj -scheme Annotator -configuration Debug \

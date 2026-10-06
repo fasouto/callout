@@ -44,7 +44,7 @@ That builds the app, launches it and opens a sample plan for review. `scripts/ru
 
 `scripts/run.sh` signs with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
 
-To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, select your team under Signing & Capabilities, and run the `Annotator` scheme (`⌘R`). Change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` to a prefix you own.
+To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, select your team under Signing & Capabilities, and run the `Annotator` scheme (`⌘R`). To build it under your own name, change `me.fabiosouto` in `project.yml` (`bundleIdPrefix` and each `PRODUCT_BUNDLE_IDENTIFIER`) and in `AnnotatorPaths.bundleIdentifier` to a prefix you own.
 
 ## Using it
 

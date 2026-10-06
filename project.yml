@@ -1,8 +1,8 @@
 name: Annotator
 
 options:
-  # Placeholder: set this to a prefix you own before distributing a build.
-  bundleIdPrefix: dev.annotator
+  # The fabiosouto.me domain, reversed.
+  bundleIdPrefix: me.fabiosouto
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -72,12 +72,12 @@ targets:
               - public.utf8-plain-text
         # The Share extension hands files over with annotator://open?path=…
         CFBundleURLTypes:
-          - CFBundleURLName: dev.annotator.Annotator
+          - CFBundleURLName: me.fabiosouto.Annotator
             CFBundleURLSchemes:
               - annotator
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator
         PRODUCT_NAME: Annotator
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
@@ -94,7 +94,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: annotator
-        PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator.cli
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator.cli
         SKIP_INSTALL: YES
 
   # The Share menu entry in Finder and Preview. An extension must be sandboxed
@@ -126,5 +126,5 @@ targets:
         com.apple.security.files.user-selected.read-only: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.annotator.Annotator.Share
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator.Share
         PRODUCT_NAME: AnnotatorShare

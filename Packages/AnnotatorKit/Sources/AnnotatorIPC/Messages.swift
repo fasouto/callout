@@ -4,7 +4,7 @@ import Foundation
 /// Where the app and its command-line tool meet.
 public enum AnnotatorPaths {
     /// Placeholder until the project has its own identifier; must match `project.yml`.
-    public static let bundleIdentifier = "dev.annotator.Annotator"
+    public static let bundleIdentifier = "me.fabiosouto.Annotator"
 
     public static var supportDirectory: String {
         NSHomeDirectory() + "/Library/Application Support/Annotator"
