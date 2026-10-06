@@ -170,6 +170,17 @@ enum TextStyler {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = 5
             paragraph.paragraphSpacing = 5
+            // It starts where their text does: among list items, in from the numbers.
+            let beside = min(max(ghost.text.hasSuffix("\n") ? ghost.anchor : ghost.anchor - 1, 0), text.length - 1)
+            if beside >= 0, let neighbour = text.attribute(.paragraphStyle, at: beside, effectiveRange: nil) as? NSParagraphStyle {
+                switch text.attribute(.annotatorBlock, at: beside, effectiveRange: nil) as? BlockDecoration {
+                case .panel, .tableRow:
+                    break
+                default:
+                    paragraph.firstLineHeadIndent = neighbour.headIndent
+                    paragraph.headIndent = neighbour.headIndent
+                }
+            }
             attributes[.paragraphStyle] = paragraph
         }
         attributes[.foregroundColor] = NSColor.tertiaryLabelColor
