@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private lazy var history = HistoryWindow(store: store)
     private let welcomeFinish = WelcomeFinish()
+    private let dockPresence = DockPresence()
 
     override init() {
         // Without its database the app still reviews; it only forgets.
@@ -55,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSApp.mainMenu = MainMenu.make()
+        dockPresence.start()
         // "Annotate with Annotator" in other apps' Services menus.
         NSApp.servicesProvider = capture
         capture.startHotkey()
@@ -74,6 +76,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The first launch opens a practice review that teaches the marks.
             showWelcome()
         }
+    }
+
+    // The app's own menu bar, shown while a window is open.
+
+    @objc func showAbout(_ sender: Any?) {
+        AboutPanel.show()
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        settings.show()
+    }
+
+    @objc func showHistory(_ sender: Any?) {
+        history.show()
     }
 
     private func showWelcome() {

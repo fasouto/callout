@@ -67,25 +67,8 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
     }
 
     @objc private func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Annotator", .credits: Self.credits])
+        AboutPanel.show()
     }
-
-    /// What the About panel says under the version.
-    static let credits: NSAttributedString = {
-        let centred = NSMutableParagraphStyle()
-        centred.alignment = .center
-        centred.paragraphSpacing = 6
-        let text = NSMutableAttributedString(
-            string: "Mark up what Claude writes, the way a teacher marks an essay.\n",
-            attributes: [.font: Theme.serif(13, italic: true), .foregroundColor: NSColor.labelColor, .paragraphStyle: centred]
-        )
-        text.append(NSAttributedString(
-            string: "Free software under the GNU General Public License, version 3. Nothing you review leaves this Mac except what you send back.",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: centred]
-        ))
-        return text
-    }()
 
     // MARK: Files dropped on the icon
 
@@ -110,6 +93,31 @@ final class StatusItemController: NSObject, NSWindowDelegate, NSMenuDelegate {
         actions.openFile(url)
         return true
     }
+}
+
+/// The standard About panel, with a line on what the app is for.
+@MainActor
+enum AboutPanel {
+    static func show() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Annotator", .credits: credits])
+    }
+
+    /// What the panel says under the version.
+    static let credits: NSAttributedString = {
+        let centred = NSMutableParagraphStyle()
+        centred.alignment = .center
+        centred.paragraphSpacing = 6
+        let text = NSMutableAttributedString(
+            string: "Mark up what Claude writes, the way a teacher marks an essay.\n",
+            attributes: [.font: Theme.serif(13, italic: true), .foregroundColor: NSColor.labelColor, .paragraphStyle: centred]
+        )
+        text.append(NSAttributedString(
+            string: "Free software under the GNU General Public License, version 3. Nothing you review leaves this Mac except what you send back.",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: centred]
+        ))
+        return text
+    }()
 }
 
 /// The app icon in miniature: the tile in outline, with rows of text and the
@@ -162,7 +170,13 @@ enum MainMenu {
     static func make() -> NSMenu {
         let main = NSMenu()
 
+        // These reach the app delegate, which owns the windows.
         let app = NSMenu()
+        app.addItem(withTitle: "About Annotator", action: #selector(AppDelegate.showAbout(_:)), keyEquivalent: "")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        app.addItem(withTitle: "History…", action: #selector(AppDelegate.showHistory(_:)), keyEquivalent: "y")
+        app.addItem(.separator())
         app.addItem(withTitle: "Quit Annotator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         main.addItem(submenu(app, title: "Annotator"))
 
