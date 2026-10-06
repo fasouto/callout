@@ -40,9 +40,9 @@ brew install xcodegen
 scripts/run.sh docs/sample-plan.md
 ```
 
-That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. Annotator has no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it. While a window is open it also has a Dock icon and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
+That builds the app, launches it and opens a sample plan for review. `scripts/run.sh docs/sample-cv.pdf` opens a sample PDF instead. To keep it, `scripts/install.sh` builds a release copy into `/Applications`, where the Claude Code plugin finds it. Annotator has no window of its own: it is an icon in the menu bar, a rounded square with lines of text and one struck out, until something is sent to it. While a window is open it also has a Dock icon and a place in the `⌘Tab` switcher, so the window can be switched to like any other.
 
-`scripts/run.sh` signs with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
+Both scripts sign with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
 
 To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, select your team under Signing & Capabilities, and run the `Annotator` scheme (`⌘R`). To build it under your own name, change `me.fabiosouto` in `project.yml` (`bundleIdPrefix` and each `PRODUCT_BUNDLE_IDENTIFIER`) and in `AnnotatorPaths.bundleIdentifier` to a prefix you own.
 
@@ -132,6 +132,8 @@ The plugin is in `plugin/`, and this repository is its marketplace:
 /plugin install annotator@annotator
 ```
 
+From a checkout, `claude plugin marketplace add /path/to/annotator` adds it by folder instead, and the plugin is then read straight from `plugin/`.
+
 It needs Annotator.app in `/Applications` or `~/Applications`. To use a copy elsewhere, set `ANNOTATOR_CLI` to the path of the `annotator` tool before starting Claude Code. For development, load it straight from a checkout:
 
 ```sh
@@ -140,13 +142,13 @@ ANNOTATOR_CLI=$PWD/Packages/AnnotatorKit/.build/debug/annotator claude --plugin-
 
 **Plans.** When Claude finishes a plan, it opens in Annotator before the terminal dialog. *Send Feedback* (`⌘↩`) sends your marks back and Claude revises the plan. *Approve* (`⌘⇧↩`) approves the plan and asks Claude Code to switch to accept-edits mode. `Esc` closes the window and leaves Claude Code's own dialog. If the app is missing or quits, you get that dialog as well.
 
-Known limitation: Claude Code 2.1.287 ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
+Known limitation: Claude Code, up to 2.1.290 at least, ignores a hook's approval of a plan and shows its own dialog anyway ([issue 97656](https://github.com/anthropics/claude-code/issues/97656)), so after approving in Annotator you still press Enter in the terminal. Feedback is not affected. `python3 scripts/check-plan-hook.py` tells you how your Claude Code version behaves.
 
 When Claude revises a plan, the review shows what changed since the version you last saw: new text is tinted, removed text is struck in grey where it used to be. *Hide Changes* turns that off. Versions are kept per Claude Code session.
 
 ![A revised plan with its changes pointed out](docs/plan-changes.png)
 
-**Replies.** Type `/annotate-last` to correct Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude rewrites the reply from your marks. Only you can start it: Claude never opens a review of its own reply by itself.
+**Replies.** Type `/annotate-last` to go through Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude acts on your marks: it rewrites the reply where you corrected its wording, and where a comment is an instruction or a question it carries it out or answers it. Only you can start it: Claude never opens a review of its own reply by itself.
 
 **Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Annotator, as a PDF when it generated one. Your feedback goes back to Claude, which applies it to the source and regenerates the document. You can also just say "let me review it".
 
@@ -157,7 +159,7 @@ Without the plugin, `annotator install` adds the same hook to `~/.claude/setting
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    the icon generator and the plan-hook check
+scripts/                    run and install the app, draw the icon and banner, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
