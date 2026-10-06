@@ -265,14 +265,52 @@ struct MarkdownRendererTests {
         expectFaithfulMapping(document)
     }
 
-    @Test func tablesTooWideForColumnsAreShownAsWritten() {
+    @Test func tablesTooWideForColumnsShowEachRowCellByCell() throws {
         let wide = "a fairly long cell of text here"
-        let source = "Intro.\n\n| One | Two | Three |\n|---|---|---|\n| \(wide) | \(wide) | x |\n\nOutro.\n"
+        let source = "Intro.\n\n| One | Two | Three |\n|---|---|---|\n| \(wide) | second **bold** cell | x |\n| r2 | \(wide) | y |\n\nOutro.\n"
         let document = MarkdownRenderer.render(source)
-        #expect(document.text == "Intro.\n| One | Two | Three |\n|---|---|---|\n| \(wide) | \(wide) | x |\nOutro.")
+        // One line per cell, each after the name of its column. The header row is not shown on its own.
+        #expect(document.text == """
+        Intro.
+        One\t\(wide)
+        Two\tsecond bold cell
+        Three\tx
+        One\tr2
+        Two\t\(wide)
+        Three\ty
+        Outro.
+        """)
         expectFaithfulMapping(document)
-        #expect(document.segments.first { $0.text.hasPrefix("| One") }?.style.block == .table)
+
+        // The names are added text; the cells map to their own place in the source.
+        let names = document.segments.filter { $0.style.tableColumn == 0 }
+        #expect(names.map(\.text) == ["One", "Two", "Three", "One", "Two", "Three"])
+        #expect(names.allSatisfy { $0.source == nil })
+        #expect(sourceSpan(behind: wide, in: document) == span(of: wide, in: source))
+        #expect(sourceSpan(behind: wide, in: document, occurrence: 2) == span(of: wide, in: source, occurrence: 2))
+        #expect(sourceText(behind: "bold", in: document) == "**bold**")
         #expect(sourceSpan(behind: "Outro", in: document) == span(of: "Outro", in: source))
+
+        // A selection from a name into its cell takes only the cell.
+        let line = span(of: "Three\tx", in: document.text)
+        let cell = span(of: " x |", in: source)
+        #expect(document.sourceSpan(forDisplayed: line.start..<line.end) == TextSpan(cell.start + 1, cell.start + 2))
+
+        // The last cell of each row says so, for the line drawn under the row.
+        let ends = document.segments.compactMap { segment -> Bool? in
+            guard segment.style.tableColumn == 1, case .tableField(let endsRow) = segment.style.block else { return nil }
+            return endsRow
+        }
+        #expect(ends.contains(true) && ends.contains(false))
+    }
+
+    @Test func tablesWithNothingUnderTheirNamesAreShownAsWritten() {
+        let wide = "a fairly long name for a column"
+        let source = "| \(wide) | \(wide) | x |\n|---|---|---|\n"
+        let document = MarkdownRenderer.render(source)
+        #expect(document.text == "| \(wide) | \(wide) | x |\n|---|---|---|")
+        #expect(document.segments.first?.style.block == .table)
+        expectFaithfulMapping(document)
     }
 
     @Test func thematicBreakAndImage() {

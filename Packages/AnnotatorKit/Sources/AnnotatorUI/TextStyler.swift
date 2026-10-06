@@ -36,7 +36,7 @@ enum TextStyler {
             let start = result.length
             result.append(NSAttributedString(string: segment.text, attributes: attributes(for: segment.style)))
             decoratePanel(segment, at: start, in: result)
-            if case .tableRow = segment.style.block {
+            if isTableLine(segment.style) {
                 tableCells.append(TableCell(segment: index, range: NSRange(location: start, length: result.length - start), style: segment.style, endsRow: segment.text == "\n"))
             }
         }
@@ -188,8 +188,19 @@ enum TextStyler {
             if style.quoteDepth > 0 { attributes[.annotatorBlock] = BlockDecoration.quote(depth: style.quoteDepth, trim: 0) }
         case .codeBlock, .table, .html, .tableRow:
             break
+        case .tableField:
+            // The column's name, before its cell.
+            if style.tableColumn == 0 { attributes[.foregroundColor] = NSColor.secondaryLabelColor }
         }
         return attributes
+    }
+
+    /// A line of a table that is laid out in columns: a row, or one cell of a wide table.
+    private static func isTableLine(_ style: SegmentStyle) -> Bool {
+        switch style.block {
+        case .tableRow, .tableField: true
+        default: false
+        }
     }
 
     private static func isPanel(_ style: SegmentStyle) -> Bool {
@@ -207,7 +218,9 @@ enum TextStyler {
             return Theme.serif(size, weight: level <= 2 ? .bold : .semibold, italic: style.italic)
         case .codeBlock, .table, .html:
             return Theme.mono(13)
-        case .tableRow:
+        case .tableField where style.tableColumn == 0:
+            return .systemFont(ofSize: 12, weight: .medium)
+        case .tableRow, .tableField:
             let size = Theme.bodySize - 1
             if style.code { return Theme.mono(size - 2.5, weight: style.bold ? .semibold : .regular) }
             return Theme.serif(size, weight: style.bold ? .semibold : .regular, italic: style.italic)
@@ -260,7 +273,7 @@ enum TextStyler {
         case .thematicBreak:
             paragraph.paragraphSpacing = 12
             paragraph.paragraphSpacingBefore = 4
-        case .paragraph, .tableRow:
+        case .paragraph, .tableRow, .tableField:
             // A table row gets its columns once the whole table is known.
             break
         }
@@ -278,6 +291,8 @@ enum TextStyler {
 
     private static let columnGap: CGFloat = 28
     private static let rowPadding: CGFloat = 7
+    /// Between the cells of one row of a wide table.
+    private static let fieldPadding: CGFloat = 1.5
 
     /// Gives each table its columns: a tab stop where each column starts, as wide
     /// as its widest cell, with the last column wrapping under its own start.
@@ -319,22 +334,30 @@ enum TextStyler {
             var starts: [CGFloat] = [indent]
             for width in widths.dropLast() { starts.append((starts.last ?? indent) + width + columnGap) }
 
+            // In a wide table a row is several lines, one per cell: they sit close
+            // together, and only the last has the row's padding and line under it.
+            var startsRow = true
             for (index, row) in rows.enumerated() {
                 guard let start = row.first?.range.location, let end = row.last.map({ NSMaxRange($0.range) }) else { continue }
                 let isLast = index == rows.count - 1
                 let isHeader: Bool = { if case .tableRow(let header) = row[0].style.block { return header } else { return false } }()
+                let endsRow: Bool = { if case .tableField(let endsRow) = row[0].style.block { return endsRow } else { return true } }()
 
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.firstLineHeadIndent = indent
                 paragraph.headIndent = starts.last ?? indent
                 paragraph.tabStops = starts.dropFirst().map { NSTextTab(textAlignment: .left, location: $0) }
                 paragraph.lineSpacing = 3
-                paragraph.paragraphSpacingBefore = rowPadding + (index == 0 ? 4 : 0)
-                paragraph.paragraphSpacing = rowPadding + (isLast ? 12 : 0)
+                paragraph.lineBreakStrategy = .standard
+                paragraph.paragraphSpacingBefore = (startsRow ? rowPadding : fieldPadding) + (index == 0 ? 4 : 0)
+                paragraph.paragraphSpacing = (endsRow ? rowPadding : fieldPadding) + (isLast ? 12 : 0)
 
                 let range = NSRange(location: start, length: end - start)
                 result.addAttribute(.paragraphStyle, value: paragraph, range: range)
-                result.addAttribute(.annotatorBlock, value: BlockDecoration.tableRow(header: isHeader, last: isLast, indent: indent), range: range)
+                if endsRow {
+                    result.addAttribute(.annotatorBlock, value: BlockDecoration.tableRow(header: isHeader, last: isLast, indent: indent), range: range)
+                }
+                startsRow = endsRow
             }
         }
     }

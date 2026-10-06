@@ -5,10 +5,13 @@ public struct SegmentStyle: Equatable, Sendable {
         case paragraph
         case heading(Int)
         case codeBlock(language: String?)
-        /// A table shown as it is written, because it is too wide to lay out.
+        /// A table shown as it is written, because its cells span rows or columns.
         case table
         /// One row of a table laid out in columns.
         case tableRow(header: Bool)
+        /// One cell of a table too wide for columns: on a line of its own, after
+        /// the name of its column. `endsRow` is true for the last cell of its row.
+        case tableField(endsRow: Bool)
         case html
         case thematicBreak
     }
@@ -24,6 +27,7 @@ public struct SegmentStyle: Equatable, Sendable {
     /// A bullet, number or task box the renderer added.
     public var isListMarker = false
     /// The column a table cell's text belongs to. Nil for the separators between cells.
+    /// In a `tableField` line, 0 is the column's name and 1 the cell.
     public var tableColumn: Int?
 
     public init() {}

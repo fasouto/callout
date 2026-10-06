@@ -84,10 +84,10 @@ private struct Builder {
             added("———", style)
             lineBreak(style)
         case let table as Table:
-            if Self.fitsInColumns(table) {
-                rows(of: table, context, limit)
-            } else {
-                raw(node, span, context.style(.table))
+            switch Self.layout(for: table) {
+            case .columns: rows(of: table, context, limit)
+            case .fields: fields(of: table, context, limit)
+            case .source: raw(node, span, context.style(.table))
             }
         default:
             raw(node, span, context.style(.html))
@@ -97,20 +97,30 @@ private struct Builder {
 
     // MARK: - Tables
 
+    private enum TableLayout {
+        case columns, fields, source
+    }
+
     /// Columns are laid out with tab stops, so only the last one can wrap. A
-    /// table fits when the columns before the last are short enough to leave it room.
-    private static func fitsInColumns(_ table: Table) -> Bool {
-        let rows = [Array(table.head.cells)] + table.body.rows.map { Array($0.cells) }
+    /// table goes in columns when those before the last are short enough to
+    /// leave it room. A wider one shows each row as its cells one under the
+    /// other, each after the name of its column. Cells that span rows or
+    /// columns fit neither, and the table is shown as it is written.
+    private static func layout(for table: Table) -> TableLayout {
+        let body = Array(table.body.rows).map { Array($0.cells) }
+        let rows = [Array(table.head.cells)] + body
         let columns = rows.map(\.count).max() ?? 0
-        guard columns > 0 else { return false }
+        guard columns > 0 else { return .source }
         var widths = [Int](repeating: 0, count: columns)
         for row in rows {
             for (index, cell) in row.enumerated() {
-                guard cell.colspan == 1, cell.rowspan == 1 else { return false }
+                guard cell.colspan == 1, cell.rowspan == 1 else { return .source }
                 widths[index] = max(widths[index], cell.plainText.count)
             }
         }
-        return widths.dropLast().reduce(0, +) + 3 * (columns - 1) <= 46
+        if widths.dropLast().reduce(0, +) + 3 * (columns - 1) <= 46 { return .columns }
+        // With no rows there would be nothing to show under the names.
+        return body.isEmpty ? .source : .fields
     }
 
     /// One line per row, with a tab between cells.
@@ -135,6 +145,32 @@ private struct Builder {
             }
             style.tableColumn = nil
             lineBreak(style)
+        }
+    }
+
+    /// One line per cell: the name of its column, a tab, the cell. The header
+    /// row is not shown on its own. Its names are added text before every cell,
+    /// so a selection that runs over a name takes only the cells.
+    private mutating func fields(of table: Table, _ context: Context, _ limit: Int) {
+        let names = Array(table.head.cells).map(\.plainText)
+        for row in table.body.rows {
+            if let span = lines.span(of: row.range), span.start > cursor { cursor = span.start }
+            let cells = Array(row.cells)
+            for (index, cell) in cells.enumerated() {
+                var style = context.style(.tableField(endsRow: index == cells.count - 1))
+                style.tableColumn = 0
+                if index < names.count, !names[index].isEmpty { added(names[index], style) }
+                style.tableColumn = nil
+                added("\t", style)
+                style.tableColumn = 1
+                // A cell's text is looked for inside the cell, so equal cells do not swap places.
+                let cellSpan = lines.span(of: cell.range)
+                if let cellSpan, cellSpan.start > cursor { cursor = cellSpan.start }
+                inlines(of: cell, style, min(cellSpan?.end ?? limit, limit))
+                if let cellSpan { cursor = max(cursor, min(cellSpan.end, limit)) }
+                style.tableColumn = nil
+                lineBreak(style)
+            }
         }
     }
 
