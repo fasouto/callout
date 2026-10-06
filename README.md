@@ -161,7 +161,7 @@ Without the plugin, `annotator install` adds the same hook to `~/.claude/setting
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    run and install the app, draw the icon and banner, check the plan hook
+scripts/                    run and install the app, draw the icon, banner and screenshots, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
