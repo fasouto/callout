@@ -290,6 +290,7 @@ enum TextStyler {
     /// the text: numbers line up on their points, and every line of an item,
     /// the first included, starts at the same edge.
     private static func hang(markerIn range: NSRange, in result: NSMutableAttributedString, widths: inout [String: CGFloat]) {
+        guard range.length > 0 else { return }
         let marker = result.attributedSubstring(from: range)
         let width = widths[marker.string] ?? ceil(marker.size().width)
         widths[marker.string] = width
