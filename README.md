@@ -132,7 +132,7 @@ The other exit statuses are for what the caller got wrong: 64 for a command line
 
 In the app bundle the tool is at `Annotator.app/Contents/Helpers/annotator`.
 
-**With Claude Code's sandbox on,** shell commands may not use Unix sockets, so `/annotate-last` and document reviews cannot reach the app: the tool says so and exits with 77. (Plan reviews are not affected: hooks run outside the sandbox.) To let the tool through while it stays sandboxed, allow its socket in `~/.claude/settings.json`, with your own home folder in the path:
+**With Claude Code's sandbox on,** shell commands may not use Unix sockets, so `/annotate-last` and document reviews cannot reach the app: the tool says so and exits with 77. (Plan reviews are not affected: hooks run outside the sandbox.) To let the tool through while it stays sandboxed, run `scripts/allow-sandbox.py` once per Mac. It adds the tool's socket to your own Claude Code settings, which cover every project, and keeps the file as it was beside it; `--remove` takes the entry out again. This is what it writes to `~/.claude/settings.json`, with your home folder in the path:
 
 ```json
 {
@@ -180,7 +180,7 @@ Without the plugin, `annotator install` adds the same hook to `~/.claude/setting
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    run and install the app, draw the icon, banner and screenshots, check the plan hook
+scripts/                    run and install the app, allow it in the sandbox, draw the icon, banner and screenshots, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/AnnotatorKit/      Swift package with everything else
