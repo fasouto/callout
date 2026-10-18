@@ -16,6 +16,8 @@ public enum SettingsInstaller {
         case unreadable(String)
         /// The edit did not produce what was intended; nothing was written.
         case editFailed
+        /// The file is read-only, so it is left alone.
+        case readOnly(String)
     }
 
     public static func defaultSettingsPath() -> String {
@@ -38,7 +40,8 @@ public enum SettingsInstaller {
 
     // MARK: - Install
 
-    public static func install(toolPath: String, settingsPath: String, now: Date = Date()) throws -> Outcome {
+    public static func install(toolPath: String, settingsPath given: String, now: Date = Date()) throws -> Outcome {
+        let settingsPath = resolved(given)
         let manager = FileManager.default
         guard manager.fileExists(atPath: settingsPath) else {
             let fresh: [String: Any] = ["hooks": ["PermissionRequest": [entry(toolPath: toolPath)]]]
@@ -52,6 +55,7 @@ public enum SettingsInstaller {
         let text = try read(settingsPath)
         let settings = try parse(text, path: settingsPath)
         if !ownEntries(in: settings).isEmpty { return .alreadyInstalled }
+        try requireWritable(settingsPath)
 
         var expected = settings
         var hooks = expected["hooks"] as? [String: Any] ?? [:]
@@ -95,12 +99,14 @@ public enum SettingsInstaller {
 
     // MARK: - Uninstall
 
-    public static func uninstall(settingsPath: String, now: Date = Date()) throws -> Outcome {
+    public static func uninstall(settingsPath given: String, now: Date = Date()) throws -> Outcome {
+        let settingsPath = resolved(given)
         guard FileManager.default.fileExists(atPath: settingsPath) else { return .notInstalled }
         let text = try read(settingsPath)
         let settings = try parse(text, path: settingsPath)
         let own = ownEntries(in: settings)
         guard !own.isEmpty else { return .notInstalled }
+        try requireWritable(settingsPath)
 
         var expected = settings
         var hooks = expected["hooks"] as? [String: Any] ?? [:]
@@ -147,6 +153,17 @@ public enum SettingsInstaller {
     }
 
     // MARK: - Files
+
+    /// The file itself: settings kept in a dotfiles folder and linked into
+    /// place are edited where they live, and the link stays a link.
+    private static func resolved(_ path: String) -> String {
+        URL(fileURLWithPath: path).absoluteURL.resolvingSymlinksInPath().path
+    }
+
+    /// A file the user made read-only is theirs to unlock.
+    private static func requireWritable(_ path: String) throws {
+        guard FileManager.default.isWritableFile(atPath: path) else { throw Failure.readOnly(path) }
+    }
 
     private static func read(_ path: String) throws -> String {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { throw Failure.unreadable(path) }

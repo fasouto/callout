@@ -68,6 +68,8 @@ struct InstallCommand {
             return ExitCode.success
         } catch SettingsInstaller.Failure.unreadable {
             environment.err("annotator: \(settingsPath) is not valid JSON, so it was left untouched.")
+        } catch SettingsInstaller.Failure.readOnly {
+            environment.err("annotator: \(settingsPath) is read-only, so it was left untouched.")
         } catch {
             environment.err("annotator: \(settingsPath) could not be edited safely, so it was left untouched.")
         }

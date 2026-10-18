@@ -246,6 +246,36 @@ struct SettingsInstallerTests {
         }
     }
 
+    @Test func settingsLinkedFromElsewhereAreEditedWhereTheyLive() throws {
+        // Settings kept in a dotfiles folder, with a link in ~/.claude.
+        let real = try settingsFile(existing)
+        let link = (real as NSString).deletingLastPathComponent + "/linked.json"
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: real)
+
+        guard case .installed(let backup?) = try SettingsInstaller.install(toolPath: tool, settingsPath: link, now: date) else {
+            Issue.record("expected an install with a backup")
+            return
+        }
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == real)
+        #expect(try planHooks(real).count == 1)
+        #expect(try read(backup) == existing)
+        #expect(try FileManager.default.attributesOfItem(atPath: real)[.posixPermissions] as? Int == 0o644)
+
+        _ = try SettingsInstaller.uninstall(settingsPath: link, now: date)
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == real)
+        #expect(try read(real) == existing)
+    }
+
+    @Test func aReadOnlyFileIsLeftAlone() throws {
+        let path = try settingsFile(existing)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: path)
+        #expect(throws: SettingsInstaller.Failure.readOnly(path)) {
+            try SettingsInstaller.install(toolPath: tool, settingsPath: path, now: date)
+        }
+        #expect(try read(path) == existing)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: (path as NSString).deletingLastPathComponent) == ["settings.json"])
+    }
+
     @Test func createsTheFileWhenThereIsNone() throws {
         let path = try settingsFile(nil)
         #expect(try SettingsInstaller.install(toolPath: tool, settingsPath: path, now: date) == .installed(backup: nil))
