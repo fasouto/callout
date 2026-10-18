@@ -66,6 +66,8 @@ struct CaptureTests {
 
         #expect(CaptureController.request(forFile: try file("photo.png", "x"), origin: .fileDrop) == nil)
         #expect(CaptureController.request(forFile: URL(fileURLWithPath: "\(folder)/missing.md"), origin: .fileDrop) == nil)
+        // An empty file would open as an empty page.
+        #expect(CaptureController.request(forFile: try file("empty.md", " \n\n"), origin: .fileDrop) == nil)
         #expect(!CaptureController.canOpen(URL(fileURLWithPath: "/tmp/a.docx")))
         #expect(CaptureController.canOpen(URL(fileURLWithPath: "/tmp/A.PDF")))
     }

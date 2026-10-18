@@ -56,7 +56,7 @@ public enum ExitCode {
     public static let failure: Int32 = 1
     /// The command line could not be understood.
     public static let usage: Int32 = 64
-    /// What was to be reviewed could not be read.
+    /// What was to be reviewed could not be read, or holds nothing.
     public static let noInput: Int32 = 66
     /// The app is there, but this process may not talk to it.
     public static let notPermitted: Int32 = 77
@@ -86,8 +86,8 @@ public enum AnnotatorCLI {
     A file ending in .pdf is opened as a PDF; any other file is read as text.
     If the app cannot be reached, the tool says so and exits successfully.
     Exit status: 0 done, or no review; 1 no finished review to print, or
-    settings left untouched; 64 the command line is wrong; 66 the file cannot be read;
-    77 a sandbox keeps the tool from reaching the app.
+    settings left untouched; 64 the command line is wrong; 66 the file cannot be read
+    or is empty; 77 a sandbox keeps the tool from reaching the app.
     """
 
     public static func run(_ environment: CLIEnvironment) -> Int32 {

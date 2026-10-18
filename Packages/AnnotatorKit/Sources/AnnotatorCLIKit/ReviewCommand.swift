@@ -69,8 +69,12 @@ struct ReviewCommand {
 
         if let file, file != "-" {
             let url = URL(fileURLWithPath: file, relativeTo: URL(fileURLWithPath: environment.currentDirectory)).standardizedFileURL
+            var isFolder: ObjCBool = false
             guard FileManager.default.isReadableFile(atPath: url.path) else {
                 throw InputError("\(file) does not exist or cannot be read.")
+            }
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), !isFolder.boolValue else {
+                throw InputError("\(file) is a folder. Give a file to review.")
             }
             metadata.title = title ?? url.lastPathComponent
             if url.pathExtension.lowercased() == "pdf" {
@@ -79,6 +83,7 @@ struct ReviewCommand {
                 guard let text = try? String(contentsOf: url, encoding: .utf8) else {
                     throw InputError("\(file) is not UTF-8 text.")
                 }
+                guard !text.isBlank else { throw InputError("\(file) is empty, so there is nothing to review.") }
                 metadata.filePath = url.path
                 let isMarkdown = ["md", "markdown", "mdown"].contains(url.pathExtension.lowercased())
                 content = .text(text, format: format ?? (isMarkdown ? .markdown : .plain))
@@ -90,6 +95,7 @@ struct ReviewCommand {
             guard let text = String(data: environment.readStandardInput(), encoding: .utf8) else {
                 throw InputError("Standard input is not UTF-8 text.")
             }
+            guard !text.isBlank else { throw InputError("Standard input is empty, so there is nothing to review.") }
             content = .text(text, format: format ?? .markdown)
         }
 
@@ -250,4 +256,9 @@ struct ResultCommand {
         }
         return ExitCode.nothingFound
     }
+}
+
+private extension String {
+    /// Nothing but spaces and line breaks: a review of it would be an empty page.
+    var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }

@@ -91,7 +91,8 @@ final class CaptureController: NSObject {
     func review(file url: URL, origin: ReviewOrigin) {
         guard let request = Self.request(forFile: url, origin: origin) else {
             let name = url.lastPathComponent
-            let message = Self.canOpen(url) ? "\(name) could not be read" : "Annotator opens .md, .txt and .pdf files"
+            let message = !Self.canOpen(url) ? "Annotator opens .md, .txt and .pdf files"
+                : Self.isBlankText(url) ? "\(name) is empty" : "\(name) could not be read"
             Toast.show(message, symbol: "doc.questionmark")
             return
         }
@@ -105,11 +106,17 @@ final class CaptureController: NSObject {
             guard FileManager.default.isReadableFile(atPath: url.path) else { return nil }
             return ReviewRequest(content: .file(path: url.path), origin: origin, metadata: metadata, reply: .clipboard, modes: [.feedback])
         }
-        guard textExtensions.contains(type), let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        guard textExtensions.contains(type), let text = try? String(contentsOf: url, encoding: .utf8),
+              text.nilIfBlank != nil else { return nil }
         return ReviewRequest(
             content: .text(text, format: type.hasPrefix("m") ? .markdown : .plain),
             origin: origin, metadata: metadata, reply: .clipboard, modes: [.feedback, .applyEdits]
         )
+    }
+
+    /// A text file that reads, but holds nothing a review could show.
+    private static func isBlankText(_ url: URL) -> Bool {
+        (try? String(contentsOf: url, encoding: .utf8)).map { $0.nilIfBlank == nil } ?? false
     }
 
     /// Handles `annotator://open?path=…`, which the Share extension sends, and plain file URLs.

@@ -288,6 +288,28 @@ struct ReviewCommandTests {
         #expect(run.out.get().isEmpty)
     }
 
+    @Test func nothingToReviewOpensNoWindow() throws {
+        let run = Run()
+        try run.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        let empty = try temporaryFile("empty.md", "")
+        let blank = try temporaryFile("blank.txt", "  \n\n\t\n")
+        let folder = (empty as NSString).deletingLastPathComponent
+
+        #expect(run.annotator("review", empty) == ExitCode.noInput)
+        #expect(run.annotator("review", blank) == ExitCode.noInput)
+        #expect(run.annotator("review", "-", stdin: "") == ExitCode.noInput)
+        #expect(run.annotator("review", "-", stdin: " \n") == ExitCode.noInput)
+        #expect(run.annotator("review", folder) == ExitCode.noInput)
+        #expect(run.received.get().isEmpty)
+        #expect(run.err.get() == [
+            "annotator: \(empty) is empty, so there is nothing to review.",
+            "annotator: \(blank) is empty, so there is nothing to review.",
+            "annotator: Standard input is empty, so there is nothing to review.",
+            "annotator: Standard input is empty, so there is nothing to review.",
+            "annotator: \(folder) is a folder. Give a file to review.",
+        ])
+    }
+
     // MARK: Usage errors
 
     @Test func badInvocationsExplainThemselves() {
