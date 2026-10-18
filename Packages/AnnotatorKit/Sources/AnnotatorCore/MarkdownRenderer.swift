@@ -9,14 +9,85 @@ import Markdown
 /// hint is wrong.
 public enum MarkdownRenderer {
     public static func render(_ source: String, format: TextFormat = .markdown) -> RenderedDocument {
-        guard format == .markdown else { return RenderedDocument(plain: source) }
-        var builder = Builder(source: source)
-        // The parser would otherwise turn quotes curly and `--`, `...` into single
-        // characters. Text that no longer matches the source maps only as a
-        // whole, and a word selected in it would stand for its whole paragraph.
-        builder.blocks(of: Document(parsing: source, options: [.disableSmartOpts]), Context())
-        builder.dropTrailingLineBreak()
-        return RenderedDocument(source: source, segments: builder.segments, containers: builder.containers)
+        // Text nested deeper than any page needs is shown as written, so it still opens.
+        guard format == .markdown, nestingBound(of: source) <= maximumNesting else { return RenderedDocument(plain: source) }
+        return onLargeStack {
+            var builder = Builder(source: source)
+            // The parser would otherwise turn quotes curly and `--`, `...` into single
+            // characters. Text that no longer matches the source maps only as a
+            // whole, and a word selected in it would stand for its whole paragraph.
+            builder.blocks(of: Document(parsing: source, options: [.disableSmartOpts]), Context())
+            builder.dropTrailingLineBreak()
+            return RenderedDocument(source: source, segments: builder.segments, containers: builder.containers)
+        }
+    }
+
+    /// Well within what `onLargeStack` holds, and far beyond anything written by hand.
+    static let maximumNesting = 10_000
+
+    /// At least as deep as the source can nest: the quotation marks, list
+    /// markers and indentation that open a line, and the emphasis and link
+    /// delimiters of a paragraph.
+    static func nestingBound(of source: String) -> Int {
+        var deepest = 0
+        var delimiters = 0
+        var lineDepth = 0
+        var columns = 0
+        var atLineStart = true
+        var lineIsBlank = true
+        for byte in source.utf8 {
+            switch byte {
+            case UInt8(ascii: "\n"), UInt8(ascii: "\r"):
+                if lineIsBlank { delimiters = 0 }
+                deepest = max(deepest, lineDepth + columns / 2)
+                lineDepth = 0
+                columns = 0
+                atLineStart = true
+                lineIsBlank = true
+                continue
+            case UInt8(ascii: " ") where atLineStart:
+                columns += 1
+                continue
+            case UInt8(ascii: "\t") where atLineStart:
+                columns += 4
+                continue
+            case UInt8(ascii: ">") where atLineStart, UInt8(ascii: "-") where atLineStart, UInt8(ascii: "+") where atLineStart,
+                 UInt8(ascii: ".") where atLineStart, UInt8(ascii: ")") where atLineStart:
+                lineDepth += 1
+            case UInt8(ascii: "0")...UInt8(ascii: "9") where atLineStart:
+                // The number of an ordered list's marker.
+                break
+            case UInt8(ascii: "*"), UInt8(ascii: "_"), UInt8(ascii: "~"), UInt8(ascii: "["):
+                if atLineStart { lineDepth += 1 }
+                delimiters += 1
+                deepest = max(deepest, delimiters)
+            case UInt8(ascii: " "), UInt8(ascii: "\t"):
+                continue
+            default:
+                atLineStart = false
+            }
+            lineIsBlank = false
+        }
+        return max(deepest, lineDepth + columns / 2)
+    }
+
+    /// Parsing and walking the tree recurse once per level of nesting. The main
+    /// thread's stack runs out within a few thousand levels, which a file can
+    /// hold; this one has room for many more.
+    private static func onLargeStack(_ work: @escaping @Sendable () -> RenderedDocument) -> RenderedDocument {
+        final class Box: @unchecked Sendable { var value: RenderedDocument? }
+        let box = Box()
+        let done = DispatchSemaphore(value: 0)
+        let thread = Thread {
+            box.value = work()
+            done.signal()
+        }
+        thread.stackSize = 256 << 20
+        // The caller waits for it, so it runs at the caller's urgency.
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        done.wait()
+        return box.value!
     }
 }
 

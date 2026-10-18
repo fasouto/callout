@@ -361,6 +361,34 @@ struct MarkdownRendererTests {
         #expect(MarkdownRenderer.render("", format: .plain).segments.isEmpty)
     }
 
+    @Test func textNestedBeyondAnyPageIsShownAsWritten() {
+        let deep = String(repeating: "> ", count: MarkdownRenderer.maximumNesting + 1) + "deep"
+        #expect(MarkdownRenderer.render(deep).text == deep)
+        // Deep, but within the limit: still set as quotations.
+        #expect(MarkdownRenderer.render(String(repeating: "> ", count: 3000) + "deep").text == "deep")
+    }
+
+    @Test func everydayTextIsFarFromTheNestingLimit() {
+        let reply = """
+        ## What changed
+
+        1. The `store_path` and `read_timeout_ms` settings moved to **config.toml**.
+           - Old names still work, with a warning.
+             - Remove them in 3.0.
+        2. > Quoted from the issue: *it's slow* when `max_retries` is high.
+
+        ```python
+        def snake_case_function(first_argument, *args, **kwargs):
+            return [item for item in args if item]
+        ```
+
+        | Key | Default |
+        |---|---|
+        | `log_level` | `info` |
+        """
+        #expect(MarkdownRenderer.nestingBound(of: reply) < 40)
+    }
+
     // MARK: Carets and drawing
 
     @Test func caretMapsToTheEndOfTheTextBeforeIt() {
