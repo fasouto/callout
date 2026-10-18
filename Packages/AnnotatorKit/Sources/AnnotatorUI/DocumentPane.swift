@@ -59,9 +59,14 @@ struct DocumentPane: NSViewRepresentable {
         private var shownRevision = -1
         private var shownSelection: UUID?
         private var shownLayout: DisplayLayout?
+        private var styledPage: StyledPage?
         private var shownFocusToken = 0
         private var isRestyling = false
         private var laidOutWidth: CGFloat = -1
+        /// Where the text still waits to be laid out at this width; nil once all of it is.
+        private var unlaidFrom: Int?
+        /// Bumped whenever layout starts over, so a part left from before is not laid out.
+        private var layoutRound = 0
         private lazy var toolbar = SelectionToolbar(
             perform: { [weak self] kind in self?.perform(kind) },
             pickSnippet: { [weak self] in self?.pickSnippet() }
@@ -118,7 +123,8 @@ struct DocumentPane: NSViewRepresentable {
             let host = NSHostingView(rootView: MarginNotes(session: session, model: margin))
             host.sizingOptions = []
             marginHost = host
-            margin.onContentHeightChange = { [weak self] in self?.layoutPage() }
+            // Notes growing or shrinking change the page's height, not its text.
+            margin.onContentHeightChange = { [weak self] in self?.layoutPage(changed: []) }
 
             let page = PageView()
             self.page = page
@@ -153,20 +159,32 @@ struct DocumentPane: NSViewRepresentable {
             // The caret is an offset into the text shown so far, ghosts of the old marks included.
             let caret = (shownLayout ?? session.layout).displayedOffset(forView: textView.selectedRange().location)
             shownLayout = session.layout
-            let styled = TextStyler.attributedString(
-                layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID,
-                added: session.shownChanges?.added ?? []
-            )
+            guard let storage = textView.textStorage else { return }
+            let added = session.shownChanges?.added ?? []
             isRestyling = true
-            textView.textStorage?.setAttributedString(styled)
+            // Only the parts of the page that changed are set again: a whole page
+            // costs seconds on a long document, and the text view's layout with it.
+            let edits = styledPage?.update(to: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added)
+            if let edits {
+                storage.beginEditing()
+                for edit in edits { storage.replaceCharacters(in: edit.range, with: edit.text) }
+                storage.endEditing()
+            } else {
+                let made = StyledPage(layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added)
+                styledPage = made
+                storage.setAttributedString(made.text)
+            }
             // Marks add and remove ghost text, so the caret is kept by its place in the document.
-            let location = min(session.layout.viewOffset(forDisplayed: caret), styled.length)
+            let location = min(session.layout.viewOffset(forDisplayed: caret), storage.length)
             textView.setSelectedRange(NSRange(location: location, length: 0))
             isRestyling = false
 
-            layoutPage()
-            scrollView.contentView.scroll(to: origin)
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            // A note's words change the margin only; the page and where it is stay as they were.
+            if edits?.isEmpty != true {
+                layoutPage(changed: edits.map(Self.changedRanges))
+                scrollView.contentView.scroll(to: origin)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
 
             if session.selectedMarkID != shownSelection {
                 shownSelection = session.selectedMarkID
@@ -181,10 +199,23 @@ struct DocumentPane: NSViewRepresentable {
             textView.window?.makeFirstResponder(textView)
         }
 
+        /// Where the edits are once made, in the page as it is now.
+        private static func changedRanges(_ edits: [StyledPage.Edit]) -> [NSRange] {
+            var shift = 0
+            return edits.sorted { $0.range.location < $1.range.location }.map { edit in
+                defer { shift += edit.text.length - edit.range.length }
+                return NSRange(location: edit.range.location + shift, length: edit.text.length)
+            }
+        }
+
         /// Places the text column and the margin, and tells the margin where each note goes.
-        private func layoutPage() {
+        /// - Parameter changed: the parts of the page that changed since it was last
+        ///   laid out at this width; nil to lay out all of it.
+        private func layoutPage(changed: [NSRange]? = nil) {
             let clip = scrollView.contentView.bounds.size
             guard clip.width > 0 else { return }
+            // A new width lays every line out anew.
+            let ensuring = clip.width == laidOutWidth ? changed : nil
             laidOutWidth = clip.width
 
             // The margin gives way first, then the measure.
@@ -195,7 +226,7 @@ struct DocumentPane: NSViewRepresentable {
             let left = max(side, ((clip.width - measure - Theme.gutter - marginWidth) / 2).rounded())
 
             textView.setFrameSize(NSSize(width: measure, height: max(textView.frame.height, 10)))
-            let textHeight = textView.layoutHeight()
+            let textHeight = ensuring.map { textView.layoutHeight(ensuring: $0) } ?? layOutFromTheTop()
             textView.frame = NSRect(x: left, y: Theme.pageTop, width: measure, height: textHeight)
 
             updateAnchors()
@@ -206,6 +237,52 @@ struct DocumentPane: NSViewRepresentable {
             )
             marginHost.frame = NSRect(x: left + measure + Theme.gutter, y: 0, width: marginWidth, height: height)
             page.frame = NSRect(x: 0, y: 0, width: clip.width, height: height)
+        }
+
+        /// A long text opens at once: its start is laid out now and the rest a
+        /// part at a time once the page is up, between whatever else happens.
+        /// Until then its height is the layout manager's estimate.
+        private static let laidOutAtOnce = 50_000
+        /// Laid out in pieces of this many characters, for this long at a time:
+        /// short enough that typing or scrolling meanwhile does not stutter.
+        private static let layoutPiece = 4_000
+        private static let layoutTurn = Duration.milliseconds(12)
+
+        private func layOutFromTheTop() -> CGFloat {
+            layoutRound += 1
+            let length = textView.textStorage?.length ?? 0
+            guard length > Self.laidOutAtOnce else {
+                unlaidFrom = nil
+                return textView.layoutHeight()
+            }
+            unlaidFrom = Self.laidOutAtOnce
+            layOutMoreSoon()
+            return textView.layoutHeight(ensuring: [NSRange(location: 0, length: Self.laidOutAtOnce)])
+        }
+
+        private func layOutMoreSoon() {
+            let round = layoutRound
+            // On the run loop in its common modes, so the layout goes on while
+            // the page is being scrolled or the window resized.
+            RunLoop.main.perform(inModes: [.common]) { [weak self] in
+                MainActor.assumeIsolated { self?.layOutMore(round: round) }
+            }
+        }
+
+        private func layOutMore(round: Int) {
+            guard round == layoutRound, var from = unlaidFrom, textView.window != nil else { return }
+            let length = textView.textStorage?.length ?? 0
+            let clock = ContinuousClock()
+            let start = clock.now
+            while from < length, clock.now - start < Self.layoutTurn {
+                let upTo = min(length, from + Self.layoutPiece)
+                _ = textView.layoutHeight(ensuring: [NSRange(location: from, length: upTo - from)])
+                from = upTo
+            }
+            unlaidFrom = from < length ? from : nil
+            // The page grows or shrinks to what is known so far, and is exact once all of it is.
+            layoutPage(changed: [])
+            if unlaidFrom != nil { layOutMoreSoon() }
         }
 
         private func updateAnchors() {

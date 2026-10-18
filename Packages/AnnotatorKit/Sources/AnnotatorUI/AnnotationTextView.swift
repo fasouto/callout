@@ -194,10 +194,24 @@ final class AnnotationTextView: NSTextView {
         return result?.offsetBy(dx: origin.x, dy: origin.y)
     }
 
-    /// Lays out the whole text and returns its height.
-    func layoutHeight() -> CGFloat {
+    /// Lays out the whole text, or only `ranges` of it, and returns its height.
+    ///
+    /// Once the whole text has been laid out at this width, the rest of it keeps
+    /// its height: after a change, laying out what changed is enough. Laying out
+    /// all of it again would redo whatever was let go off screen, which takes
+    /// most of a second on a long document.
+    func layoutHeight(ensuring ranges: [NSRange]? = nil) -> CGFloat {
         guard let layoutManager = textLayoutManager else { return 0 }
-        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        if let ranges, let content = layoutManager.textContentManager {
+            for range in ranges {
+                guard let start = content.location(content.documentRange.location, offsetBy: range.location),
+                      let end = content.location(start, offsetBy: range.length),
+                      let textRange = NSTextRange(location: start, end: end) else { continue }
+                layoutManager.ensureLayout(for: textRange)
+            }
+        } else {
+            layoutManager.ensureLayout(for: layoutManager.documentRange)
+        }
         return ceil(layoutManager.usageBoundsForTextContainer.maxY)
     }
 

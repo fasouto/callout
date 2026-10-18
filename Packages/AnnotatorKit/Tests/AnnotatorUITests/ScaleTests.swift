@@ -54,8 +54,8 @@ struct ScaleTests {
 
     @Test func aLongDocumentOpensAndTakesMarksQuickly() throws {
         _ = NSApplication.shared
-        // 100 KB, ten times a long plan. Every change restyles the whole page, so
-        // a megabyte takes seconds per keystroke; this keeps that from creeping down.
+        // 100 KB, ten times a long plan. A change sets only its own part of the
+        // page again; setting all of it took seconds per keystroke at a megabyte.
         let source = Self.longDocument(sections: 250)
         let clock = ContinuousClock()
 
@@ -85,10 +85,45 @@ struct ScaleTests {
             if let id = session.marks.last?.id { session.update(id, note: "Too long") }
             settle(window)
         }
-        print("scale: \(source.utf16.count) units; open \(opening), mark \(marking), note \(typing)")
-        #expect(opening < .seconds(2))
-        #expect(marking < .milliseconds(500))
-        #expect(typing < .milliseconds(500))
+        // Words typed in place of struck ones, one key at a time.
+        let replaced = page.range(of: "Section 245")
+        let replacedSpan = try #require(session.sourceSpan(forView: replaced.location..<NSMaxRange(replaced)))
+        let placed = try #require(session.replaceInPlace(span: replacedSpan))
+        settle(window)
+        var caret = placed.caret
+        let keystroke = clock.measure {
+            caret = session.type("x", atView: caret) ?? caret
+            settle(window)
+        }
+        print("scale: \(source.utf16.count) units; open \(opening), mark \(marking), note \(typing), key \(keystroke)")
+        // Each change includes the 50 ms that `settle` waits.
+        #expect(opening < .seconds(1.5))
+        #expect(marking < .milliseconds(200))
+        #expect(typing < .milliseconds(200))
+        #expect(keystroke < .milliseconds(200))
+    }
+
+    @Test func aLongPageIsLaidOutToItsEndAfterItOpens() throws {
+        _ = NSApplication.shared
+        let session = ReviewSession(request: ReviewRequest(
+            content: .text(Self.longDocument(sections: 500), format: .markdown), origin: .agentRequest, reply: .stdout, modes: [.feedback]
+        ))
+        session.announce = { _ in }
+        let window = SnapshotWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
+        settle(window)
+        let textView = try #require(findTextView(in: window.contentView))
+
+        // The rest is laid out a part at a time; then the page is as tall as its text.
+        let deadline = Date().addingTimeInterval(20)
+        var height = textView.frame.height
+        var unchangedSince = Date()
+        while Date() < deadline, Date().timeIntervalSince(unchangedSince) < 0.5 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+            if textView.frame.height != height { height = textView.frame.height; unchangedSince = Date() }
+        }
+        #expect(abs(textView.frame.height - textView.layoutHeight()) < 1)
     }
 
     @Test func aFinishedReviewIsReleased() throws {

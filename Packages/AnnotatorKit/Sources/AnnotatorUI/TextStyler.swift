@@ -9,7 +9,7 @@ extension NSAttributedString.Key {
 }
 
 /// Something drawn behind a paragraph rather than set in type.
-enum BlockDecoration: Equatable {
+enum BlockDecoration: Hashable {
     /// A line of a code block or table. `indent` is the block's left edge.
     case panel(first: Bool, last: Bool, indent: CGFloat)
     /// A bar per level of quotation. `trim` is how much shorter than the
@@ -22,29 +22,45 @@ enum BlockDecoration: Equatable {
 }
 
 /// Builds what the text view shows from the rendered document and the marks.
+///
+/// A page is built in two layers: the document as set in type, which stays the
+/// same for the whole review, and the marks with their words laid over it.
 @MainActor
 enum TextStyler {
     /// - Parameter added: source spans that are new since the previous version, to be tinted.
     static func attributedString(
         layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = []
     ) -> NSAttributedString {
-        let document = layout.document
-        let result = NSMutableAttributedString()
+        let base = basePage(of: layout.document, added: added)
+        return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length)
+    }
+
+    /// The document as set in type, without marks: one character for each of its displayed text.
+    static func basePage(of document: RenderedDocument, added: [TextSpan] = []) -> NSAttributedString {
+        // A line broken by hand stays in its paragraph: a new line, without
+        // the space that parts one paragraph from the next. One character for one.
+        let texts = document.segments.map { segment in
+            segment.text == "\n" && segment.source != nil && !isPanel(segment.style) && !isTableLine(segment.style) ? "\u{2028}" : segment.text
+        }
+        let result = NSMutableAttributedString(string: texts.joined())
 
         var tableCells: [TableCell] = []
-        // A page has thousands of segments and a handful of styles: each is worked out once.
-        var known: [SegmentStyle: [NSAttributedString.Key: Any]] = [:]
+        // A page has thousands of segments and a handful of styles: each is worked
+        // out once, and kept as AppKit's own attribute dictionary. Handed over as
+        // it is, it is taken as it is; a Swift dictionary would be converted and
+        // looked up again for every segment, which is most of the time on a long page.
+        var known: [SegmentStyle: CFDictionary] = [:]
         var panel: Panel?
         var markerWidths: [String: CGFloat] = [:]
+        var location = 0
         for (index, segment) in document.segments.enumerated() {
-            let start = result.length
-            let attributes = known[segment.style] ?? attributes(for: segment.style)
+            let range = NSRange(location: location, length: texts[index].utf16.count)
+            location = NSMaxRange(range)
+            let attributes = known[segment.style] ?? attributeDictionary(for: segment.style)
             known[segment.style] = attributes
-            // A line broken by hand stays in its paragraph: a new line, without
-            // the space that parts one paragraph from the next. One character for one.
-            let isHardBreak = segment.text == "\n" && segment.source != nil && !isPanel(segment.style) && !isTableLine(segment.style)
-            result.append(NSAttributedString(string: isHardBreak ? "\u{2028}" : segment.text, attributes: attributes))
-            let range = NSRange(location: start, length: result.length - start)
+            if range.length > 0 {
+                CFAttributedStringSetAttributes(result as CFMutableAttributedString, CFRange(location: range.location, length: range.length), attributes, true)
+            }
             if segment.style.isListMarker { hang(markerIn: range, in: result, widths: &markerWidths) }
             if isPanel(segment.style) {
                 if let source = segment.source, range.length > 0 {
@@ -87,34 +103,48 @@ enum TextStyler {
                 result.addAttribute(.backgroundColor, value: Theme.revisionWash, range: NSRange(range))
             }
         }
+        return result
+    }
+
+    /// Part of a page: the base page's text in `displayed`, with the marks on it
+    /// and the ghosts that sit anywhere from its start to its end, both included.
+    static func marked(
+        _ base: NSAttributedString, layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, displayed: Range<Int>
+    ) -> NSAttributedString {
+        let document = layout.document
+        let start = displayed.lowerBound
+        let result = NSMutableAttributedString(attributedString: base.attributedSubstring(from: NSRange(displayed)))
 
         // Marks are applied in displayed offsets, before ghosts shift anything.
         for mark in marks {
             let selected = mark.id == selectedMarkID
             let ranges = document.displayedRanges(forSource: mark.anchor.span)
             for range in ranges {
-                result.addAttributes(attributes(for: mark, selected: selected), range: NSRange(range))
+                let part = range.clamped(to: displayed)
+                guard !part.isEmpty else { continue }
+                result.addAttributes(attributes(for: mark, selected: selected), range: NSRange(location: part.lowerBound - start, length: part.count))
             }
             // A little air between struck text and the words that replace it.
-            if mark.kind == .replace, mark.text?.isEmpty == false, let end = ranges.last?.upperBound, end > 0 {
-                result.addAttribute(.kern, value: 3, range: NSRange(location: end - 1, length: 1))
+            if mark.kind == .replace, mark.text?.isEmpty == false, let end = ranges.last?.upperBound, end > 0, displayed.contains(end - 1) {
+                result.addAttribute(.kern, value: 3, range: NSRange(location: end - 1 - start, length: 1))
             }
         }
 
-        for ghost in layout.ghosts.reversed() {
+        // What a ghost looks like is taken from the base page around it.
+        for ghost in layout.ghosts.reversed() where displayed.lowerBound <= ghost.anchor && ghost.anchor <= displayed.upperBound {
             guard let mark = marks.first(where: { $0.id == ghost.markID }) else {
                 // Not a mark's words: text that was removed since the previous version.
-                let removed = NSMutableAttributedString(string: ghost.text, attributes: removalAttributes(for: ghost, in: result))
+                let removed = NSMutableAttributedString(string: ghost.text, attributes: removalAttributes(for: ghost, in: base))
                 if !ghost.text.hasSuffix("\n"), !ghost.text.hasSuffix(" "), removed.length > 0 {
                     // A little air before the words that took its place.
                     removed.addAttribute(.kern, value: 3, range: NSRange(location: removed.length - 1, length: 1))
                 }
-                result.insert(removed, at: ghost.anchor)
+                result.insert(removed, at: ghost.anchor - start)
                 continue
             }
             result.insert(
-                NSAttributedString(string: ghost.text, attributes: ghostAttributes(for: mark, at: ghost.anchor, in: result, selected: mark.id == selectedMarkID)),
-                at: ghost.anchor
+                NSAttributedString(string: ghost.text, attributes: ghostAttributes(for: mark, at: ghost.anchor, in: base, selected: mark.id == selectedMarkID)),
+                at: ghost.anchor - start
             )
         }
         return result
@@ -203,6 +233,11 @@ enum TextStyler {
     }
 
     // MARK: - Segments
+
+    /// A style's attributes as the dictionary AppKit keeps for them.
+    private static func attributeDictionary(for style: SegmentStyle) -> CFDictionary {
+        CFAttributedStringGetAttributes(NSAttributedString(string: " ", attributes: attributes(for: style)) as CFAttributedString, 0, nil)
+    }
 
     private static func attributes(for style: SegmentStyle) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
@@ -359,6 +394,12 @@ enum TextStyler {
         var endsRow: Bool
     }
 
+    /// A cell's text as it is set, for measuring it once.
+    private struct Measured: Hashable {
+        var text: String
+        var style: SegmentStyle
+    }
+
     private static let columnGap: CGFloat = 28
     private static let rowPadding: CGFloat = 7
     /// Between the cells of one row of a wide table.
@@ -377,6 +418,7 @@ enum TextStyler {
             }
         }
 
+        let characters = result.string as NSString
         for table in tables {
             var rows: [[TableCell]] = [[]]
             for cell in table {
@@ -386,19 +428,26 @@ enum TextStyler {
             rows.removeAll(where: \.isEmpty)
             guard let first = rows.first?.first else { continue }
 
-            var widths: [CGFloat] = []
+            // Where a column starts depends on the columns before it, so the last
+            // is never measured; and a text set the same way is measured once.
+            // A table too wide for columns has thousands of cells, but its only
+            // measured column is the names, the same few in every row.
+            guard let lastColumn = table.compactMap(\.style.tableColumn).max() else { continue }
+            var widths = [CGFloat](repeating: 0, count: lastColumn + 1)
+            var measured: [Measured: CGFloat] = [:]
             for row in rows {
                 var rowWidths: [Int: CGFloat] = [:]
                 for cell in row {
-                    guard let column = cell.style.tableColumn else { continue }
-                    rowWidths[column, default: 0] += ceil(result.attributedSubstring(from: cell.range).size().width)
+                    guard let column = cell.style.tableColumn, column < lastColumn else { continue }
+                    let key = Measured(text: characters.substring(with: cell.range), style: cell.style)
+                    let width = measured[key] ?? ceil(result.attributedSubstring(from: cell.range).size().width)
+                    measured[key] = width
+                    rowWidths[column, default: 0] += width
                 }
                 for (column, width) in rowWidths {
-                    while widths.count <= column { widths.append(0) }
                     widths[column] = max(widths[column], width)
                 }
             }
-            guard !widths.isEmpty else { continue }
 
             let indent = blockIndent(for: first.style)
             var starts: [CGFloat] = [indent]

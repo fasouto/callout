@@ -38,10 +38,21 @@ enum Theme {
     static var highlighter: NSColor { .systemYellow }
     static var keep: NSColor { .systemGreen }
 
+    // The colours below resolve when they are drawn, so one of each serves
+    // every appearance; and a page with one colour object per kind of mark,
+    // rather than one per run, compares and coalesces as the same.
+
     /// The highlighter behind marked words. A translucent yellow over a dark
     /// page turns olive, so in dark mode the wash stays faint and the words
     /// themselves take the highlighter's colour (see `highlightedText`).
     static func highlightWash(selected: Bool) -> NSColor {
+        selected ? selectedHighlightWash : plainHighlightWash
+    }
+
+    private static let plainHighlightWash = makeHighlightWash(selected: false)
+    private static let selectedHighlightWash = makeHighlightWash(selected: true)
+
+    private static func makeHighlightWash(selected: Bool) -> NSColor {
         NSColor(name: nil) { appearance in
             if isDark(appearance) {
                 return NSColor.systemYellow.withAlphaComponent(selected ? 0.3 : increasesContrast ? 0.2 : 0.13)
@@ -52,14 +63,19 @@ enum Theme {
 
     /// The colour of highlighted words: the page's ink in light mode, the
     /// highlighter's yellow in dark mode.
-    static var highlightedText: NSColor {
-        NSColor(name: nil) { appearance in
-            isDark(appearance) ? .systemYellow : .labelColor
-        }
+    static let highlightedText = NSColor(name: nil) { appearance in
+        isDark(appearance) ? .systemYellow : .labelColor
     }
 
     /// The wash behind words marked to keep.
     static func keepWash(selected: Bool) -> NSColor {
+        selected ? selectedKeepWash : plainKeepWash
+    }
+
+    private static let plainKeepWash = makeKeepWash(selected: false)
+    private static let selectedKeepWash = makeKeepWash(selected: true)
+
+    private static func makeKeepWash(selected: Bool) -> NSColor {
         NSColor(name: nil) { _ in
             NSColor.systemGreen.withAlphaComponent(selected ? 0.3 : increasesContrast ? 0.22 : 0.12)
         }
@@ -68,11 +84,9 @@ enum Theme {
     /// The tint behind text that is new since the previous version of a plan:
     /// purple, which is none of the reviewer's inks. A dark page needs more of
     /// it to show at all.
-    static var revisionWash: NSColor {
-        NSColor(name: nil) { appearance in
-            let base: CGFloat = isDark(appearance) ? 0.3 : 0.13
-            return NSColor.systemPurple.withAlphaComponent(increasesContrast ? base + 0.12 : base)
-        }
+    static let revisionWash = NSColor(name: nil) { appearance in
+        let base: CGFloat = isDark(appearance) ? 0.3 : 0.13
+        return NSColor.systemPurple.withAlphaComponent(increasesContrast ? base + 0.12 : base)
     }
 
     /// The highlighter's colour for a small symbol. Yellow on a white page is

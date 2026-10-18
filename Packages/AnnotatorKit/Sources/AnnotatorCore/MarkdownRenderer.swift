@@ -186,13 +186,18 @@ private struct Builder {
         let columns = rows.map(\.count).max() ?? 0
         guard columns > 0 else { return .source }
         var widths = [Int](repeating: 0, count: columns)
+        // Only the columns before the last have to be short, and once they are
+        // too long no row makes them shorter: from then on, only spans are looked for.
+        var fits = 3 * (columns - 1) <= 46
         for row in rows {
             for (index, cell) in row.enumerated() {
                 guard cell.colspan == 1, cell.rowspan == 1 else { return .source }
+                guard fits, index < columns - 1 else { continue }
                 widths[index] = max(widths[index], cell.plainText.count)
+                fits = widths.reduce(0, +) + 3 * (columns - 1) <= 46
             }
         }
-        if widths.dropLast().reduce(0, +) + 3 * (columns - 1) <= 46 { return .columns }
+        if fits { return .columns }
         // With no rows there would be nothing to show under the names.
         return body.isEmpty ? .source : .fields
     }

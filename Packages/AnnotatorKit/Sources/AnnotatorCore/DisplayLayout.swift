@@ -125,4 +125,9 @@ public struct DisplayLayout: Equatable, Sendable {
     public func viewOffset(forDisplayed offset: Int) -> Int {
         offset + ghosts.filter { $0.anchor <= offset }.reduce(0) { $0 + $1.range.count }
     }
+
+    /// The view offset of a displayed offset, placed before any ghost there.
+    public func viewOffset(beforeGhostsAtDisplayed offset: Int) -> Int {
+        offset + ghosts.filter { $0.anchor < offset }.reduce(0) { $0 + $1.range.count }
+    }
 }
