@@ -175,7 +175,8 @@ private struct ActionBar: View {
 
 /// The answers to the review: large, since they are what the window is for.
 /// The one that applies right now carries the weight: Approve or Apply Edits
-/// while nothing is marked, Send Feedback once something is.
+/// while nothing is marked, Send Feedback once something is. A review nobody
+/// waits for says Copy instead of Send and Apply: that is what happens.
 private struct ResponseButtons: View {
     let session: ReviewSession
     let finish: (ReviewOutcome) -> Void
@@ -191,22 +192,27 @@ private struct ResponseButtons: View {
             }
             .keyboardShortcut(.cancelAction)
             .buttonStyle(.bordered)
+            .fixedSize()
 
             if session.allows.approve {
                 response("Approve", leads: !feedbackLeads, minWidth: 92) { finish(.approve) }
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
                     .help("Approve it as it is (⌘⇧↩)")
             } else if session.allows.applyEdits {
-                response("Apply Edits", leads: !session.hasFeedback, minWidth: 104) { finish(.applyEdits) }
+                response(session.editsAction, leads: !session.hasFeedback, minWidth: 104) { finish(.applyEdits) }
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
                     .disabled(!session.hasEdits)
-                    .help("Return the text with your edits applied (⌘⇧↩)")
+                    .help(session.answersToClipboard
+                        ? "Copy the text with your edits applied, to paste anywhere (⌘⇧↩)"
+                        : "Return the text with your edits applied (⌘⇧↩)")
             }
             if session.allows.feedback {
-                response("Send Feedback", leads: feedbackLeads, minWidth: 128) { finish(.feedback) }
+                response(session.feedbackAction, leads: feedbackLeads, minWidth: 128) { finish(.feedback) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!session.hasFeedback)
-                    .help(session.hasFeedback ? "Return your marks as feedback (⌘↩)" : "Mark something or write an overall comment first")
+                    .help(!session.hasFeedback ? "Mark something or write an overall comment first"
+                        : session.answersToClipboard ? "Copy your marks as feedback, to paste anywhere (⌘↩)"
+                        : "Return your marks as feedback (⌘↩)")
             }
         }
         .controlSize(.large)
@@ -215,10 +221,11 @@ private struct ResponseButtons: View {
     @ViewBuilder
     private func response(_ title: String, leads: Bool, minWidth: CGFloat, action: @escaping () -> Void) -> some View {
         let label = Text(title).fontWeight(leads ? .semibold : .regular).frame(minWidth: minWidth)
+        // Always whole: the space before them gives way, never their words.
         if leads {
-            Button(action: action) { label }.buttonStyle(.borderedProminent)
+            Button(action: action) { label }.buttonStyle(.borderedProminent).fixedSize()
         } else {
-            Button(action: action) { label }.buttonStyle(.bordered)
+            Button(action: action) { label }.buttonStyle(.bordered).fixedSize()
         }
     }
 }

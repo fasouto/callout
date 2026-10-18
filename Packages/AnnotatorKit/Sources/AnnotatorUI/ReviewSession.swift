@@ -120,6 +120,14 @@ final class ReviewSession {
 
     var isPDF: Bool { pdf != nil }
 
+    /// Whether the response is copied rather than sent: a review of a selection,
+    /// a file or the clipboard has nobody waiting for it, Claude included.
+    var answersToClipboard: Bool { request.reply == .clipboard }
+
+    /// What the buttons say, after what they do with the response.
+    var feedbackAction: String { answersToClipboard ? "Copy Feedback" : "Send Feedback" }
+    var editsAction: String { answersToClipboard ? "Copy Corrected Text" : "Apply Edits" }
+
     var title: String {
         if let title = request.metadata.title, !title.isEmpty { return title }
         if case .file(let path) = request.content { return URL(fileURLWithPath: path).lastPathComponent }

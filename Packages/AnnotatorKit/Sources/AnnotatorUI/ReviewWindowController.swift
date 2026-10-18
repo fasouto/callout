@@ -135,9 +135,9 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
                 let what = [notEdits > 0 ? "Comments and other notes on the text" : nil, general ? "the overall comment" : nil]
                     .compactMap { $0 }.joined(separator: " and ")
                 guard ask(
-                    "Apply only the edits?",
+                    session.answersToClipboard ? "Copy only the corrected text?" : "Apply only the edits?",
                     "The corrected text includes your deletions, replacements and additions. \(what) are not part of it.",
-                    buttons: ["Apply Edits", "Keep Reviewing"]
+                    buttons: [session.editsAction, "Keep Reviewing"]
                 ) == .alertFirstButtonReturn else { return }
             }
             do {

@@ -218,6 +218,45 @@ struct SnippetsAndHistoryTests {
         #expect(announced == ["Corrected text copied"])
     }
 
+    @Test func theButtonsSayWhereTheResponseGoes() throws {
+        _ = NSApplication.shared
+        func session(_ origin: ReviewOrigin, _ reply: ReplyChannel) -> ReviewSession {
+            ReviewSession(request: ReviewRequest(
+                content: .text("We will leverage a very robust approach here.", format: .markdown), origin: origin,
+                reply: reply, modes: [.feedback, .applyEdits]
+            ))
+        }
+        // Nobody waits for a selection, a dropped file or the clipboard: the response is copied.
+        for origin in [ReviewOrigin.hotkey, .service, .fileDrop, .share] {
+            let copied = session(origin, .clipboard)
+            #expect(copied.feedbackAction == "Copy Feedback")
+            #expect(copied.editsAction == "Copy Corrected Text")
+        }
+        // Claude Code waits for it.
+        let sent = session(.lastReply, .stdout)
+        #expect(sent.feedbackAction == "Send Feedback")
+        #expect(sent.editsAction == "Apply Edits")
+
+        // Leaving comments out of the corrected text is asked about in the same words.
+        let coordinator = ReviewCoordinator(presentsWindows: false, pasteboard: NSPasteboard(name: NSPasteboard.Name("annotator-test-\(UUID().uuidString)"))) { _ in }
+        let request = ReviewRequest(
+            content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .hotkey,
+            reply: .clipboard, modes: [.feedback, .applyEdits]
+        )
+        coordinator.open(request)
+        let window = try #require(coordinator.windows[request.id])
+        var asked: [(String, [String])] = []
+        window.ask = { message, _, buttons in
+            asked.append((message, buttons))
+            return .alertSecondButtonReturn
+        }
+        window.session.addMark(.delete, span: TextSpan(19, 31))
+        window.session.addMark(.comment, span: TextSpan(8, 16), note: "Plainer word?")
+        window.finish(.applyEdits)
+        #expect(asked.first?.0 == "Copy only the corrected text?")
+        #expect(asked.first?.1 == ["Copy Corrected Text", "Keep Reviewing"])
+    }
+
     // MARK: How they look
 
     @Test func windowsLayOut() throws {
