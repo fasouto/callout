@@ -1,7 +1,7 @@
 {
   "name": "annotator",
   "displayName": "Annotator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Review Claude's plans, replies and documents in the Annotator macOS app and send structured feedback back.",
   "author": {
     "name": "Fabio Souto"
