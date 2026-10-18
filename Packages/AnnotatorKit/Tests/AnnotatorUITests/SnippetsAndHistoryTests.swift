@@ -193,7 +193,10 @@ struct SnippetsAndHistoryTests {
 
     @Test func applyingOnlyEditsDoesNotAsk() throws {
         _ = NSApplication.shared
-        let coordinator = ReviewCoordinator(presentsWindows: false)
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("annotator-test-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        var announced: [String] = []
+        let coordinator = ReviewCoordinator(presentsWindows: false, pasteboard: pasteboard) { announced.append($0) }
         let request = ReviewRequest(
             content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .hotkey,
             metadata: ReviewMetadata(title: "Selection"), reply: .clipboard, modes: [.feedback, .applyEdits]
@@ -211,6 +214,8 @@ struct SnippetsAndHistoryTests {
         // Only edits: no question.
         #expect(asked.isEmpty)
         #expect(result?.editedText == "We will leverage a approach here.")
+        #expect(pasteboard.string(forType: .string) == "We will leverage a approach here.")
+        #expect(announced == ["Corrected text copied"])
     }
 
     // MARK: How they look

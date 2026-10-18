@@ -10,10 +10,20 @@ final class ReviewCoordinator {
     private let presentsWindows: Bool
     /// Where plan versions are kept. Without it, plans are reviewed without a comparison.
     private let store: Store?
+    /// Where responses meant for the clipboard go, and how that is announced.
+    private let pasteboard: NSPasteboard
+    private let notify: (String) -> Void
 
-    init(presentsWindows: Bool = true, store: Store? = nil) {
+    init(
+        presentsWindows: Bool = true,
+        store: Store? = nil,
+        pasteboard: NSPasteboard = .general,
+        notify: @escaping (String) -> Void = { Toast.show($0) }
+    ) {
         self.presentsWindows = presentsWindows
         self.store = store
+        self.pasteboard = pasteboard
+        self.notify = notify
     }
 
     /// - Parameter reply: receives the result, for requests that came from a
@@ -88,9 +98,8 @@ final class ReviewCoordinator {
         } else {
             return
         }
-        let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        Toast.show(message)
+        notify(message)
     }
 }

@@ -47,10 +47,11 @@ struct WelcomeTests {
     @Test func thePracticeIsNeitherKeptNorCopied() throws {
         _ = NSApplication.shared
         let store = try Store()
-        let coordinator = ReviewCoordinator(presentsWindows: false, store: store)
-        let pasteboard = NSPasteboard.general
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("annotator-test-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
         pasteboard.setString("untouched", forType: .string)
+        let coordinator = ReviewCoordinator(presentsWindows: false, store: store, pasteboard: pasteboard) { _ in }
 
         var received: ReviewResult?
         let id = coordinator.openWelcome { received = $0 }
