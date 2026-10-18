@@ -1,3 +1,4 @@
+import AnnotatorCore
 import AppKit
 import Testing
 @testable import AnnotatorUI
@@ -39,5 +40,30 @@ struct OpeningTests {
         #expect(Opening.hasWindow([window(Minimized.self, [.titled, .miniaturizable])]))
         // A window that was closed is not one to bring back.
         #expect(!Opening.hasWindow([window(NSWindow.self, [.titled])]))
+    }
+
+    @Test func aReviewFromAnotherAppComesForwardAlone() {
+        _ = NSApplication.shared
+        let review = ReviewWindowController(request: ReviewRequest(
+            content: .text("A reply.", format: .markdown), origin: .lastReply, reply: .stdout, modes: [.feedback]
+        )) { _ in }
+        let otherReview = ReviewWindowController(request: ReviewRequest(
+            content: .text("A plan.", format: .markdown), origin: .planHook, reply: .hookDecision, modes: [.feedback]
+        )) { _ in }
+        let history = window(Shown.self, [.titled, .closable])
+        let menuBarIcon = window(Shown.self, [.borderless])
+        let closedSettings = window(NSWindow.self, [.titled])
+        // Another review, on screen: work in progress, which stays.
+        let reviewOnScreen = window(Shown.self, [.titled, .closable])
+        reviewOnScreen.delegate = otherReview
+        let open = [history, menuBarIcon, closedSettings, reviewOnScreen, review.window]
+
+        // Sent from Claude Code while the person was in another app: the history
+        // left open from earlier goes, so it is not what is left once the review is sent.
+        let away = Opening.windowsToPutAway(open, forReviewIn: review.window, appIsActive: false)
+        #expect(away.count == 1)
+        #expect(away.first === history)
+        // Opened from inside Annotator: everything stays where it is.
+        #expect(Opening.windowsToPutAway(open, forReviewIn: review.window, appIsActive: true).isEmpty)
     }
 }

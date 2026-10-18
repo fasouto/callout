@@ -85,6 +85,10 @@ final class ReviewWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        // Put away, not closed: opening the history or the settings brings them back.
+        for other in Opening.windowsToPutAway(NSApp.windows, forReviewIn: window, appIsActive: NSApp.isActive) {
+            other.orderOut(nil)
+        }
         // A menu-bar app is not active when a request arrives.
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)

@@ -34,6 +34,18 @@ enum Opening {
     @MainActor static func hasWindow(_ windows: [NSWindow]) -> Bool {
         windows.contains { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }
     }
+
+    /// The windows to put away before a review is shown. A review that comes
+    /// while another app is in front brings only itself forward: the history or
+    /// the settings, left open from earlier, would otherwise come up behind it
+    /// and be what is on screen once the review is sent. Other reviews stay.
+    /// A review opened from inside the app leaves everything where it is.
+    @MainActor static func windowsToPutAway(_ windows: [NSWindow], forReviewIn review: NSWindow, appIsActive: Bool) -> [NSWindow] {
+        guard !appIsActive else { return [] }
+        return windows.filter { window in
+            window !== review && window.isVisible && window.styleMask.contains(.titled) && !(window.delegate is ReviewWindowController)
+        }
+    }
 }
 
 @MainActor
