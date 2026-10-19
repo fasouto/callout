@@ -76,7 +76,7 @@ Tables are set in columns, with long column names wrapping above their figures a
 | `K` | Keep it: do not change this |
 | `S` | Comment with one of your saved comments |
 
-Comments open a note in the margin with the keyboard already in it; `↩` finishes the note and returns to the document.
+Comments and strikes open a note in the margin with the keyboard already in it, for the comment or for the reason, which can stay empty; `↩` finishes the note and returns to the document. `⌫` strikes without stopping for a reason.
 
 | Key | |
 |---|---|

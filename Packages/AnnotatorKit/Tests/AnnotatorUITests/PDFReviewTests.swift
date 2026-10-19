@@ -316,6 +316,9 @@ struct PDFReviewTests {
 
         try select("Passionate, results-driven", page: 0, in: harness)
         try press("d", keyCode: 2, in: harness)
+        #expect(session.editing?.field == .note)
+        // Back from the reason, without one.
+        session.endEditing()
         try press("\u{7F}", keyCode: KeyCode.delete, in: harness)
         settle(harness.window)
         #expect(session.marks.isEmpty)

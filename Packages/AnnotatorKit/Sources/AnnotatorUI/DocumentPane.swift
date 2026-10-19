@@ -444,7 +444,9 @@ struct DocumentPane: NSViewRepresentable {
             }
         }
 
-        func perform(_ kind: MarkKind) {
+        /// - Parameter writingNote: whether the keyboard goes to the new mark's
+        ///   note. Not for ⌫, which strikes as an editor deletes.
+        func perform(_ kind: MarkKind, writingNote: Bool = true) {
             guard let selection = Range(textView.selectedRange()) else { return }
             toolbar.hide()
 
@@ -465,6 +467,9 @@ struct DocumentPane: NSViewRepresentable {
                 return
             }
             switch kind {
+            case .delete where writingNote:
+                // Ready for the reason, as a comment is; ↩ or Esc goes on without one.
+                session.addMarkToWrite(kind, span: span)
             case .delete, .keep, .expand, .summarize:
                 session.addMark(kind, span: span)
             case .replace:
@@ -508,7 +513,7 @@ struct DocumentPane: NSViewRepresentable {
                 if let struck = session.marks.first(where: { $0.kind == .delete && $0.anchor.span == span }) {
                     session.remove(struck.id)
                 } else {
-                    perform(.delete)
+                    perform(.delete, writingNote: false)
                 }
                 return
             }

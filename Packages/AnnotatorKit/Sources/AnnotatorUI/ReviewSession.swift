@@ -313,9 +313,10 @@ final class ReviewSession {
         place(kind, anchor: anchor, text: text, note: note, undoName: kind.label)
     }
 
-    /// Adds a mark that still has to be written: a replacement, an insertion or a
-    /// comment. The keyboard goes to its margin field, and the mark only becomes
-    /// undoable once something was written; left empty, it never happened.
+    /// Adds a mark with the keyboard in its margin field, for what is written
+    /// with it: a replacement, an insertion, a comment, or a deletion's optional
+    /// reason. It becomes undoable once the writing is done; an insertion or
+    /// comment left empty never happened.
     @discardableResult
     func addMarkToWrite(_ kind: MarkKind, span: TextSpan) -> Mark? {
         addMarkToWrite(kind, anchor: Anchor.make(in: source, span: span))
@@ -324,7 +325,8 @@ final class ReviewSession {
     @discardableResult
     func addMarkToWrite(_ kind: MarkKind, anchor: Anchor?) -> Mark? {
         let before = Snapshot(marks: marks, selection: selectedMarkID)
-        guard let mark = place(kind, anchor: anchor, text: kind == .comment ? nil : "", note: nil, undoName: nil) else {
+        let text: String? = kind == .replace || kind == .insert ? "" : nil
+        guard let mark = place(kind, anchor: anchor, text: text, note: nil, undoName: nil) else {
             return nil
         }
         unwritten = (mark.id, before)

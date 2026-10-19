@@ -249,7 +249,7 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("very robust ", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try press("\u{7F}", keyCode: KeyCode.delete, in: harness)
         #expect(session.editing == nil)
 
         try press("\r", keyCode: KeyCode.return, in: harness)

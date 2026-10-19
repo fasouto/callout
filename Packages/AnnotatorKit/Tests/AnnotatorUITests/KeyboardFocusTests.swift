@@ -118,6 +118,62 @@ struct KeyboardFocusTests {
         #expect(harness.window.firstResponder is AnnotationTextView)
     }
 
+    /// D takes the keyboard to the reason as C does to the comment. The reason is
+    /// optional: ↩ or Esc goes back to the document and the strike stays, undoable.
+    @Test func strikingTakesTheKeyboardForTheReason() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let undoManager = UndoManager()
+        session.undoManager = undoManager
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+
+        func select(_ phrase: String) {
+            textView.window?.makeFirstResponder(textView)
+            textView.setSelectedRange((textView.string as NSString).range(of: phrase))
+        }
+        func press(_ key: String, keyCode: UInt16) throws {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: keyCode
+            ))
+            textView.keyDown(with: event)
+        }
+
+        select("very robust ")
+        try press("d", keyCode: 2)
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Reason (optional)")
+        try type("filler", in: harness)
+        try self.press(#selector(NSResponder.insertNewline(_:)), in: harness)
+        await settle(harness)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+        #expect(session.marks.map(\.kind) == [.delete])
+        #expect(session.marks.first?.note == "filler")
+        #expect(session.marks.first?.text == nil)
+
+        // Left without a reason, the strike stays and is one undo step.
+        select("here")
+        try press("d", keyCode: 2)
+        await settle(harness)
+        #expect(fieldInFocus(harness) != nil)
+        try self.press(#selector(NSResponder.cancelOperation(_:)), in: harness)
+        await settle(harness)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+        #expect(session.marks.map(\.kind) == [.delete, .delete])
+        #expect(session.marks.last?.note == nil)
+        #expect(undoManager.undoActionName == "Delete")
+        undoManager.undo()
+        #expect(session.marks.map(\.note) == ["filler"])
+
+        // ⌫ strikes as an editor deletes, and the keyboard stays in the document.
+        select("leverage")
+        try press("\u{7F}", keyCode: KeyCode.delete)
+        await settle(harness)
+        #expect(session.marks.count == 2)
+        #expect(session.editing == nil)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+    }
+
     @Test func returnOnAMarkOpensItsNoteForTyping() async throws {
         let harness = await makeHarness()
         let session = harness.session

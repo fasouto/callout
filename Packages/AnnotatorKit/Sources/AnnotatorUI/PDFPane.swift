@@ -296,7 +296,7 @@ struct PDFPane: NSViewRepresentable {
                     let struck = self.session.marks.first {
                         $0.kind == .delete && $0.anchor.page == selected.index + 1 && $0.anchor.span == span
                     }
-                    if let struck { self.session.remove(struck.id) } else { self.perform(.delete) }
+                    if let struck { self.session.remove(struck.id) } else { self.perform(.delete, writingNote: false) }
                 } else if let id = self.session.selectedMarkID {
                     self.session.remove(id)
                 }
@@ -541,7 +541,9 @@ struct PDFPane: NSViewRepresentable {
             }
         }
 
-        func perform(_ kind: MarkKind) {
+        /// - Parameter writingNote: whether the keyboard goes to the new mark's
+        ///   note. Not for ⌫, which strikes as an editor deletes.
+        func perform(_ kind: MarkKind, writingNote: Bool = true) {
             toolbar.hide()
             guard let selected = currentSelection(), session.pageTexts.indices.contains(selected.index) else {
                 session.statusMessage = kind == .insert
@@ -557,6 +559,9 @@ struct PDFPane: NSViewRepresentable {
             switch kind {
             case .insert:
                 session.addMarkToWrite(.insert, anchor: Anchor.make(inPage: text, page: page, span: TextSpan(span.end, span.end)))
+            case .delete where writingNote:
+                // Ready for the reason, as a comment is; ↩ or Esc goes on without one.
+                session.addMarkToWrite(kind, anchor: Anchor.make(inPage: text, page: page, span: span))
             case .delete, .keep, .expand, .summarize:
                 session.addMark(kind, anchor: Anchor.make(inPage: text, page: page, span: span))
             case .replace, .comment:
