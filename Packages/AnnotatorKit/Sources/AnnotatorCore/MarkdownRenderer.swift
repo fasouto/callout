@@ -112,6 +112,8 @@ private struct Builder {
     var containers: [InlineContainer] = []
     /// Source offset up to which text has been placed. Later text is matched at or after it.
     var cursor = 0
+    /// Tables placed so far.
+    var tables = 0
 
     init(source: String) {
         self.source = source
@@ -158,9 +160,11 @@ private struct Builder {
             added("———", style)
             lineBreak(style)
         case let table as Table:
-            switch Self.layout(for: table) {
-            case .columns: rows(of: table, context, limit)
-            case .fields: fields(of: table, context, limit)
+            let index = tables
+            tables += 1
+            switch Self.layout(for: table, context) {
+            case .columns(let wraps, let alignments): rows(of: table, index, names: wraps, alignments, context, limit)
+            case .fields: fields(of: table, index, context, limit)
             case .source: raw(node, span, context.style(.table))
             }
         default:
@@ -172,81 +176,212 @@ private struct Builder {
     // MARK: - Tables
 
     private enum TableLayout {
-        case columns, fields, source
+        /// Columns, with the width each column's name wraps at, and where each column's cells sit.
+        case columns(names: [Double], [SegmentStyle.ColumnAlignment])
+        case fields, source
     }
 
-    /// Columns are laid out with tab stops, so only the last one can wrap. A
-    /// table goes in columns when those before the last are short enough to
-    /// leave it room. A wider one shows each row as its cells one under the
-    /// other, each after the name of its column. Cells that span rows or
-    /// columns fit neither, and the table is shown as it is written.
-    private static func layout(for table: Table) -> TableLayout {
+    /// Columns are laid out with tab stops, so a row's cells cannot wrap, but
+    /// for the last one's. A table goes in columns when its cells leave the
+    /// last column room on the page, the names of the columns wrapping over
+    /// as many as three lines for it. A wider one shows each row as its cells
+    /// one under the other, each after the name of its column. Cells that span
+    /// rows or columns fit neither, and the table is shown as it is written.
+    private static func layout(for table: Table, _ context: Context) -> TableLayout {
+        let head = Array(table.head.cells)
         let body = Array(table.body.rows).map { Array($0.cells) }
-        let rows = [Array(table.head.cells)] + body
-        let columns = rows.map(\.count).max() ?? 0
+        let columns = ([head] + body).map(\.count).max() ?? 0
         guard columns > 0 else { return .source }
-        var widths = [Int](repeating: 0, count: columns)
-        // Only the columns before the last have to be short, and once they are
-        // too long no row makes them shorter: from then on, only spans are looked for.
-        var fits = 3 * (columns - 1) <= 46
-        for row in rows {
-            for (index, cell) in row.enumerated() {
+        let last = columns - 1
+        let budget = TableMeasure.budget - Double(context.quoteDepth) * 18 - Double(context.listDepth) * 22
+        let gaps = Double(last) * TableMeasure.gap
+
+        // A column is as wide as its widest cell, and once those before the last
+        // are too wide no row makes them narrower: from then on, only spans are looked for.
+        var widths = [Double](repeating: 0, count: columns)
+        var fits = gaps <= budget
+        for (index, row) in ([head] + body).enumerated() {
+            for (column, cell) in row.enumerated() {
                 guard cell.colspan == 1, cell.rowspan == 1 else { return .source }
-                guard fits, index < columns - 1 else { continue }
-                widths[index] = max(widths[index], cell.plainText.count)
-                fits = widths.reduce(0, +) + 3 * (columns - 1) <= 46
+                guard fits, index > 0 else { continue }
+                widths[column] = max(widths[column], TableMeasure.cell(cell.plainText))
+            }
+            if fits { fits = widths[..<last].reduce(gaps, +) <= budget }
+        }
+        // With no rows there would be nothing to show under the names.
+        let tooWide: TableLayout = body.isEmpty ? .source : .fields
+        guard fits else { return tooWide }
+
+        widths[last] = min(widths[last], TableMeasure.wrappingColumn)
+        let names = (0..<columns).map { column in
+            column < head.count ? TableMeasure.words(of: head[column].plainText) : []
+        }
+        for lines in 1...TableMeasure.nameLines {
+            let wraps = (0..<columns).map { max(widths[$0], TableMeasure.narrowest(names[$0], lines: lines)) }
+            if wraps.reduce(gaps, +) <= budget { return .columns(names: wraps, alignments(of: table, body, columns)) }
+        }
+        return tooWide
+    }
+
+    /// As the Markdown says, or else numbers set against the right edge of
+    /// their column, so that their digits line up. The first column starts the
+    /// line, so it has nothing to its left to be set against.
+    private static func alignments(of table: Table, _ body: [[Table.Cell]], _ columns: Int) -> [SegmentStyle.ColumnAlignment] {
+        let written = table.columnAlignments
+        return (0..<columns).map { column in
+            guard column > 0 else { return .leading }
+            switch column < written.count ? written[column] : nil {
+            case .left: return .leading
+            case .center: return .center
+            case .right: return .trailing
+            case nil:
+                let cells = body.compactMap { column < $0.count ? $0[column].plainText : nil }
+                return TableMeasure.holdsNumbers(cells) ? .trailing : .leading
             }
         }
-        if fits { return .columns }
-        // With no rows there would be nothing to show under the names.
-        return body.isEmpty ? .source : .fields
     }
 
-    /// One line per row, with a tab between cells.
-    private mutating func rows(of table: Table, _ context: Context, _ limit: Int) {
-        var all: [(cells: [Table.Cell], range: SourceRange?, header: Bool)] = [(Array(table.head.cells), table.head.range, true)]
-        all += table.body.rows.map { (Array($0.cells), $0.range, false) }
-
-        for row in all {
-            if let span = lines.span(of: row.range), span.start > cursor { cursor = span.start }
-            var style = context.style(.tableRow(header: row.header))
-            for (index, cell) in row.cells.enumerated() {
-                style.tableColumn = nil
-                if index > 0 { added("\t", style) }
-                style.tableColumn = index
-                var cellStyle = style
-                cellStyle.bold = row.header
-                // A cell's text is looked for inside the cell, so equal cells do not swap places.
-                let cellSpan = lines.span(of: cell.range)
-                if let cellSpan, cellSpan.start > cursor { cursor = cellSpan.start }
-                inlines(of: cell, cellStyle, min(cellSpan?.end ?? limit, limit))
-                if let cellSpan { cursor = max(cursor, min(cellSpan.end, limit)) }
+    /// One line per row, with a tab between cells. Names too long for their
+    /// column wrap, on lines of their own above, set down on the rule under them.
+    private mutating func rows(
+        of table: Table, _ index: Int, names wraps: [Double], _ alignments: [SegmentStyle.ColumnAlignment],
+        _ context: Context, _ limit: Int
+    ) {
+        var style = context.style(.tableRow(header: true))
+        style.table = index
+        if let span = lines.span(of: table.head.range), span.start > cursor { cursor = span.start }
+        // Each name is placed as a cell is, then taken up again to be broken into lines.
+        var names: [[[RenderSegment]]] = []
+        for (column, cell) in table.head.cells.enumerated() {
+            var nameStyle = style
+            nameStyle.bold = true
+            nameStyle.tableColumn = column
+            nameStyle.columnAlignment = column < alignments.count ? alignments[column] : .leading
+            let first = segments.count
+            place(cell, nameStyle, limit)
+            names.append(Self.lines(of: Array(segments[first...]), width: column < wraps.count ? wraps[column] : .infinity))
+            segments.removeSubrange(first...)
+        }
+        let height = names.map(\.count).max() ?? 0
+        for line in 0..<height {
+            style.block = .tableRow(header: true, endsRow: line == height - 1)
+            for (column, name) in names.enumerated() {
+                if column > 0 { added("\t", style) }
+                let row = line - (height - name.count)
+                guard row >= 0 else { continue }
+                for var segment in name[row] {
+                    segment.style.block = style.block
+                    segments.append(segment)
+                }
             }
-            style.tableColumn = nil
             lineBreak(style)
         }
+
+        style.block = .tableRow(header: false)
+        for row in table.body.rows {
+            if let span = lines.span(of: row.range), span.start > cursor { cursor = span.start }
+            for (column, cell) in row.cells.enumerated() {
+                if column > 0 { added("\t", style) }
+                var cellStyle = style
+                cellStyle.tableColumn = column
+                cellStyle.columnAlignment = column < alignments.count ? alignments[column] : .leading
+                place(cell, cellStyle, limit)
+            }
+            lineBreak(style)
+        }
+    }
+
+    /// A cell's text. It is looked for inside the cell, so equal cells do not swap places.
+    private mutating func place(_ cell: Table.Cell, _ style: SegmentStyle, _ limit: Int) {
+        let span = lines.span(of: cell.range)
+        if let span, span.start > cursor { cursor = span.start }
+        inlines(of: cell, style, min(span?.end ?? limit, limit))
+        if let span { cursor = max(cursor, min(span.end, limit)) }
+    }
+
+    /// A name's text broken between words into lines no wider than `width`.
+    /// The spaces at the breaks are left out; they are not shown.
+    private static func lines(of placed: [RenderSegment], width: Double) -> [[RenderSegment]] {
+        // Words, each with the spaces before it.
+        var words: [(spaces: [RenderSegment], text: [RenderSegment])] = []
+        var spaces: [RenderSegment] = []
+        for segment in placed {
+            for (piece, isSpace) in Self.splitAtSpaces(segment) {
+                if isSpace {
+                    spaces.append(piece)
+                } else if spaces.isEmpty, !words.isEmpty {
+                    words[words.count - 1].text.append(piece)
+                } else {
+                    words.append((spaces, [piece]))
+                    spaces = []
+                }
+            }
+        }
+        func measured(_ pieces: [RenderSegment]) -> Double {
+            pieces.reduce(0) { $0 + TableMeasure.name($1.text) }
+        }
+
+        var lines: [[RenderSegment]] = []
+        var line: [RenderSegment] = []
+        var used = 0.0
+        for word in words {
+            let wordWidth = measured(word.text)
+            if line.isEmpty {
+                line = word.text
+                used = wordWidth
+            } else if used + measured(word.spaces) + wordWidth <= width + 0.01 {
+                line += word.spaces + word.text
+                used += measured(word.spaces) + wordWidth
+            } else {
+                lines.append(line)
+                line = word.text
+                used = wordWidth
+            }
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
+    }
+
+    /// A segment as runs of spaces and runs of the rest. One that maps only as
+    /// a whole stays whole.
+    private static func splitAtSpaces(_ segment: RenderSegment) -> [(RenderSegment, isSpace: Bool)] {
+        let units = Array(segment.text.utf16)
+        guard segment.isExact, let source = segment.source, units.contains(0x20) else {
+            return [(segment, segment.text.allSatisfy { $0 == " " })]
+        }
+        var pieces: [(RenderSegment, isSpace: Bool)] = []
+        var start = 0
+        while start < units.count {
+            let isSpace = units[start] == 0x20
+            var end = start + 1
+            while end < units.count, (units[end] == 0x20) == isSpace { end += 1 }
+            let text = String(utf16CodeUnits: Array(units[start..<end]), count: end - start)
+            var piece = segment
+            piece.text = text
+            piece.source = TextSpan(source.start + start, source.start + end)
+            pieces.append((piece, isSpace))
+            start = end
+        }
+        return pieces
     }
 
     /// One line per cell: the name of its column, a tab, the cell. The header
     /// row is not shown on its own. Its names are added text before every cell,
     /// so a selection that runs over a name takes only the cells.
-    private mutating func fields(of table: Table, _ context: Context, _ limit: Int) {
+    private mutating func fields(of table: Table, _ index: Int, _ context: Context, _ limit: Int) {
         let names = Array(table.head.cells).map(\.plainText)
         for row in table.body.rows {
             if let span = lines.span(of: row.range), span.start > cursor { cursor = span.start }
             let cells = Array(row.cells)
-            for (index, cell) in cells.enumerated() {
-                var style = context.style(.tableField(endsRow: index == cells.count - 1))
+            for (column, cell) in cells.enumerated() {
+                var style = context.style(.tableField(endsRow: column == cells.count - 1))
+                style.table = index
                 style.tableColumn = 0
-                if index < names.count, !names[index].isEmpty { added(names[index], style) }
+                if column < names.count, !names[column].isEmpty { added(names[column], style) }
                 style.tableColumn = nil
                 added("\t", style)
                 style.tableColumn = 1
-                // A cell's text is looked for inside the cell, so equal cells do not swap places.
-                let cellSpan = lines.span(of: cell.range)
-                if let cellSpan, cellSpan.start > cursor { cursor = cellSpan.start }
-                inlines(of: cell, style, min(cellSpan?.end ?? limit, limit))
-                if let cellSpan { cursor = max(cursor, min(cellSpan.end, limit)) }
+                place(cell, style, limit)
                 style.tableColumn = nil
                 lineBreak(style)
             }

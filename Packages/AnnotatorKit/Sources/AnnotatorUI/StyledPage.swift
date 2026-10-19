@@ -26,25 +26,46 @@ final class StyledPage {
     private let base: NSAttributedString
     private let added: [TextSpan]
     private var layout: DisplayLayout
+    private var marks: [Mark]
+    private var selectedMarkID: UUID?
     private var footprints: [Footprint]
+    /// How wide the page was set for, and what that does to its tables.
+    private let measure: CGFloat
+    private let tables: [TextStyler.TableFit]
     /// The whole page, as built when it was made.
     let text: NSAttributedString
 
-    init(layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan]) {
-        base = TextStyler.basePage(of: layout.document, added: added)
+    init(layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan], measure: CGFloat = Theme.measure) {
+        (base, tables) = TextStyler.basePage(of: layout.document, added: added, measure: measure)
         self.added = added
         self.layout = layout
+        self.marks = marks
+        self.selectedMarkID = selectedMarkID
+        self.measure = measure
         footprints = Self.footprints(of: marks, selectedMarkID: selectedMarkID)
         text = TextStyler.marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length)
+    }
+
+    /// Whether the page comes out the same on a page `measure` wide: only a
+    /// table too wide for one of them or the other is set differently.
+    func suits(measure: CGFloat) -> Bool {
+        tables.allSatisfy { $0.scale(on: measure) == $0.scale(on: self.measure) }
+    }
+
+    /// The page as it is now, set for a page `measure` wide.
+    func set(for measure: CGFloat) -> StyledPage {
+        StyledPage(layout: layout, marks: marks, selectedMarkID: selectedMarkID, added: added, measure: measure)
     }
 
     /// The parts of the page to replace, last first, so that each range is
     /// still where it was when its turn comes. Empty when the page shows the
     /// same; nil when the page has to be made again.
-    func update(to layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan]) -> [Edit]? {
+    func update(
+        to layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan], measure: CGFloat = Theme.measure
+    ) -> [Edit]? {
         let document = layout.document
         guard document.source == self.layout.document.source, added == self.added,
-              Self.removals(in: layout) == Self.removals(in: self.layout) else { return nil }
+              Self.removals(in: layout) == Self.removals(in: self.layout), suits(measure: measure) else { return nil }
 
         let new = Self.footprints(of: marks, selectedMarkID: selectedMarkID)
         // Marks are only ever added, changed or taken away, so the ones on both
@@ -93,6 +114,8 @@ final class StyledPage {
             return Edit(range: NSRange(location: lower, length: upper - lower), text: text)
         }
         self.layout = layout
+        self.marks = marks
+        self.selectedMarkID = selectedMarkID
         footprints = new
         return edits
     }

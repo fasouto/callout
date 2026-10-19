@@ -51,9 +51,9 @@ final class BlockFragment: NSTextLayoutFragment {
             return CGRect(x: left, y: 0, width: CGFloat(depth) * 18, height: frame.height - trim)
         case .rule:
             return CGRect(x: left, y: 0, width: containerWidth, height: frame.height)
-        case .tableRow(_, let last, let indent):
+        case .tableRow(_, let last, let indent, let width):
             // The last row's frame also holds the space under the table.
-            return CGRect(x: left + indent, y: 0, width: containerWidth - indent, height: frame.height - (last ? 12 : 0))
+            return CGRect(x: left + indent, y: 0, width: width ?? containerWidth - indent, height: frame.height - (last ? 12 : 0))
         }
     }
 
@@ -80,7 +80,7 @@ final class BlockFragment: NSTextLayoutFragment {
         case .rule:
             context.setFillColor(NSColor.separatorColor.cgColor)
             context.fill(CGRect(x: rect.minX, y: rect.midY.rounded(), width: rect.width, height: 1))
-        case .tableRow(let header, _, _):
+        case .tableRow(let header, _, _, _):
             // A firmer line under the header, hairlines between rows, one to close the table.
             let color = header ? NSColor.tertiaryLabelColor : NSColor.separatorColor
             context.setFillColor(color.cgColor)

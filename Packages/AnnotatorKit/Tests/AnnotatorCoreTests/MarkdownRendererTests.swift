@@ -285,7 +285,7 @@ struct MarkdownRendererTests {
     }
 
     @Test func tablesTooWideForColumnsShowEachRowCellByCell() throws {
-        let wide = "a fairly long cell of text here"
+        let wide = "a cell of text long enough that no column could hold it beside another"
         let source = "Intro.\n\n| One | Two | Three |\n|---|---|---|\n| \(wide) | second **bold** cell | x |\n| r2 | \(wide) | y |\n\nOutro.\n"
         let document = MarkdownRenderer.render(source)
         // One line per cell, each after the name of its column. The header row is not shown on its own.
@@ -323,6 +323,70 @@ struct MarkdownRendererTests {
         #expect(ends.contains(true) && ends.contains(false))
     }
 
+    @Test func longNamesWrapOverShortNumbers() {
+        let source = """
+        | Round | What changed | Values normalized | Failed to normalize | Agreement with GSMArena |
+        |---|---|---|---|---|
+        | 1 | first prompt | 488 | 93 | 84% |
+        | 2 | prompt and page-text fixes | 914 | 34 | 96.5% |
+
+        """
+        let document = MarkdownRenderer.render(source)
+        // Columns, not a cell a line: the names take two lines, set down on the rule under them.
+        #expect(document.text == """
+        \t\tValues\tFailed to\tAgreement
+        Round\tWhat changed\tnormalized\tnormalize\twith GSMArena
+        1\tfirst prompt\t488\t93\t84%
+        2\tprompt and page-text fixes\t914\t34\t96.5%
+        """)
+        expectFaithfulMapping(document)
+        // Each word of a name is its own place in the source.
+        #expect(sourceSpan(behind: "normalized", in: document) == span(of: "normalized", in: source))
+        #expect(sourceText(behind: "with GSMArena", in: document) == "with GSMArena")
+
+        let ends = document.segments.compactMap { segment -> Bool? in
+            guard case .tableRow(true, let endsRow) = segment.style.block, segment.style.tableColumn != nil else { return nil }
+            return endsRow
+        }
+        #expect(ends == [false, false, false, false, false] + Array(repeating: true, count: 9))
+
+        // Numbers are set against the right edge of their column; the first column never is.
+        func alignment(of text: String) -> SegmentStyle.ColumnAlignment? {
+            document.segments.first { $0.text == text }?.style.columnAlignment
+        }
+        #expect(alignment(of: "488") == .trailing)
+        #expect(alignment(of: "96.5%") == .trailing)
+        #expect(alignment(of: "normalized") == .trailing)
+        #expect(alignment(of: "first prompt") == .leading)
+        #expect(alignment(of: "1") == .leading)
+    }
+
+    @Test func columnsFollowTheAlignmentWrittenInTheMarkdown() {
+        let source = "| Name | Left | Middle | Right |\n|---|:---|:---:|---:|\n| a | 12 | b | c |\n"
+        let document = MarkdownRenderer.render(source)
+        let alignments = ["a", "12", "b", "c"].map { text in document.segments.first { $0.text == text }?.style.columnAlignment }
+        #expect(alignments == [.leading, .leading, .center, .trailing])
+    }
+
+    @Test func tablesThatFollowEachOtherAreLaidOutApart() {
+        let source = "| A | B |\n|---|---|\n| 1 | 2 |\n\n| C | D |\n|---|---|\n| 3 | 4 |\n"
+        let document = MarkdownRenderer.render(source)
+        let tables = ["A", "2", "C", "4"].map { text in document.segments.first { $0.text == text }?.style.table }
+        #expect(tables == [0, 0, 1, 1])
+    }
+
+    @Test func whatCountsAsANumber() {
+        for number in ["488", "96.5%", "$3.00", "1,024", "-2", "−2", "~2 s", "200K", "1 MB", "0.9 s", "4×"] {
+            #expect(TableMeasure.isNumber(number), "\(number)")
+        }
+        for text in ["v1.2", "2026-10-19", "yes", "1 to 3 files", "10:30", "A1"] {
+            #expect(!TableMeasure.isNumber(text), "\(text)")
+        }
+        #expect(TableMeasure.holdsNumbers(["12", "—", "", "7"]))
+        #expect(!TableMeasure.holdsNumbers(["—", "n/a"]))
+        #expect(!TableMeasure.holdsNumbers(["12", "many"]))
+    }
+
     @Test func codeInATableCellWithAnEscapedPipeMapsWordByWord() {
         let source = "| What | How |\n|---|---|\n| Review | `echo plan \\| annotator review -` |\n"
         let document = MarkdownRenderer.render(source)
@@ -334,12 +398,18 @@ struct MarkdownRendererTests {
     }
 
     @Test func tablesWithNothingUnderTheirNamesAreShownAsWritten() {
-        let wide = "a fairly long name for a column"
+        // Too wide for columns, and with no rows there is nothing to show under the names.
+        let wide = "Donaudampfschifffahrtsgesellschaftskapitän"
         let source = "| \(wide) | \(wide) | x |\n|---|---|---|\n"
         let document = MarkdownRenderer.render(source)
         #expect(document.text == "| \(wide) | \(wide) | x |\n|---|---|---|")
         #expect(document.segments.first?.style.block == .table)
         expectFaithfulMapping(document)
+
+        // Narrow enough, the names are a header with nothing under it.
+        let names = MarkdownRenderer.render("| Name | Role |\n|---|---|\n")
+        #expect(names.text == "Name\tRole")
+        #expect(names.segments.first?.style.block == .tableRow(header: true))
     }
 
     @Test func thematicBreakAndImage() {

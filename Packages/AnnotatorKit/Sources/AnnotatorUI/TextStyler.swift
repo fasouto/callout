@@ -17,8 +17,9 @@ enum BlockDecoration: Hashable {
     case quote(depth: Int, trim: CGFloat)
     /// A thematic break, drawn as a rule.
     case rule
-    /// A table row, with a hairline under it unless it is the last. `indent` is the table's left edge.
-    case tableRow(header: Bool, last: Bool, indent: CGFloat)
+    /// A table row, with a line under it. `indent` is the table's left edge, and
+    /// `width` how far the line goes: nil to the page's edge.
+    case tableRow(header: Bool, last: Bool, indent: CGFloat, width: CGFloat?)
 }
 
 /// Builds what the text view shows from the rendered document and the marks.
@@ -27,16 +28,21 @@ enum BlockDecoration: Hashable {
 /// same for the whole review, and the marks with their words laid over it.
 @MainActor
 enum TextStyler {
-    /// - Parameter added: source spans that are new since the previous version, to be tinted.
+    /// - Parameters:
+    ///   - added: source spans that are new since the previous version, to be tinted.
+    ///   - measure: how wide the page is.
     static func attributedString(
-        layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = []
+        layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = [], measure: CGFloat = Theme.measure
     ) -> NSAttributedString {
-        let base = basePage(of: layout.document, added: added)
+        let base = basePage(of: layout.document, added: added, measure: measure).text
         return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length)
     }
 
-    /// The document as set in type, without marks: one character for each of its displayed text.
-    static func basePage(of document: RenderedDocument, added: [TextSpan] = []) -> NSAttributedString {
+    /// The document as set in type, without marks: one character for each of
+    /// its displayed text. With it, how wide each of its tables is at full size.
+    static func basePage(
+        of document: RenderedDocument, added: [TextSpan] = [], measure: CGFloat = Theme.measure
+    ) -> (text: NSAttributedString, tables: [TableFit]) {
         // A line broken by hand stays in its paragraph: a new line, without
         // the space that parts one paragraph from the next. One character for one.
         let texts = document.segments.map { segment in
@@ -94,7 +100,7 @@ enum TextStyler {
         }
 
         endQuoteBars(in: result)
-        layOutTables(tableCells, in: result)
+        let tables = layOutTables(tableCells, in: result, measure: measure)
         Typography.setPunctuation(in: result)
 
         // New since the previous version: a quiet tint, under whatever the reviewer marks.
@@ -103,7 +109,7 @@ enum TextStyler {
                 result.addAttribute(.backgroundColor, value: Theme.revisionWash, range: NSRange(range))
             }
         }
-        return result
+        return (result, tables)
     }
 
     /// Part of a page: the base page's text in `displayed`, with the marks on it
@@ -268,7 +274,9 @@ enum TextStyler {
             attributes[.annotatorBlock] = BlockDecoration.rule
         case .paragraph, .heading:
             if style.quoteDepth > 0 { attributes[.annotatorBlock] = BlockDecoration.quote(depth: style.quoteDepth, trim: 0) }
-        case .codeBlock, .table, .html, .tableRow:
+        case .tableRow(let header, _):
+            if header { attributes[.foregroundColor] = NSColor.secondaryLabelColor }
+        case .codeBlock, .table, .html:
             break
         case .tableField:
             // The column's name, before its cell.
@@ -307,10 +315,15 @@ enum TextStyler {
             return Theme.mono(13)
         case .tableField where style.tableColumn == 0:
             return .systemFont(ofSize: 12, weight: .medium)
+        case .tableRow(true, _):
+            // The names of the columns, small and quiet over the figures they name.
+            if style.code { return Theme.mono(11, weight: .semibold) }
+            return .systemFont(ofSize: 12, weight: .semibold)
         case .tableRow, .tableField:
             let size = Theme.bodySize - 1
             if style.code { return Theme.mono(size - 2.5, weight: style.bold ? .semibold : .regular) }
-            return Theme.serif(size, weight: style.bold ? .semibold : .regular, italic: style.italic)
+            let font = Theme.serif(size, weight: style.bold ? .semibold : .regular, italic: style.italic)
+            return style.columnAlignment == .leading ? font : Theme.tabularFigures(font)
         case .paragraph, .thematicBreak:
             if style.code { return Theme.mono(Theme.bodySize - 2.5, weight: style.bold ? .semibold : .regular) }
             return Theme.serif(Theme.bodySize, weight: style.bold ? .semibold : .regular, italic: style.italic)
@@ -400,24 +413,40 @@ enum TextStyler {
         var style: SegmentStyle
     }
 
-    private static let columnGap: CGFloat = 28
     private static let rowPadding: CGFloat = 7
-    /// Between the cells of one row of a wide table.
+    /// Between the lines of one row: the cells of a wide table, or a name that wraps.
     private static let fieldPadding: CGFloat = 1.5
+
+    /// How wide a table is when set at full size, and how far in it starts.
+    struct TableFit: Equatable {
+        var natural: CGFloat
+        var indent: CGFloat
+
+        /// The size the table is set at on a page `measure` wide.
+        func scale(on measure: CGFloat) -> CGFloat {
+            let available = measure - indent
+            guard natural > available, natural > 0 else { return 1 }
+            // In steps, so that resizing a window does not set the page again at every point.
+            return max(0.5, (available / natural * 20).rounded(.down) / 20)
+        }
+    }
 
     /// Gives each table its columns: a tab stop where each column starts, as wide
     /// as its widest cell, with the last column wrapping under its own start.
-    private static func layOutTables(_ cells: [TableCell], in result: NSMutableAttributedString) {
-        // Segments of one table follow each other without a gap.
+    /// Numbers are set against the right edge of their column. A table wider
+    /// than the page is set smaller, all of it, until it fits.
+    private static func layOutTables(_ cells: [TableCell], in result: NSMutableAttributedString, measure: CGFloat) -> [TableFit] {
+        // The lines of one table follow each other without a gap, and the next table starts anew.
         var tables: [[TableCell]] = []
         for cell in cells {
-            if let last = tables.last?.last, last.segment + 1 == cell.segment {
+            if let last = tables.last?.last, last.segment + 1 == cell.segment, last.style.table == cell.style.table {
                 tables[tables.count - 1].append(cell)
             } else {
                 tables.append([cell])
             }
         }
 
+        var fits: [TableFit] = []
         let characters = result.string as NSString
         for table in tables {
             var rows: [[TableCell]] = [[]]
@@ -426,19 +455,28 @@ enum TextStyler {
                 if cell.endsRow { rows.append([]) }
             }
             rows.removeAll(where: \.isEmpty)
-            guard let first = rows.first?.first else { continue }
+            guard let first = rows.first?.first, let lastColumn = table.compactMap(\.style.tableColumn).max() else { continue }
+            let isFields: Bool = { if case .tableField = first.style.block { return true } else { return false } }()
+            var alignments = [SegmentStyle.ColumnAlignment](repeating: .leading, count: lastColumn + 1)
+            for cell in table {
+                if let column = cell.style.tableColumn { alignments[column] = cell.style.columnAlignment }
+            }
 
-            // Where a column starts depends on the columns before it, so the last
-            // is never measured; and a text set the same way is measured once.
-            // A table too wide for columns has thousands of cells, but its only
-            // measured column is the names, the same few in every row.
-            guard let lastColumn = table.compactMap(\.style.tableColumn).max() else { continue }
+            // Where a column starts depends on the columns before it. The last,
+            // when it wraps, is measured only until it is as wide as the page,
+            // and in a wide table not at all: it has thousands of cells, but
+            // the column before it is the names, the same few in every row.
+            // A text set the same way is measured once.
+            let indent = blockIndent(for: first.style)
+            let lastWraps = alignments[lastColumn] == .leading
+            let wrapping = CGFloat(TableMeasure.wrappingColumn)
             var widths = [CGFloat](repeating: 0, count: lastColumn + 1)
             var measured: [Measured: CGFloat] = [:]
             for row in rows {
                 var rowWidths: [Int: CGFloat] = [:]
                 for cell in row {
-                    guard let column = cell.style.tableColumn, column < lastColumn else { continue }
+                    guard let column = cell.style.tableColumn else { continue }
+                    if column == lastColumn, lastWraps, isFields || widths[column] >= measure - indent { continue }
                     let key = Measured(text: characters.substring(with: cell.range), style: cell.style)
                     let width = measured[key] ?? ceil(result.attributedSubstring(from: cell.range).size().width)
                     measured[key] = width
@@ -449,23 +487,52 @@ enum TextStyler {
                 }
             }
 
-            let indent = blockIndent(for: first.style)
-            var starts: [CGFloat] = [indent]
-            for width in widths.dropLast() { starts.append((starts.last ?? indent) + width + columnGap) }
+            var gap = CGFloat(TableMeasure.gap)
+            let lastNeeds = isFields ? 0 : lastWraps ? min(widths[lastColumn], wrapping) : widths[lastColumn]
+            let fit = TableFit(natural: widths.dropLast().reduce(lastNeeds) { $0 + $1 + gap }, indent: indent)
+            fits.append(fit)
+            let scale = isFields ? 1 : fit.scale(on: measure)
+            if scale < 1, let end = table.last.map({ NSMaxRange($0.range) }) {
+                let range = NSRange(location: first.range.location, length: end - first.range.location)
+                result.enumerateAttribute(.font, in: range) { value, run, _ in
+                    guard let font = value as? NSFont else { return }
+                    let smaller = NSFont(descriptor: font.fontDescriptor, size: (font.pointSize * scale * 2).rounded() / 2) ?? font
+                    result.addAttribute(.font, value: smaller, range: run)
+                }
+                widths = widths.map { ceil($0 * scale) }
+                gap = (gap * scale).rounded()
+            }
 
-            // In a wide table a row is several lines, one per cell: they sit close
-            // together, and only the last has the row's padding and line under it.
+            var starts: [CGFloat] = [indent]
+            for width in widths.dropLast() { starts.append((starts.last ?? indent) + width + gap) }
+            // The lines under the rows end with the table, unless its last column runs on to the page's edge.
+            let end = (starts.last ?? indent) + widths[lastColumn]
+            let width = isFields || end >= measure ? nil : end - indent
+            let stops = starts.indices.dropFirst().map { column in
+                switch alignments[column] {
+                case .leading: NSTextTab(textAlignment: .left, location: starts[column])
+                case .center: NSTextTab(textAlignment: .center, location: starts[column] + widths[column] / 2)
+                case .trailing: NSTextTab(textAlignment: .right, location: starts[column] + widths[column])
+                }
+            }
+
+            // A row of several lines, a wide table's or a header whose names
+            // wrap, has them close together, and only the last has the row's
+            // padding and line under it.
             var startsRow = true
             for (index, row) in rows.enumerated() {
                 guard let start = row.first?.range.location, let end = row.last.map({ NSMaxRange($0.range) }) else { continue }
                 let isLast = index == rows.count - 1
-                let isHeader: Bool = { if case .tableRow(let header) = row[0].style.block { return header } else { return false } }()
-                let endsRow: Bool = { if case .tableField(let endsRow) = row[0].style.block { return endsRow } else { return true } }()
+                let (isHeader, endsRow): (Bool, Bool) = switch row[0].style.block {
+                case .tableRow(let header, let endsRow): (header, endsRow)
+                case .tableField(let endsRow): (false, endsRow)
+                default: (false, true)
+                }
 
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.firstLineHeadIndent = indent
                 paragraph.headIndent = starts.last ?? indent
-                paragraph.tabStops = starts.dropFirst().map { NSTextTab(textAlignment: .left, location: $0) }
+                paragraph.tabStops = stops
                 paragraph.lineSpacing = 3
                 paragraph.lineBreakStrategy = .standard
                 paragraph.paragraphSpacingBefore = (startsRow ? rowPadding : fieldPadding) + (index == 0 ? 4 : 0)
@@ -474,11 +541,12 @@ enum TextStyler {
                 let range = NSRange(location: start, length: end - start)
                 result.addAttribute(.paragraphStyle, value: paragraph, range: range)
                 if endsRow {
-                    result.addAttribute(.annotatorBlock, value: BlockDecoration.tableRow(header: isHeader, last: isLast, indent: indent), range: range)
+                    result.addAttribute(.annotatorBlock, value: BlockDecoration.tableRow(header: isHeader, last: isLast, indent: indent, width: width), range: range)
                 }
                 startsRow = endsRow
             }
         }
+        return fits
     }
 
     /// The bar beside a quotation runs unbroken from paragraph to paragraph, and

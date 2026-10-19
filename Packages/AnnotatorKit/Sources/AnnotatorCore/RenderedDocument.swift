@@ -7,8 +7,9 @@ public struct SegmentStyle: Hashable, Sendable {
         case codeBlock(language: String?)
         /// A table shown as it is written, because its cells span rows or columns.
         case table
-        /// One row of a table laid out in columns.
-        case tableRow(header: Bool)
+        /// One line of a table laid out in columns. A header whose names wrap
+        /// takes several lines, and `endsRow` is false on all but its last.
+        case tableRow(header: Bool, endsRow: Bool = true)
         /// One cell of a table too wide for columns: on a line of its own, after
         /// the name of its column. `endsRow` is true for the last cell of its row.
         case tableField(endsRow: Bool)
@@ -29,6 +30,15 @@ public struct SegmentStyle: Hashable, Sendable {
     /// The column a table cell's text belongs to. Nil for the separators between cells.
     /// In a `tableField` line, 0 is the column's name and 1 the cell.
     public var tableColumn: Int?
+    /// Which table of the document a line belongs to, counted from the top:
+    /// tables that follow each other are laid out apart.
+    public var table: Int?
+    /// Where a cell sits in its column, in a table laid out in columns.
+    public var columnAlignment: ColumnAlignment = .leading
+
+    public enum ColumnAlignment: Hashable, Sendable {
+        case leading, center, trailing
+    }
 
     public init() {}
 }

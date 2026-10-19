@@ -61,7 +61,7 @@ The document is a page; your notes go in its margin, beside the lines they refer
 
 **Just type.** With the caret in the text and nothing selected, typing adds words there and `⌫` strikes out what is before the caret. Your words show in blue, what you struck shows in red, and the document itself is never changed: every edit is a mark, so it can be undone, and Claude gets each one as a separate correction. Typing is for words; it does not restructure lists or tables. There is no key to press first: `I` is only for putting the caret after a selection. (With vim keys on, `i` starts typing, as in vim.)
 
-A table too wide for columns shows each row cell by cell, each cell after the name of its column, so every cell can be marked.
+Tables are set in columns, with long column names wrapping above their figures and numbers lined up on the right. A table wider than the window is set smaller to fit. One whose cells are long sentences shows each row cell by cell, each cell after the name of its column. Every cell can be marked either way.
 
 **Or select, then press a key** (or use the bar that appears above the selection):
 

@@ -60,6 +60,8 @@ struct DocumentPane: NSViewRepresentable {
         private var shownSelection: UUID?
         private var shownLayout: DisplayLayout?
         private var styledPage: StyledPage?
+        /// How wide the text column is; a table wider than it is set smaller.
+        private var measure = Theme.measure
         private var shownFocusToken = 0
         private var isRestyling = false
         private var laidOutWidth: CGFloat = -1
@@ -164,13 +166,17 @@ struct DocumentPane: NSViewRepresentable {
             isRestyling = true
             // Only the parts of the page that changed are set again: a whole page
             // costs seconds on a long document, and the text view's layout with it.
-            let edits = styledPage?.update(to: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added)
+            let edits = styledPage?.update(
+                to: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added, measure: measure
+            )
             if let edits {
                 storage.beginEditing()
                 for edit in edits { storage.replaceCharacters(in: edit.range, with: edit.text) }
                 storage.endEditing()
             } else {
-                let made = StyledPage(layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added)
+                let made = StyledPage(
+                    layout: session.layout, marks: session.marks, selectedMarkID: session.selectedMarkID, added: added, measure: measure
+                )
                 styledPage = made
                 storage.setAttributedString(made.text)
             }
@@ -224,6 +230,10 @@ struct DocumentPane: NSViewRepresentable {
             let side = roomy ? Theme.pageSide : 24
             let measure = max(Theme.minimumMeasure, min(Theme.measure, clip.width - marginWidth - Theme.gutter - 2 * side))
             let left = max(side, ((clip.width - measure - Theme.gutter - marginWidth) / 2).rounded())
+            if measure != self.measure {
+                self.measure = measure
+                resetForMeasure()
+            }
 
             textView.setFrameSize(NSSize(width: measure, height: max(textView.frame.height, 10)))
             let textHeight = ensuring.map { textView.layoutHeight(ensuring: $0) } ?? layOutFromTheTop()
@@ -237,6 +247,19 @@ struct DocumentPane: NSViewRepresentable {
             )
             marginHost.frame = NSRect(x: left + measure + Theme.gutter, y: 0, width: marginWidth, height: height)
             page.frame = NSRect(x: 0, y: 0, width: clip.width, height: height)
+        }
+
+        /// A table that no longer fits the column, or now fits it better, is set
+        /// again at its new size. The text stays the same, and so does the selection in it.
+        private func resetForMeasure() {
+            guard let page = styledPage, !page.suits(measure: measure), let storage = textView.textStorage else { return }
+            let made = page.set(for: measure)
+            styledPage = made
+            let selection = textView.selectedRanges
+            isRestyling = true
+            storage.setAttributedString(made.text)
+            textView.selectedRanges = selection
+            isRestyling = false
         }
 
         /// A long text opens at once: its start is laid out now and the rest a

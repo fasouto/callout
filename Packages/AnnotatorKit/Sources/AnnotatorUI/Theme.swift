@@ -22,6 +22,17 @@ enum Theme {
         .monospacedSystemFont(ofSize: size, weight: weight)
     }
 
+    /// The font with figures all of one width, so that the numbers of a column
+    /// line up digit under digit.
+    static func tabularFigures(_ font: NSFont) -> NSFont {
+        let figures: [NSFontDescriptor.FeatureKey: Int] = [
+            .typeIdentifier: kNumberSpacingType,
+            .selectorIdentifier: kMonospacedNumbersSelector,
+        ]
+        let descriptor = font.fontDescriptor.addingAttributes([.featureSettings: [figures]])
+        return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
+    }
+
     static func headingSize(_ level: Int) -> CGFloat {
         switch level {
         case 1: 28

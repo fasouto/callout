@@ -30,6 +30,11 @@ struct StyledPageTests {
     | `RATE_LIMIT_RPS` | 10 | Requests per second for each API key |
     | `RATE_LIMIT_BURST` | 20 | Bucket size |
 
+    | Round | What changed | Requests refused | Clients affected | Agreement with the old limits |
+    |---|---|---|---|---|
+    | 1 | first bucket | 488 | 93 | 84% |
+    | 2 | burst and retry fixes | 914 | 34 | 96.5% |
+
     > Note: this does not cover websockets.
     > Nor does it cover the admin API.
 
