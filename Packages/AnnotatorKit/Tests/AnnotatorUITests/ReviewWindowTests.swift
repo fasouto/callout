@@ -102,9 +102,14 @@ struct ReviewWindowTests {
         window.appearance = nil
     }
 
-    private func press(_ characters: String, keyCode: UInt16, in harness: Harness) throws {
+    /// Presses ⌥ and a mark's letter.
+    private func mark(_ letter: String, keyCode: UInt16, in harness: Harness) throws {
+        try press(letter, keyCode: keyCode, modifiers: .option, in: harness)
+    }
+
+    private func press(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [], in harness: Harness) throws {
         let event = try #require(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+            with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
             windowNumber: harness.window.windowNumber, context: nil,
             characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
         ))
@@ -120,12 +125,12 @@ struct ReviewWindowTests {
         let session = harness.session
 
         select("very robust ", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(session.marks.map(\.kind) == [.delete])
         #expect(session.marks.first?.anchor.quote == "very robust ")
 
         select("no limits", in: harness)
-        try press("K", keyCode: 40, in: harness)
+        try mark("K", keyCode: 40, in: harness)
         #expect(session.marks.last?.kind == .keep)
         #expect(session.marks.last?.anchor.quote == "**no limits**")
 
@@ -139,8 +144,8 @@ struct ReviewWindowTests {
         let session = harness.session
         // Right after "Plan:" in the heading.
         harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
-        try press("d", keyCode: 2, in: harness)
-        try press("x", keyCode: 7, in: harness)
+        try mark("d", keyCode: 2, in: harness)
+        try mark("x", keyCode: 7, in: harness)
 
         // With nothing selected the letters are text, not commands.
         #expect(session.marks.map(\.kind) == [.insert])
@@ -153,7 +158,7 @@ struct ReviewWindowTests {
     @Test func backspaceRemovesTheSelectedMark() throws {
         let harness = try makeHarness()
         select("very robust ", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(harness.session.marks.count == 1)
 
         try press("\u{7F}", keyCode: KeyCode.delete, in: harness)
@@ -163,10 +168,10 @@ struct ReviewWindowTests {
     @Test func aSecondEditOnTheSameTextIsRefused() throws {
         let harness = try makeHarness()
         select("very robust ", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         settle(harness.window)
         select("robust approach", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(harness.session.marks.count == 1)
     }
 
@@ -176,7 +181,7 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("leverage", in: harness)
-        try press("r", keyCode: 15, in: harness)
+        try mark("r", keyCode: 15, in: harness)
 
         let mark = try #require(session.marks.first)
         #expect(mark.kind == .replace)
@@ -201,7 +206,7 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("leverage", in: harness)
-        try press("r", keyCode: 15, in: harness)
+        try mark("r", keyCode: 15, in: harness)
         #expect(session.marks.map(\.kind) == [.replace])
         // Even before the caret moves on, nothing goes out as a replacement with no words.
         #expect(session.feedback().contains("### 1. Delete\n> leverage\n"))
@@ -216,7 +221,7 @@ struct ReviewWindowTests {
         let session = harness.session
 
         select("token bucket", in: harness)
-        try press("c", keyCode: 8, in: harness)
+        try mark("c", keyCode: 8, in: harness)
         #expect(session.marks.map(\.kind) == [.comment])
         #expect(session.editing?.field == .note)
         session.endEditing()
@@ -224,7 +229,7 @@ struct ReviewWindowTests {
 
         // A written one stays.
         select("token bucket", in: harness)
-        try press("c", keyCode: 8, in: harness)
+        try mark("c", keyCode: 8, in: harness)
         session.update(try #require(session.marks.first).id, note: "Why?")
         session.endEditing()
         #expect(session.marks.first?.note == "Why?")
@@ -234,7 +239,7 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("websockets", in: harness)
-        try press("i", keyCode: 34, in: harness)
+        try mark("i", keyCode: 34, in: harness)
         // Nothing is marked until something is typed.
         #expect(session.marks.isEmpty)
         let word = (harness.textView.string as NSString).range(of: "websockets")
@@ -258,7 +263,7 @@ struct ReviewWindowTests {
         // A keep has nothing to write.
         session.endEditing()
         select("no limits", in: harness)
-        try press("k", keyCode: 40, in: harness)
+        try mark("k", keyCode: 40, in: harness)
         try press("\r", keyCode: KeyCode.return, in: harness)
         #expect(session.editing == nil)
     }
@@ -267,7 +272,7 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("very robust ", in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         let mark = try #require(session.marks.first)
         settle(harness.window)
 
@@ -325,7 +330,7 @@ struct ReviewWindowTests {
         let undo = undoable(session)
 
         select("leverage", in: harness)
-        try press("r", keyCode: 15, in: harness)
+        try mark("r", keyCode: 15, in: harness)
         for character in ["u", "s", "e"] {
             harness.textView.insertText(character, replacementRange: NSRange(location: NSNotFound, length: 0))
         }
@@ -359,7 +364,7 @@ struct ReviewWindowTests {
         let undo = undoable(session)
 
         select("token bucket", in: harness)
-        try press("c", keyCode: 8, in: harness)
+        try mark("c", keyCode: 8, in: harness)
         session.endEditing()
         #expect(session.marks.isEmpty)
         #expect(!undo.canUndo)
@@ -444,9 +449,9 @@ struct ReviewWindowTests {
         let harness = try makeHarness()
         let session = harness.session
         select("token bucket", in: harness)
-        try press("x", keyCode: 7, in: harness)
+        try mark("x", keyCode: 7, in: harness)
         select("The API has no limits today, so a single client can exhaust the pool.", in: harness)
-        try press("m", keyCode: 46, in: harness)
+        try mark("m", keyCode: 46, in: harness)
 
         #expect(session.marks.map(\.kind) == [.expand, .summarize])
         // Nothing to write is asked for: the instruction is complete as it is.
@@ -467,7 +472,7 @@ struct ReviewWindowTests {
         let token = harness.session.overallFocusToken
         // With a selection the letters are commands. (At a caret, O is a letter; ⌘O always works.)
         select("token bucket", in: harness)
-        try press("o", keyCode: 31, in: harness)
+        try mark("o", keyCode: 31, in: harness)
         #expect(harness.session.overallFocusToken == token + 1)
         #expect(harness.session.marks.isEmpty)
     }

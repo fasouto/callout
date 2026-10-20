@@ -111,6 +111,7 @@ struct DocumentPane: NSViewRepresentable {
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
             textView.onInsertModeChange = { [weak self] isOn in self?.session.isTypingMode = isOn }
             textView.onType = { [weak self] text in self?.type(text) }
+            textView.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
             textView.onDeleteCharacter = { [weak self] forward in self?.deleteCharacter(forward: forward) }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onRemoveMark = { [weak self] in
@@ -425,6 +426,13 @@ struct DocumentPane: NSViewRepresentable {
                 return
             }
             redraw(caret: caret)
+        }
+
+        /// Words typed on a selection are a comment on it.
+        private func comment(typing text: String) {
+            toolbar.hide()
+            let span = Range(textView.selectedRange()).flatMap { session.sourceSpan(forView: $0) }
+            session.comment(typing: text, anchor: span.flatMap { Anchor.make(in: session.source, span: $0) })
         }
 
         private func deleteCharacter(forward: Bool) {

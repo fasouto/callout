@@ -1,8 +1,9 @@
 import AnnotatorCore
 import AppKit
 
-/// What the keys do in a review. Letters are never typed into the document, so
-/// each one can be a command.
+/// What the keys do in a review. Text typed on a selection is a comment on it,
+/// so the marks answer to Option and a letter. With vim keys on, the letters
+/// alone are commands too, as they are in vim.
 @MainActor
 enum Keymap {
     private static let vimKey = "vimNavigation"
@@ -21,16 +22,35 @@ enum Keymap {
         case overall
     }
 
-    /// The command a plain key press asks for, if any. With vim keys on, a
-    /// lowercase k is a movement, so Keep answers to Shift-K only.
-    static func command(for characters: String, vim: Bool = usesVimKeys) -> Command? {
+    /// The command a key press asks for, if any: Option and a letter, or with
+    /// vim keys on the plain letter. Then a lowercase k is a movement, so Keep
+    /// answers to Shift-K.
+    static func command(for characters: String, modifiers: NSEvent.ModifierFlags, vim: Bool = usesVimKeys) -> Command? {
         guard characters.count == 1 else { return nil }
-        if vim, characters == "k" { return nil }
+        let plain = modifiers.isEmpty || modifiers == .shift
+        guard modifiers == .option || vim && plain else { return nil }
+        if vim, plain, characters == "k" { return nil }
         switch characters.lowercased() {
         case "s": return .snippets
         case "o": return .overall
         default: return MarkKind(key: characters).map(Command.mark)
         }
+    }
+
+    /// A command's key as shown to the user: the letter, after ⌥ unless vim keys are on.
+    nonisolated static func label(_ letter: String, vim: Bool) -> String {
+        vim ? letter : "⌥" + letter
+    }
+
+    /// The text a key press types, if it types any: not a shortcut, a movement
+    /// or a function key.
+    static func typedText(of event: NSEvent) -> String? {
+        guard event.modifierFlags.intersection([.command, .control]).isEmpty,
+              !KeyCode.navigation.contains(event.keyCode),
+              let text = event.characters, !text.isEmpty,
+              text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value) })
+        else { return nil }
+        return text
     }
 }
 

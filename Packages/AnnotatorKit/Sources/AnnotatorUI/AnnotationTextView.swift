@@ -4,13 +4,15 @@ import AppKit
 /// The document view. It behaves like an editable text view, with a caret and
 /// keyboard selection, but never changes its text itself. What is typed is
 /// handed on, to become marks: typing at the caret adds text, Backspace strikes
-/// text out, and with a selection the letters are commands.
+/// text out, and typing on a selection comments on it.
 final class AnnotationTextView: NSTextView {
     var onCommand: ((Keymap.Command) -> Void)?
     /// Overrides the setting for this view. Nil follows Settings.
     var usesVimKeys: Bool?
     /// Text typed at the caret.
     var onType: ((String) -> Void)?
+    /// Text typed on a selection, which is a comment on it.
+    var onTypeOnSelection: ((String) -> Void)?
     /// Backspace or forward delete at the caret, with nothing selected.
     var onDeleteCharacter: ((_ forward: Bool) -> Void)?
     /// Backspace with text selected.
@@ -75,7 +77,6 @@ final class AnnotationTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
-        let isPlain = modifiers.isEmpty || modifiers == .shift
         let hasSelection = selectedRange().length > 0
 
         if vimKeys {
@@ -89,8 +90,8 @@ final class AnnotationTextView: NSTextView {
             }
         }
 
-        // Letters are commands on a selection, and wherever nothing types.
-        if isPlain, hasSelection || !canType, let command = Keymap.command(for: characters, vim: vimKeys) {
+        // ⌥ and a letter is a command on a selection, and wherever nothing types.
+        if hasSelection || !canType, let command = Keymap.command(for: characters, modifiers: modifiers, vim: vimKeys) {
             onCommand?(command)
             visualAnchor = nil
             return
@@ -121,7 +122,7 @@ final class AnnotationTextView: NSTextView {
             if KeyCode.navigation.contains(event.keyCode) || modifiers.contains(.command) || modifiers.contains(.control) {
                 // Movement, selection and shortcuts work as in any text view.
                 super.keyDown(with: event)
-            } else if canType {
+            } else if canType || commentsOnTyping {
                 // Through the input system, so accents and other composed characters work.
                 interpretKeyEvents([event])
             }
@@ -129,9 +130,19 @@ final class AnnotationTextView: NSTextView {
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
-        guard canType else { return }
         let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
-        if !text.isEmpty { onType?(text) }
+        guard !text.isEmpty else { return }
+        if canType {
+            onType?(text)
+        } else if commentsOnTyping {
+            onTypeOnSelection?(text)
+        }
+    }
+
+    /// Whether what is typed now is a comment on the selection. Not in vim's
+    /// visual mode, where letters are commands.
+    private var commentsOnTyping: Bool {
+        selectedRange().length > 0 && !vimKeys
     }
 
     override func doCommand(by selector: Selector) {
@@ -144,7 +155,7 @@ final class AnnotationTextView: NSTextView {
         }
     }
 
-    /// Pasted text is typed in. Nothing replaces a selection: that is what R is for.
+    /// Pasted text is typed in. Nothing replaces a selection: that is what ⌥R is for.
     override func paste(_ sender: Any?) {
         guard canType, let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
             NSSound.beep()

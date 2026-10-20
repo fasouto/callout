@@ -95,7 +95,7 @@ private struct SelectionToolbarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Comment with one of your saved comments (S)")
+            .help("Comment with one of your saved comments (\(Keymap.label("S", vim: Keymap.usesVimKeys)))")
             .accessibilityLabel("Saved comments")
         }
         .padding(.horizontal, 3)

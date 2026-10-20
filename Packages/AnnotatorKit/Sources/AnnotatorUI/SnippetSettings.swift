@@ -32,7 +32,7 @@ struct SnippetSettings: View {
             }
             Section {
             } footer: {
-                Text("In a review, select text and press S to comment with one of these. The comments for what you are reviewing come first, and the first nine can be picked with their number.")
+                Text("In a review, select text and press \(Keymap.label("S", vim: Keymap.usesVimKeys)) to comment with one of these. The comments for what you are reviewing come first, and the first nine can be picked with their number.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)

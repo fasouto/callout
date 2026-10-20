@@ -186,23 +186,25 @@ struct TypingTests {
         #expect(try harness.session.editedText().hasPrefix("We will leverage a very robust approach here.\nOne more line.\n"))
     }
 
-    @Test func withASelectionLettersAreCommandsNotText() throws {
+    @Test func withASelectionTypingCommentsAndOptionLettersMark() throws {
         let harness = try makeHarness()
         harness.textView.setSelectedRange(harness.text.range(of: "very robust "))
-        // Not a command letter: nothing happens, and the selection is not replaced.
+        // Typing does not replace the selection: it comments on it.
         try key(0, "a", in: harness)
-        type("a", in: harness)
-        #expect(harness.session.marks.isEmpty)
+        #expect(harness.session.marks.map(\.kind) == [.comment])
+        #expect(harness.session.marks.first?.note == "a")
         #expect(harness.textView.string == harness.session.document.text)
+        harness.session.endEditing()
 
-        try key(2, "d", in: harness)
-        #expect(harness.session.marks.map(\.kind) == [.delete])
+        harness.textView.setSelectedRange(harness.text.range(of: "approach"))
+        try key(2, "d", flags: .option, in: harness)
+        #expect(harness.session.marks.map(\.kind) == [.comment, .delete])
     }
 
     @Test func theMarginFieldShowsWhatWasTypedInTheDocument() throws {
         let harness = try makeHarness()
         harness.textView.setSelectedRange(harness.text.range(of: "leverage"))
-        try key(15, "r", in: harness)
+        try key(15, "r", flags: .option, in: harness)
         type("use", in: harness)
         harness.window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))

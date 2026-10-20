@@ -212,7 +212,7 @@ private struct MarginGuide: View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
                 ? "Press v and move to select, then press a key. Press i to type."
-                : "To add words, click where they go and type. To mark text, select it, then press a key.")
+                : "To add words, click where they go and type. To comment on words, select them and type. To mark them another way, press:")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -233,7 +233,7 @@ private struct MarginGuide: View {
                     }
                 }
                 GridRow {
-                    KeyCap("S")
+                    KeyCap(Keymap.label("S", vim: Keymap.usesVimKeys))
                     HStack(spacing: 7) {
                         Image(systemName: "text.badge.plus")
                             .font(.system(size: 10.5, weight: .bold))

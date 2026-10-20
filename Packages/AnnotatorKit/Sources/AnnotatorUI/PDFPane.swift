@@ -3,9 +3,12 @@ import AppKit
 import PDFKit
 import SwiftUI
 
-/// The PDF view with the same keys as the text page: letters mark the selection.
+/// The PDF view with the same keys as the text page: ⌥ and a letter marks the
+/// selection, and typing on it comments on it.
 final class AnnotationPDFView: PDFView {
     var onCommand: ((Keymap.Command) -> Void)?
+    /// Text typed on a selection, which is a comment on it.
+    var onTypeOnSelection: ((String) -> Void)?
     /// Overrides the setting for this view. Nil follows Settings.
     var usesVimKeys: Bool?
     var onDeleteKey: (() -> Void)?
@@ -19,12 +22,11 @@ final class AnnotationPDFView: PDFView {
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
-        let isPlain = modifiers.isEmpty || modifiers == .shift
 
         let vim = usesVimKeys ?? Keymap.usesVimKeys
         if vim, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) { return }
 
-        if isPlain, let command = Keymap.command(for: characters, vim: vim) {
+        if let command = Keymap.command(for: characters, modifiers: modifiers, vim: vim) {
             onCommand?(command)
             return
         }
@@ -38,7 +40,11 @@ final class AnnotationPDFView: PDFView {
         case KeyCode.tab where modifiers.isEmpty || modifiers == .shift:
             onTabKey?(modifiers.isEmpty)
         default:
-            super.keyDown(with: event)
+            if !vim, currentSelection?.string?.isEmpty == false, let text = Keymap.typedText(of: event) {
+                onTypeOnSelection?(text)
+            } else {
+                super.keyDown(with: event)
+            }
         }
     }
 
@@ -287,6 +293,7 @@ struct PDFPane: NSViewRepresentable {
                 case .overall: self?.session.focusOverallComment()
                 }
             }
+            view.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
             view.onDeleteKey = { [weak self] in
                 guard let self else { return }
                 // ⌫ strikes out the selected text, or takes the strike back from text
@@ -539,6 +546,18 @@ struct PDFPane: NSViewRepresentable {
                 if let snippet { self.session.addComment(from: snippet, anchor: anchor) }
                 self.view.window?.makeFirstResponder(self.view)
             }
+        }
+
+        /// Words typed on a selection are a comment on it.
+        func comment(typing text: String) {
+            toolbar.hide()
+            let anchor = currentSelection().flatMap { selected in
+                session.pageTexts.indices.contains(selected.index)
+                    ? Anchor.make(inPage: session.pageTexts[selected.index], page: selected.index + 1,
+                                  span: TextSpan(selected.range.location, NSMaxRange(selected.range)))
+                    : nil
+            }
+            session.comment(typing: text, anchor: anchor)
         }
 
         /// - Parameter writingNote: whether the keyboard goes to the new mark's

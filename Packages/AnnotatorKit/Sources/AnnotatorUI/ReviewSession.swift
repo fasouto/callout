@@ -323,10 +323,10 @@ final class ReviewSession {
     }
 
     @discardableResult
-    func addMarkToWrite(_ kind: MarkKind, anchor: Anchor?) -> Mark? {
+    func addMarkToWrite(_ kind: MarkKind, anchor: Anchor?, note: String? = nil) -> Mark? {
         let before = Snapshot(marks: marks, selection: selectedMarkID)
         let text: String? = kind == .replace || kind == .insert ? "" : nil
-        guard let mark = place(kind, anchor: anchor, text: text, note: nil, undoName: nil) else {
+        guard let mark = place(kind, anchor: anchor, text: text, note: note, undoName: nil) else {
             return nil
         }
         unwritten = (mark.id, before)
@@ -352,6 +352,21 @@ final class ReviewSession {
         marksChanged()
         announce(mark.spokenDescription)
         return mark
+    }
+
+    /// Text typed on a selection starts a comment on it, and the keyboard goes
+    /// to the comment's field. Keys pressed before the field has the keyboard
+    /// are added to the comment being written.
+    @discardableResult
+    func comment(typing text: String, anchor: Anchor?) -> Mark? {
+        if let target = editing, target.field == .note,
+           let mark = marks.first(where: { $0.id == target.markID }), mark.kind == .comment {
+            update(mark.id, note: (mark.note ?? "") + text)
+            return marks.first { $0.id == mark.id }
+        }
+        // A space is not the start of anything.
+        guard text.nilIfBlank != nil else { return nil }
+        return addMarkToWrite(.comment, anchor: anchor, note: text)
     }
 
     /// Comments on text with a reusable comment.
@@ -591,7 +606,7 @@ extension MarkKind {
 
     /// The key as shown to the user. With vim keys on, a plain K moves up, so Keep needs Shift.
     func keyLabel(vim: Bool) -> String {
-        self == .keep && vim ? "⇧K" : key
+        self == .keep && vim ? "⇧K" : Keymap.label(key, vim: vim)
     }
 
     /// The symbol beside the mark's key in the margin's key guide.

@@ -10,14 +10,19 @@ struct KeymapTests {
     @Test func everyMarkHasItsOwnKey() {
         let keys = MarkKind.allCases.map(\.key) + ["S", "O"]
         #expect(Set(keys).count == keys.count)
-        #expect(Keymap.command(for: "d", vim: false) == .mark(.delete))
-        #expect(Keymap.command(for: "X", vim: false) == .mark(.expand))
-        #expect(Keymap.command(for: "m", vim: false) == .mark(.summarize))
-        #expect(Keymap.command(for: "k", vim: false) == .mark(.keep))
-        #expect(Keymap.command(for: "s", vim: false) == .snippets)
-        #expect(Keymap.command(for: "o", vim: false) == .overall)
-        #expect(Keymap.command(for: "q", vim: false) == nil)
-        #expect(Keymap.command(for: "", vim: false) == nil)
+        #expect(Keymap.command(for: "d", modifiers: .option, vim: false) == .mark(.delete))
+        #expect(Keymap.command(for: "X", modifiers: .option, vim: false) == .mark(.expand))
+        #expect(Keymap.command(for: "m", modifiers: .option, vim: false) == .mark(.summarize))
+        #expect(Keymap.command(for: "k", modifiers: .option, vim: false) == .mark(.keep))
+        #expect(Keymap.command(for: "s", modifiers: .option, vim: false) == .snippets)
+        #expect(Keymap.command(for: "o", modifiers: .option, vim: false) == .overall)
+        #expect(Keymap.command(for: "q", modifiers: .option, vim: false) == nil)
+        #expect(Keymap.command(for: "", modifiers: .option, vim: false) == nil)
+        // A plain letter types: on a selection, it starts a comment.
+        #expect(Keymap.command(for: "d", modifiers: [], vim: false) == nil)
+        #expect(Keymap.command(for: "D", modifiers: .shift, vim: false) == nil)
+        #expect(Keymap.command(for: "d", modifiers: .command, vim: false) == nil)
+        #expect(MarkKind.delete.keyLabel(vim: false) == "⌥D")
     }
 
     @Test func everyMarkShowsItsKeyInsideItsName() throws {
@@ -34,12 +39,14 @@ struct KeymapTests {
     }
 
     @Test func withVimKeysAPlainKMovesAndShiftKKeeps() {
-        #expect(Keymap.command(for: "k", vim: true) == nil)
-        #expect(Keymap.command(for: "K", vim: true) == .mark(.keep))
-        #expect(Keymap.command(for: "d", vim: true) == .mark(.delete))
+        #expect(Keymap.command(for: "k", modifiers: [], vim: true) == nil)
+        #expect(Keymap.command(for: "K", modifiers: [], vim: true) == .mark(.keep))
+        #expect(Keymap.command(for: "d", modifiers: [], vim: true) == .mark(.delete))
         #expect(MarkKind.keep.keyLabel(vim: true) == "⇧K")
-        #expect(MarkKind.keep.keyLabel(vim: false) == "K")
+        #expect(MarkKind.keep.keyLabel(vim: false) == "⌥K")
         #expect(MarkKind.delete.keyLabel(vim: true) == "D")
+        // ⌥ and the letter work with vim keys too.
+        #expect(Keymap.command(for: "k", modifiers: .option, vim: true) == .mark(.keep))
     }
 
     @Test func wordMovements() {
@@ -134,6 +141,16 @@ struct VimReviewTests {
 
     private var selected: (Harness) -> String { { ($0.textView.string as NSString).substring(with: $0.textView.selectedRange()) } }
 
+    @Test func lettersOnAVisualSelectionAreCommandsNotAComment() throws {
+        let harness = try makeHarness()
+        try type("vw", in: harness)
+        #expect(harness.textView.selectedRange().length > 0)
+        try type("q", in: harness)
+        #expect(harness.session.marks.isEmpty)
+        try type("c", in: harness)
+        #expect(harness.session.marks.map(\.kind) == [.comment])
+    }
+
     @Test func movingTheCaret() throws {
         let harness = try makeHarness()
         try type("ww", in: harness)
@@ -224,12 +241,13 @@ struct VimReviewTests {
     @Test func withoutVimKeysTheLettersAreNotMovements() throws {
         let harness = try makeHarness(vim: false)
         harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
-        try type("k", in: harness)
+        try type("k", in: harness, flags: .option)
         #expect(harness.session.marks.map(\.kind) == [.keep])
-        // On a selection a letter that is no command does nothing: it does not type over it.
+        // On a selection a plain letter starts a comment: it does not type over it.
         harness.textView.setSelectedRange(NSRange(location: 19, length: 4))
         try type("u", in: harness)
-        #expect(harness.session.marks.count == 1)
+        #expect(harness.session.marks.map(\.kind) == [.keep, .comment])
+        harness.session.endEditing()
         // At a caret, w, h and j are just letters to type.
         harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
         try type("whj", in: harness)
@@ -238,11 +256,11 @@ struct VimReviewTests {
     }
 
     @Test func withoutVimKeysIOnASelectionOnlyPlacesTheCaret() throws {
-        // I is a command on a selection: the caret goes after it and the letter
+        // ⌥I is a command on a selection: the caret goes after it and the letter
         // itself is not typed. At a caret, i is a letter like any other.
         let harness = try makeHarness(vim: false)
         harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
-        try type("i", in: harness)
+        try type("i", in: harness, flags: .option)
         #expect(harness.session.marks.isEmpty)
         #expect(harness.textView.selectedRange() == NSRange(location: 16, length: 0))
         try type("now", in: harness)

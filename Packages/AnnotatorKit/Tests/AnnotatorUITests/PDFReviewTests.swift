@@ -92,9 +92,14 @@ struct PDFReviewTests {
         harness.view.setCurrentSelection(page.selection(for: range), animate: false)
     }
 
-    private func press(_ characters: String, keyCode: UInt16, in harness: Harness) throws {
+    /// Presses ⌥ and a mark's letter.
+    private func mark(_ letter: String, keyCode: UInt16, in harness: Harness) throws {
+        try press(letter, keyCode: keyCode, modifiers: .option, in: harness)
+    }
+
+    private func press(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [], in harness: Harness) throws {
         let event = try #require(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+            with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
             windowNumber: harness.window.windowNumber, context: nil,
             characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
         ))
@@ -139,9 +144,9 @@ struct PDFReviewTests {
         let session = harness.session
 
         try select("Passionate, results-driven", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         try select("Worked at CERN", page: 1, in: harness)
-        try press("k", keyCode: 40, in: harness)
+        try mark("k", keyCode: 40, in: harness)
 
         #expect(session.marks.map(\.kind) == [.delete, .keep])
         #expect(session.marks[0].anchor.page == 1)
@@ -158,20 +163,20 @@ struct PDFReviewTests {
         let session = harness.session
 
         try select("with a proven track record", page: 0, in: harness)
-        try press("r", keyCode: 15, in: harness)
+        try mark("r", keyCode: 15, in: harness)
         session.update(try #require(session.selectedMarkID), text: "who ships reliable systems in production")
         session.endEditing()
 
         try select("Passionate, results-driven", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
 
         try select("Worked at CERN", page: 1, in: harness)
-        try press("c", keyCode: 8, in: harness)
+        try mark("c", keyCode: 8, in: harness)
         session.update(try #require(session.selectedMarkID), note: "Mention the Oracle scale and the three-state availability model.")
         session.endEditing()
 
         try select("Built browser automation for insurance price comparison", page: 0, in: harness)
-        try press("k", keyCode: 40, in: harness)
+        try mark("k", keyCode: 40, in: harness)
         session.generalComment = "Keep it to one page."
 
         let expected = """
@@ -200,7 +205,7 @@ struct PDFReviewTests {
         #expect(session.feedback() == expected)
 
         try select("Mentored a team", page: 0, in: harness)
-        try press("i", keyCode: 34, in: harness)
+        try mark("i", keyCode: 34, in: harness)
         session.update(try #require(session.selectedMarkID), text: "and hired")
         session.endEditing()
         settle(harness.window)
@@ -230,17 +235,17 @@ struct PDFReviewTests {
         let harness = try makeHarness()
         let session = harness.session
         try select("with a proven track record", page: 0, in: harness)
-        try press("r", keyCode: 15, in: harness)
+        try mark("r", keyCode: 15, in: harness)
         session.update(try #require(session.selectedMarkID), text: "who ships reliable systems")
         session.endEditing()
         try select("Passionate, results-driven", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         try select("browser automation", page: 0, in: harness)
-        try press("c", keyCode: 8, in: harness)
+        try mark("c", keyCode: 8, in: harness)
         session.update(try #require(session.selectedMarkID), note: "Say which insurer, and how many quotes a day.")
         session.endEditing()
         try select("Mentored a team", page: 0, in: harness)
-        try press("i", keyCode: 34, in: harness)
+        try mark("i", keyCode: 34, in: harness)
         session.update(try #require(session.selectedMarkID), text: "and hired")
         session.endEditing()
         session.selectedMarkID = nil
@@ -273,7 +278,7 @@ struct PDFReviewTests {
         let harness = try makeHarness()
         let session = harness.session
         try select("Worked at CERN", page: 1, in: harness)
-        try press("i", keyCode: 34, in: harness)
+        try mark("i", keyCode: 34, in: harness)
         session.update(try #require(session.selectedMarkID), text: "(2019 to 2024)")
         session.endEditing()
 
@@ -283,11 +288,21 @@ struct PDFReviewTests {
             || session.feedback().contains("### 1. Insert after (page 2)\n> Worked at CERN\nAdd: (2019 to 2024)\n"))
     }
 
+    @Test func typingOnASelectionWritesAComment() throws {
+        let harness = try makeHarness()
+        try select("Built browser automation", page: 0, in: harness)
+        for key in "why?" { try press(String(key), keyCode: 0, in: harness) }
+        #expect(harness.session.marks.map(\.kind) == [.comment])
+        #expect(harness.session.marks.first?.note == "why?")
+        #expect(harness.session.marks.first?.anchor.page == 1)
+        #expect(harness.session.editing?.field == .note)
+    }
+
     @Test func keysNeedASelection() throws {
         let harness = try makeHarness()
         harness.view.clearSelection()
-        try press("d", keyCode: 2, in: harness)
-        try press("i", keyCode: 34, in: harness)
+        try mark("d", keyCode: 2, in: harness)
+        try mark("i", keyCode: 34, in: harness)
         #expect(harness.session.marks.isEmpty)
         #expect(harness.session.statusMessage == "Select the words the new text goes after.")
     }
@@ -296,14 +311,14 @@ struct PDFReviewTests {
         let harness = try makeHarness()
         let session = harness.session
         try select("Built browser automation", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         try select("browser automation for insurance", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(session.marks.count == 1)
 
         // The same words on the other page are another matter.
         try select("Built browser automation", page: 1, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(session.marks.count == 2)
     }
 
@@ -315,7 +330,7 @@ struct PDFReviewTests {
         session.undoManager = undo
 
         try select("Passionate, results-driven", page: 0, in: harness)
-        try press("d", keyCode: 2, in: harness)
+        try mark("d", keyCode: 2, in: harness)
         #expect(session.editing?.field == .note)
         // Back from the reason, without one.
         session.endEditing()

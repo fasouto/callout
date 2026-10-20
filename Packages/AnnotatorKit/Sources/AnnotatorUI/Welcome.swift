@@ -48,24 +48,35 @@ struct LessonStep: Identifiable {
     }
 }
 
+@MainActor
 enum Lesson {
-    static let steps: [LessonStep] = [
-        LessonStep(id: 0, title: "Strike the filler", instruction: "Select **very robust and comprehensive** and press D.") { session in
-            session.marks.contains { $0.kind == .delete }
-        },
-        LessonStep(id: 1, title: "Use a plainer word", instruction: "Select **leverage**, press R and type *use*.") { session in
-            session.marks.contains { $0.kind == .replace && $0.text?.nilIfBlank != nil }
-        },
-        LessonStep(id: 2, title: "Question a claim", instruction: "Select **keeps every result forever**, press C and say what worries you.") { session in
-            session.marks.contains { $0.kind == .comment }
-        },
-        LessonStep(id: 3, title: "Hand it in", instruction: "Press Send Feedback, or ⌘↩. Claude gets your marks as a list it can act on.") { _ in
-            false
-        },
-    ]
+    /// The steps, with the keys as they are set: with vim keys on, the letters
+    /// alone, and a comment is started with c rather than by typing.
+    static var steps: [LessonStep] {
+        let vim = Keymap.usesVimKeys
+        return [
+            LessonStep(id: 0, title: "Strike the filler", instruction: "Select **very robust and comprehensive** and press \(MarkKind.delete.keyLabel(vim: vim)).") { session in
+                session.marks.contains { $0.kind == .delete }
+            },
+            LessonStep(id: 1, title: "Use a plainer word", instruction: "Select **leverage**, press \(MarkKind.replace.keyLabel(vim: vim)) and type *use*.") { session in
+                session.marks.contains { $0.kind == .replace && $0.text?.nilIfBlank != nil }
+            },
+            LessonStep(
+                id: 2, title: "Question a claim",
+                instruction: vim
+                    ? "Select **keeps every result forever**, press C and say what worries you."
+                    : "Select **keeps every result forever** and type what worries you."
+            ) { session in
+                session.marks.contains { $0.kind == .comment }
+            },
+            LessonStep(id: 3, title: "Hand it in", instruction: "Press Send Feedback, or ⌘↩. Claude gets your marks as a list it can act on.") { _ in
+                false
+            },
+        ]
+    }
 
     /// The first step not done yet.
-    @MainActor static func current(in session: ReviewSession) -> Int {
+    static func current(in session: ReviewSession) -> Int {
         steps.firstIndex { !$0.isDone(session) } ?? steps.count - 1
     }
 }

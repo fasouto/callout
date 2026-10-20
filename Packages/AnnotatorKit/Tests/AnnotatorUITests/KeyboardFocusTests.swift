@@ -118,7 +118,7 @@ struct KeyboardFocusTests {
         #expect(harness.window.firstResponder is AnnotationTextView)
     }
 
-    /// D takes the keyboard to the reason as C does to the comment. The reason is
+    /// ⌥D takes the keyboard to the reason as ⌥C does to the comment. The reason is
     /// optional: ↩ or Esc goes back to the document and the strike stays, undoable.
     @Test func strikingTakesTheKeyboardForTheReason() async throws {
         let harness = await makeHarness()
@@ -131,16 +131,16 @@ struct KeyboardFocusTests {
             textView.window?.makeFirstResponder(textView)
             textView.setSelectedRange((textView.string as NSString).range(of: phrase))
         }
-        func press(_ key: String, keyCode: UInt16) throws {
+        func press(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) throws {
             let event = try #require(NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: harness.window.windowNumber,
                 context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: keyCode
             ))
             textView.keyDown(with: event)
         }
 
         select("very robust ")
-        try press("d", keyCode: 2)
+        try press("d", keyCode: 2, modifiers: .option)
         await settle(harness)
         #expect(fieldInFocus(harness)?.accessibilityLabel() == "Reason (optional)")
         try type("filler", in: harness)
@@ -153,7 +153,7 @@ struct KeyboardFocusTests {
 
         // Left without a reason, the strike stays and is one undo step.
         select("here")
-        try press("d", keyCode: 2)
+        try press("d", keyCode: 2, modifiers: .option)
         await settle(harness)
         #expect(fieldInFocus(harness) != nil)
         try self.press(#selector(NSResponder.cancelOperation(_:)), in: harness)
@@ -172,6 +172,37 @@ struct KeyboardFocusTests {
         #expect(session.marks.count == 2)
         #expect(session.editing == nil)
         #expect(harness.window.firstResponder is AnnotationTextView)
+    }
+
+    /// Typing on a selection writes a comment on it, keys pressed before the
+    /// comment's field has the keyboard included. Nothing goes into the document.
+    @Test func typingOnASelectionWritesAComment() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust"))
+
+        // Faster than the field can take the keyboard, and with an i, which used to insert.
+        for key in "this " {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: String(key), charactersIgnoringModifiers: String(key), isARepeat: false, keyCode: 0
+            ))
+            textView.keyDown(with: event)
+        }
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.marks.first?.note == "this ")
+
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Comment")
+        // The caret is after what was typed so far.
+        try type("is wrong", in: harness)
+        #expect(session.marks.first?.note == "this is wrong")
+        try press(#selector(NSResponder.insertNewline(_:)), in: harness)
+        await settle(harness)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(try session.editedText() == "We will leverage a very robust approach here.")
     }
 
     @Test func returnOnAMarkOpensItsNoteForTyping() async throws {
