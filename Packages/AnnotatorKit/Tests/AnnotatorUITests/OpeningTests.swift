@@ -66,4 +66,33 @@ struct OpeningTests {
         // Opened from inside Annotator: everything stays where it is.
         #expect(Opening.windowsToPutAway(open, forReviewIn: review.window, appIsActive: true).isEmpty)
     }
+
+    /// Reviews are open side by side, each in its own window, and each answer
+    /// goes back to the one that asked for it.
+    @Test func severalReviewsAreOpenAtOnceAndAnsweredApart() throws {
+        _ = NSApplication.shared
+        let coordinator = ReviewCoordinator(presentsWindows: false)
+        func request(_ title: String) -> ReviewRequest {
+            ReviewRequest(
+                content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .lastReply,
+                metadata: ReviewMetadata(title: title), reply: .stdout, modes: [.feedback]
+            )
+        }
+        let plan = request("Plan")
+        let reply = request("Reply")
+        var answers: [String: ReviewDecision] = [:]
+        coordinator.open(plan) { answers["Plan"] = $0.decision }
+        coordinator.open(reply) { answers["Reply"] = $0.decision }
+        #expect(coordinator.windows.count == 2)
+
+        let replyWindow = try #require(coordinator.windows[reply.id])
+        replyWindow.session.addMark(.delete, span: TextSpan(19, 31))
+        replyWindow.finish(.feedback)
+        #expect(answers == ["Reply": .feedback])
+        #expect(coordinator.windows.keys.map { $0 } == [plan.id])
+
+        coordinator.windows[plan.id]?.finish(.cancel)
+        #expect(answers == ["Reply": .feedback, "Plan": .cancel])
+        #expect(coordinator.windows.isEmpty)
+    }
 }
