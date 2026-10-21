@@ -124,7 +124,7 @@ final class MarkAnnotation: PDFAnnotation {
     }
 
     let markID: UUID
-    private let shape: Shape
+    let shape: Shape
     private let isSelected: Bool
 
     init(markID: UUID, shape: Shape, bounds: CGRect, isSelected: Bool) {
@@ -136,11 +136,11 @@ final class MarkAnnotation: PDFAnnotation {
         shouldPrint = true
     }
 
-    /// Where words written above a line go, and how big they are: about two
-    /// thirds of the line's height, starting at `x`, sitting just above the line
+    /// Where words written above a line go, and how big they are: nearly the
+    /// size of the page's own type, starting at `x`, sitting just above the line
     /// and kept on the page.
     static func writing(_ text: String, above line: CGRect, at x: CGFloat, on page: CGRect) -> (Shape, CGRect) {
-        let fontSize = min(14, max(7, line.height * 0.62))
+        let fontSize = min(16, max(8, line.height * 0.8))
         let font = Theme.serif(fontSize, italic: true)
         let width = min(writingLine(text, font: font, maxWidth: .greatestFiniteMagnitude).width, page.width - 48)
         let height = font.ascender - font.descender + 2
@@ -149,13 +149,39 @@ final class MarkAnnotation: PDFAnnotation {
         return (.writing(text, fontSize: fontSize), rect)
     }
 
+    /// Words written near each other, moved apart: where two would overlap on a
+    /// line, the one further right starts after the other, and is cut short at
+    /// the edge of the page if it no longer fits.
+    static func spread(_ rects: [CGRect], on page: CGRect) -> [CGRect] {
+        let gap: CGFloat = 8
+        var result = rects
+        var placed: [Int] = []
+        for index in rects.indices.sorted(by: { rects[$0].minX < rects[$1].minX }) {
+            var rect = rects[index]
+            while let other = placed.first(where: {
+                let other = result[$0]
+                return other.minY < rect.maxY && rect.minY < other.maxY
+                    && other.minX < rect.maxX + gap && rect.minX < other.maxX + gap
+            }) {
+                rect.origin.x = result[other].maxX + gap
+            }
+            if rect.minX != rects[index].minX {
+                rect.size.width = max(8, min(rect.width, page.maxX - 24 - rect.minX))
+            }
+            result[index] = rect
+            placed.append(index)
+        }
+        return result
+    }
+
     /// The words as one line of type, cut short with an ellipsis if they would not fit.
     private static func writingLine(_ text: String, font: NSFont, maxWidth: CGFloat, halo: Bool = false) -> (line: CTLine, width: CGFloat) {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.ink]
         if halo {
-            // A stroke only, in the page's white: keeps the ink legible over the line above.
+            // A stroke only, in the page's white: keeps the ink legible over the line
+            // above, and thin enough to leave that line readable.
             attributes[.strokeColor] = NSColor.white
-            attributes[.strokeWidth] = 32
+            attributes[.strokeWidth] = 20
         }
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
         let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
@@ -206,7 +232,7 @@ final class MarkAnnotation: PDFAnnotation {
                 context.fill(rect)
             }
             context.setStrokeColor(Theme.ink.cgColor)
-            context.setLineWidth(max(1.2, rect.height * 0.1))
+            context.setLineWidth(max(0.9, rect.height * 0.2))
             context.setLineCap(.round)
             context.setLineJoin(.round)
             // The proofreader's caret, pointing up into the line from below it.
@@ -346,14 +372,24 @@ struct PDFPane: NSViewRepresentable {
 
             for annotation in annotations { annotation.page?.removeAnnotation(annotation) }
             annotations = []
+            var drawn: [(mark: Mark, page: PDFPage, shape: MarkAnnotation.Shape, rect: CGRect)] = []
             for mark in session.marks {
                 guard let page = page(of: mark) else { continue }
-                let selected = mark.id == session.selectedMarkID
-                for (shape, rect) in shapes(for: mark, on: page) {
-                    let annotation = MarkAnnotation(markID: mark.id, shape: shape, bounds: rect, isSelected: selected)
-                    page.addAnnotation(annotation)
-                    annotations.append(annotation)
+                drawn += shapes(for: mark, on: page).map { (mark, page, $0.0, $0.1) }
+            }
+            // Words written on the same line of a page go one after another, not on top.
+            let writings = drawn.indices.filter { if case .writing = drawn[$0].shape { true } else { false } }
+            for onPage in Dictionary(grouping: writings, by: { ObjectIdentifier(drawn[$0].page) }).values where onPage.count > 1 {
+                let sheet = drawn[onPage[0]].page.bounds(for: .mediaBox)
+                for (index, rect) in zip(onPage, MarkAnnotation.spread(onPage.map { drawn[$0].rect }, on: sheet)) {
+                    drawn[index].rect = rect
                 }
+            }
+            for (mark, page, shape, rect) in drawn {
+                let selected = mark.id == session.selectedMarkID
+                let annotation = MarkAnnotation(markID: mark.id, shape: shape, bounds: rect, isSelected: selected)
+                page.addAnnotation(annotation)
+                annotations.append(annotation)
             }
             view.setNeedsDisplay(view.bounds)
             view.clearSelection()
@@ -410,9 +446,11 @@ struct PDFPane: NSViewRepresentable {
                 return rects.map { (.keep, $0) }
             case .insert:
                 guard let rect = rects.first else { return [] }
-                let width = max(7, rect.height * 0.7)
+                // A small caret under the gap, its point at the foot of the letters.
+                let height = max(3.5, rect.height * 0.32)
+                let width = height * 1.1
                 var shapes: [(MarkAnnotation.Shape, CGRect)] = [
-                    (.caret, CGRect(x: rect.minX - width / 2, y: rect.minY - rect.height * 0.38, width: width, height: rect.height * 0.62)),
+                    (.caret, CGRect(x: rect.minX - width / 2, y: rect.minY - height * 0.4, width: width, height: height)),
                 ]
                 if !text.isEmpty {
                     shapes.append(MarkAnnotation.writing(text, above: rect, at: rect.minX - width / 2, on: sheet))

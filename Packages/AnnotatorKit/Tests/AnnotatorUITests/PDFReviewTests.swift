@@ -294,6 +294,42 @@ struct PDFReviewTests {
         #expect(abs(right - left) < 0.01)
     }
 
+    @Test func wordsWrittenOnTheSameLineDoNotOverlap() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        try select("Senior", page: 0, in: harness)
+        try mark("i", keyCode: 34, in: harness)
+        session.update(try #require(session.selectedMarkID), text: "and staff-level")
+        session.endEditing()
+        try select("with a proven", page: 0, in: harness)
+        try mark("r", keyCode: 15, in: harness)
+        session.update(try #require(session.selectedMarkID), text: "who ships")
+        session.endEditing()
+        settle(harness.window)
+
+        let writings = (session.pdf?.page(at: 0)?.annotations ?? []).compactMap { annotation -> CGRect? in
+            guard let mark = annotation as? MarkAnnotation, case .writing = mark.shape else { return nil }
+            return mark.bounds
+        }
+        #expect(writings.count == 2)
+        #expect(writings.count == 2 && !writings[0].intersects(writings[1]))
+    }
+
+    @Test func spreadingMovesOnlyWordsThatWouldOverlap() {
+        let page = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let first = CGRect(x: 100, y: 500, width: 120, height: 12)
+        let second = CGRect(x: 180, y: 501, width: 60, height: 12)
+        let below = CGRect(x: 150, y: 470, width: 60, height: 12)
+        let spread = MarkAnnotation.spread([second, first, below], on: page)
+        #expect(spread[1] == first)
+        #expect(spread[2] == below)
+        #expect(spread[0].minX == first.maxX + 8 && spread[0].width == second.width)
+
+        // Pushed against the edge of the page, the words are cut short.
+        let late = MarkAnnotation.spread([CGRect(x: 400, y: 500, width: 160, height: 12), CGRect(x: 420, y: 500, width: 80, height: 12)], on: page)
+        #expect(late[1].minX == 568 && late[1].maxX <= 595)
+    }
+
     @Test func insertionGoesAfterTheSelectedWords() throws {
         let harness = try makeHarness()
         let session = harness.session
