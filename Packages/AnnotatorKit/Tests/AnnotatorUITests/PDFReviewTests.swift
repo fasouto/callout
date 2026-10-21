@@ -262,16 +262,36 @@ struct PDFReviewTests {
     @Test func thePageGrowsWithTheWindowUpToAComfortableSize() throws {
         let harness = try makeHarness()
         settle(harness.window)
-        // At 1040 points the page, with the desk around it, fills the width beside the margin.
+        // At 1040 points the page, with the desk around it, fills the width beside
+        // the margin. The desk is scaled with the sheet.
         let fitted = harness.view.scaleFactor
-        let visible = try #require(AnnotationPDFView.clipView(in: harness.view)).frame.width
+        let clip = try #require(AnnotationPDFView.clipView(in: harness.view))
         #expect(fitted < PDFPane.Coordinator.largestScale)
-        #expect(abs(fitted * 595 + 72 - visible) < 1)
+        #expect(abs(fitted * (595 + 72) - clip.frame.width) < 1)
+        try expectNoSidewaysScroll(in: harness)
+
+        // Nor in a narrower window, where the page is smaller.
+        harness.window.setContentSize(NSSize(width: 900, height: 760))
+        settle(harness.window)
+        #expect(harness.view.scaleFactor < fitted)
+        try expectNoSidewaysScroll(in: harness)
 
         // A wide window shows more desk instead of a bigger page.
         harness.window.setContentSize(NSSize(width: 2000, height: 760))
         settle(harness.window)
         #expect(abs(harness.view.scaleFactor - PDFPane.Coordinator.largestScale) < 0.01)
+        try expectNoSidewaysScroll(in: harness)
+    }
+
+    /// The page is no wider than the view, so a scroll or a drag along a line
+    /// cannot slide it sideways: as far right as it goes is as far left.
+    private func expectNoSidewaysScroll(in harness: Harness) throws {
+        let clip = try #require(AnnotationPDFView.clipView(in: harness.view))
+        let document = try #require(clip.documentView)
+        #expect(document.frame.width <= clip.bounds.width)
+        let right = clip.constrainBoundsRect(clip.bounds.offsetBy(dx: 40, dy: 0)).minX
+        let left = clip.constrainBoundsRect(clip.bounds.offsetBy(dx: -40, dy: 0)).minX
+        #expect(abs(right - left) < 0.01)
     }
 
     @Test func insertionGoesAfterTheSelectedWords() throws {

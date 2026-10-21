@@ -460,13 +460,16 @@ struct PDFPane: NSViewRepresentable {
 
         /// The page takes the width it is given, up to the largest scale.
         func fitPage() {
-            guard let scale = Self.fittingScale(for: view), abs(view.scaleFactor - scale) > 0.001 else { return }
+            guard let scale = Self.fittingScale(for: view), abs(view.scaleFactor - scale) > 0.0001 else { return }
             view.scaleFactor = scale
         }
 
         /// The scale at which the widest page, with the desk around it, fills the
         /// visible width, but no more than the largest scale. Worked out here rather
-        /// than asked of PDFKit, whose answer lags behind the page margins.
+        /// than asked of PDFKit, whose answer lags behind the page margins. PDFKit
+        /// scales the desk with the sheet, so the margins count as part of the
+        /// width: counted apart, the page came out wider than the view and slid
+        /// sideways under the pointer.
         static func fittingScale(for view: PDFView) -> CGFloat? {
             guard let document = view.document, document.pageCount > 0 else { return nil }
             let visible = AnnotationPDFView.clipView(in: view)?.frame.width ?? view.bounds.width
@@ -475,9 +478,10 @@ struct PDFPane: NSViewRepresentable {
                 let box = page.bounds(for: view.displayBox)
                 return page.rotation % 180 == 0 ? box.width : box.height
             }.max() ?? 0
-            let room = visible - margins.left - margins.right
-            guard widest > 0, room > 0 else { return nil }
-            return min(room / widest, largestScale)
+            let width = widest + margins.left + margins.right
+            guard widest > 0, visible > 1 else { return nil }
+            // Half a point to spare, so rounding never leaves the page a hair too wide.
+            return min((visible - 0.5) / width, largestScale)
         }
 
         // MARK: Selection
