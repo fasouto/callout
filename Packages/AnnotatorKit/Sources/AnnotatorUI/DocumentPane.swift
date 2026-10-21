@@ -9,6 +9,9 @@ import SwiftUI
 final class MarginModel {
     /// Distance from the top of the page to the line each mark starts on.
     var anchors: [UUID: CGFloat] = [:]
+    /// Where the line from each mark to its note starts, from the top left of
+    /// the page. Only a PDF has them: its notes sit on the desk, away from the words.
+    var leaders: [UUID: CGPoint] = [:]
     /// Where the first line of the document sits, for the empty margin's guide.
     var firstLine: CGFloat = 0
     /// Whether changes may be animated: only once the window is on screen.

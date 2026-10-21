@@ -29,6 +29,14 @@ struct MarginNotes: View {
     }
 }
 
+/// Where the selected note's first line begins, for the line drawn to it from its mark.
+struct SelectedNoteKey: PreferenceKey {
+    static let defaultValue: SwiftUI.Anchor<CGPoint>? = nil
+    static func reduce(value: inout SwiftUI.Anchor<CGPoint>?, nextValue: () -> SwiftUI.Anchor<CGPoint>?) {
+        value = value ?? nextValue()
+    }
+}
+
 /// The distance from the top of the page at which a note wants to start.
 private struct AnchorKey: LayoutValueKey {
     static let defaultValue: CGFloat = 0
@@ -112,6 +120,9 @@ private struct MarginNote: View {
         .padding(.vertical, Self.topPadding)
         .padding(.horizontal, 8)
         .background(mark.kind.tint.opacity(isSelected ? 0.11 : 0), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .anchorPreference(key: SelectedNoteKey.self, value: .point(CGPoint(x: 0, y: Self.topPadding + Self.firstLineCentre))) {
+            isSelected ? $0 : nil
+        }
         .contentShape(Rectangle())
         .onTapGesture { session.selectedMarkID = mark.id }
         .accessibilityElement(children: .contain)
@@ -124,7 +135,9 @@ private struct MarginNote: View {
             Text(text)
                 .font(.system(size: 13, design: .serif).italic())
                 .foregroundStyle(Color(nsColor: Theme.ink))
-                .lineLimit(3)
+                // A PDF has the words only here, so all of them show.
+                .lineLimit(session.isPDF ? nil : 3)
+                .fixedSize(horizontal: false, vertical: true)
         }
         if mark.kind.isInstruction {
             // The instruction is the message; it is always said.

@@ -111,16 +111,17 @@ final class AnnotationPDFView: PDFView {
 }
 
 /// A mark drawn on a PDF page: the pen stroke, the highlighter, the underline
-/// of a keep, the caret where text is to be added, and the words written in
-/// above the line. Drawn over the page, never saved to the file.
+/// of a keep, and the caret where text is to be added. Drawn over the page,
+/// never saved to the file. As on a copy editor's proof, the words to add are
+/// written in the margin, where there is room for any number of them.
 final class MarkAnnotation: PDFAnnotation {
-    enum Shape {
+    enum Shape: Equatable {
         case strike
+        /// Struck out for words in the margin: the stroke in their blue ink.
+        case replace
         case highlight
         case keep
         case caret
-        /// Replacement or added words, written in blue ink in the space above the line.
-        case writing(String, fontSize: CGFloat)
     }
 
     let markID: UUID
@@ -136,61 +137,6 @@ final class MarkAnnotation: PDFAnnotation {
         shouldPrint = true
     }
 
-    /// Where words written above a line go, and how big they are: nearly the
-    /// size of the page's own type, starting at `x`, sitting just above the line
-    /// and kept on the page.
-    static func writing(_ text: String, above line: CGRect, at x: CGFloat, on page: CGRect) -> (Shape, CGRect) {
-        let fontSize = min(16, max(8, line.height * 0.8))
-        let font = Theme.serif(fontSize, italic: true)
-        let width = min(writingLine(text, font: font, maxWidth: .greatestFiniteMagnitude).width, page.width - 48)
-        let height = font.ascender - font.descender + 2
-        let left = min(max(x, page.minX + 24), page.maxX - 24 - width)
-        let rect = CGRect(x: left - 1, y: line.maxY + 1 + font.descender, width: width + 2, height: height)
-        return (.writing(text, fontSize: fontSize), rect)
-    }
-
-    /// Words written near each other, moved apart: where two would overlap on a
-    /// line, the one further right starts after the other, and is cut short at
-    /// the edge of the page if it no longer fits.
-    static func spread(_ rects: [CGRect], on page: CGRect) -> [CGRect] {
-        let gap: CGFloat = 8
-        var result = rects
-        var placed: [Int] = []
-        for index in rects.indices.sorted(by: { rects[$0].minX < rects[$1].minX }) {
-            var rect = rects[index]
-            while let other = placed.first(where: {
-                let other = result[$0]
-                return other.minY < rect.maxY && rect.minY < other.maxY
-                    && other.minX < rect.maxX + gap && rect.minX < other.maxX + gap
-            }) {
-                rect.origin.x = result[other].maxX + gap
-            }
-            if rect.minX != rects[index].minX {
-                rect.size.width = max(8, min(rect.width, page.maxX - 24 - rect.minX))
-            }
-            result[index] = rect
-            placed.append(index)
-        }
-        return result
-    }
-
-    /// The words as one line of type, cut short with an ellipsis if they would not fit.
-    private static func writingLine(_ text: String, font: NSFont, maxWidth: CGFloat, halo: Bool = false) -> (line: CTLine, width: CGFloat) {
-        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.ink]
-        if halo {
-            // A stroke only, in the page's white: keeps the ink legible over the line
-            // above, and thin enough to leave that line readable.
-            attributes[.strokeColor] = NSColor.white
-            attributes[.strokeWidth] = 20
-        }
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
-        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-        guard width > maxWidth else { return (line, width) }
-        let ellipsis = CTLineCreateWithAttributedString(NSAttributedString(string: "…", attributes: attributes))
-        let cut = CTLineCreateTruncatedLine(line, Double(maxWidth), .end, ellipsis) ?? line
-        return (cut, maxWidth)
-    }
-
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("not used")
@@ -200,12 +146,13 @@ final class MarkAnnotation: PDFAnnotation {
         let rect = bounds
         context.saveGState()
         switch shape {
-        case .strike:
+        case .strike, .replace:
+            let pen = shape == .replace ? Theme.ink : Theme.pen
             if isSelected {
-                context.setFillColor(Theme.pen.withAlphaComponent(0.14).cgColor)
+                context.setFillColor(pen.withAlphaComponent(0.14).cgColor)
                 context.fill(rect)
             }
-            context.setStrokeColor(Theme.pen.cgColor)
+            context.setStrokeColor(pen.cgColor)
             context.setLineWidth(max(1.2, rect.height * 0.1))
             context.setLineCap(.round)
             // Through the middle of the lowercase letters rather than the middle of the line box.
@@ -240,15 +187,6 @@ final class MarkAnnotation: PDFAnnotation {
             context.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
             context.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
             context.strokePath()
-        case let .writing(text, fontSize):
-            let font = Theme.serif(fontSize, italic: true)
-            let origin = CGPoint(x: rect.minX + 1, y: rect.minY + 1 - font.descender)
-            context.textMatrix = .identity
-            for halo in [true, false] {
-                let line = Self.writingLine(text, font: font, maxWidth: rect.width - 2, halo: halo).line
-                context.textPosition = origin
-                CTLineDraw(line, context)
-            }
         }
         context.restoreGState()
     }
@@ -372,24 +310,14 @@ struct PDFPane: NSViewRepresentable {
 
             for annotation in annotations { annotation.page?.removeAnnotation(annotation) }
             annotations = []
-            var drawn: [(mark: Mark, page: PDFPage, shape: MarkAnnotation.Shape, rect: CGRect)] = []
             for mark in session.marks {
                 guard let page = page(of: mark) else { continue }
-                drawn += shapes(for: mark, on: page).map { (mark, page, $0.0, $0.1) }
-            }
-            // Words written on the same line of a page go one after another, not on top.
-            let writings = drawn.indices.filter { if case .writing = drawn[$0].shape { true } else { false } }
-            for onPage in Dictionary(grouping: writings, by: { ObjectIdentifier(drawn[$0].page) }).values where onPage.count > 1 {
-                let sheet = drawn[onPage[0]].page.bounds(for: .mediaBox)
-                for (index, rect) in zip(onPage, MarkAnnotation.spread(onPage.map { drawn[$0].rect }, on: sheet)) {
-                    drawn[index].rect = rect
-                }
-            }
-            for (mark, page, shape, rect) in drawn {
                 let selected = mark.id == session.selectedMarkID
-                let annotation = MarkAnnotation(markID: mark.id, shape: shape, bounds: rect, isSelected: selected)
-                page.addAnnotation(annotation)
-                annotations.append(annotation)
+                for (shape, rect) in shapes(for: mark, on: page) {
+                    let annotation = MarkAnnotation(markID: mark.id, shape: shape, bounds: rect, isSelected: selected)
+                    page.addAnnotation(annotation)
+                    annotations.append(annotation)
+                }
             }
             view.setNeedsDisplay(view.bounds)
             view.clearSelection()
@@ -428,18 +356,11 @@ struct PDFPane: NSViewRepresentable {
 
         private func shapes(for mark: Mark, on page: PDFPage) -> [(MarkAnnotation.Shape, CGRect)] {
             let rects = lineRects(for: mark, on: page)
-            let sheet = page.bounds(for: .mediaBox)
-            let text = mark.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             switch mark.kind {
             case .delete:
                 return rects.map { (.strike, $0) }
             case .replace:
-                // Struck out, with the new words written above the first line.
-                var shapes = rects.map { (MarkAnnotation.Shape.strike, $0) }
-                if let first = rects.first, !text.isEmpty {
-                    shapes.append(MarkAnnotation.writing(text, above: first, at: first.minX, on: sheet))
-                }
-                return shapes
+                return rects.map { (.replace, $0) }
             case .comment, .expand, .summarize:
                 return rects.map { (.highlight, $0) }
             case .keep:
@@ -449,13 +370,7 @@ struct PDFPane: NSViewRepresentable {
                 // A small caret under the gap, its point at the foot of the letters.
                 let height = max(3.5, rect.height * 0.32)
                 let width = height * 1.1
-                var shapes: [(MarkAnnotation.Shape, CGRect)] = [
-                    (.caret, CGRect(x: rect.minX - width / 2, y: rect.minY - height * 0.4, width: width, height: height)),
-                ]
-                if !text.isEmpty {
-                    shapes.append(MarkAnnotation.writing(text, above: rect, at: rect.minX - width / 2, on: sheet))
-                }
-                return shapes
+                return [(.caret, CGRect(x: rect.minX - width / 2, y: rect.minY - height * 0.4, width: width, height: height))]
             }
         }
 
@@ -464,12 +379,16 @@ struct PDFPane: NSViewRepresentable {
             // Notes follow the page as it scrolls; easing them would make them lag behind it.
             if margin.animates { margin.animates = false }
             var anchors: [UUID: CGFloat] = [:]
+            var leaders: [UUID: CGPoint] = [:]
             for mark in session.marks {
                 guard let page = page(of: mark), let rect = lineRects(for: mark, on: page).first else { continue }
-                let inView = view.convert(rect, from: page)
-                anchors[mark.id] = view.bounds.height - inView.midY
+                let y = view.bounds.height - view.convert(rect, from: page).midY
+                anchors[mark.id] = y
+                // The line to the note starts at the sheet's edge, so it never runs over the words.
+                leaders[mark.id] = CGPoint(x: view.convert(page.bounds(for: view.displayBox), from: page).maxX, y: y)
             }
             if margin.anchors != anchors { margin.anchors = anchors }
+            if margin.leaders != leaders { margin.leaders = leaders }
             if margin.firstLine != 36 { margin.firstLine = 36 }
         }
 

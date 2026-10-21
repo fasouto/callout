@@ -62,7 +62,34 @@ private struct PDFReview: View {
                 .frame(width: Theme.marginWidth + 16)
                 .clipped()
         }
+        .overlayPreferenceValue(SelectedNoteKey.self) { note in
+            GeometryReader { proxy in
+                if let note, let mark = session.selectedMark, let start = margin.leaders[mark.id] {
+                    Leader(start: start, end: proxy[note])
+                        .stroke(mark.kind.symbolTint, style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .clipped()
+            .allowsHitTesting(false)
+        }
         .background(Color(nsColor: Theme.desk))
+    }
+}
+
+/// The line across the desk from a mark, at the edge of the sheet, to its
+/// note: out level with the mark, across, and in level with the note.
+private struct Leader: Shape {
+    let start: CGPoint
+    let end: CGPoint
+
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            let run = min(10, max(0, end.x - start.x) / 3)
+            path.move(to: start)
+            path.addLine(to: CGPoint(x: start.x + run, y: start.y))
+            path.addLine(to: CGPoint(x: end.x - run, y: end.y))
+            path.addLine(to: end)
+        }
     }
 }
 

@@ -90,7 +90,7 @@ Comments and strikes open a note in the margin with the keyboard already in it, 
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
 | `Esc` | Cancel |
 
-In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin. They also appear on the page, in blue above the line, as a proofreader would write them. `scripts/run.sh docs/sample-cv.pdf` opens a sample to try.
+In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin, as a copy editor marks a proof. The page shows where each goes: a replacement is struck out in blue, an addition has a caret. Select a note and a line links it to its mark. `scripts/run.sh docs/sample-cv.pdf` opens a sample to try.
 
 **Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `i` and `a` start typing and `Esc` stops; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, letters only type in insert mode: on a selection the plain letters are the marks, as in vim (`d`, `r`, `c`…), and Keep moves to `⇧K` (a plain `k` moves up). `o` opens the overall comment, and `Esc` never cancels the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
 
