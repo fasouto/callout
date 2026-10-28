@@ -282,6 +282,7 @@ struct PDFPane: NSViewRepresentable {
         private var shownFocusToken = 0
         private var annotations: [MarkAnnotation] = []
         private lazy var toolbar = SelectionToolbar(
+            kinds: MarkKind.bar(pdf: true),
             perform: { [weak self] kind in self?.perform(kind) },
             pickSnippet: { [weak self] in self?.pickSnippet() }
         )

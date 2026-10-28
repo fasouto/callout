@@ -581,7 +581,7 @@ extension OnTheMainThread {
         @Test func selectionBarShowsTheFiveMarks() throws {
             _ = NSApplication.shared
             var pressed: [MarkKind] = []
-            let bar = SelectionToolbar { pressed.append($0) }
+            let bar = SelectionToolbar(kinds: MarkKind.bar(pdf: false)) { pressed.append($0) }
             let view = bar.makeContentView()
             view.frame = NSRect(origin: .zero, size: view.fittingSize)
             #expect(view.fittingSize.width > 150 && view.fittingSize.height < 40)
@@ -600,11 +600,10 @@ extension OnTheMainThread {
             try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("selection-bar.png"))
         }
 
-        @Test func expandAndSummarizeAreOneKeyEach() throws {
+        @Test func summarizeIsOneKeyAndOldExpandMarksStillFormat() throws {
             let harness = try makeHarness()
             let session = harness.session
-            select("token bucket", in: harness)
-            try mark("x", keyCode: 7, in: harness)
+            session.addMark(.expand, span: sourceSpan(of: "token bucket"))
             select("The API has no limits today, so a single client can exhaust the pool.", in: harness)
             try mark("m", keyCode: 46, in: harness)
 

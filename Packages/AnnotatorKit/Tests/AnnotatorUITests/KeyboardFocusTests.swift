@@ -457,7 +457,6 @@ extension OnTheMainThread {
             caret(after: "robust", in: textView)
 
             try press("d", keyCode: 2, modifiers: .option, on: textView)
-            try press("x", keyCode: 7, modifiers: .option, on: textView)
             try press("k", keyCode: 40, modifiers: .option, on: textView)
             #expect(session.marks.isEmpty)
             #expect(session.statusMessage == "Select some text of the document first.")

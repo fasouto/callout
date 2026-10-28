@@ -6,11 +6,13 @@ import SwiftUI
 /// that never becomes key, so the keyboard stays with the document.
 @MainActor
 final class SelectionToolbar {
+    private let kinds: [MarkKind]
     private let perform: (MarkKind) -> Void
     private let pickSnippet: () -> Void
     private var panel: NSPanel?
 
-    init(perform: @escaping (MarkKind) -> Void, pickSnippet: @escaping () -> Void = {}) {
+    init(kinds: [MarkKind], perform: @escaping (MarkKind) -> Void, pickSnippet: @escaping () -> Void = {}) {
+        self.kinds = kinds
         self.perform = perform
         self.pickSnippet = pickSnippet
     }
@@ -41,7 +43,7 @@ final class SelectionToolbar {
     }
 
     func makeContentView() -> NSView {
-        FirstMouseHostingView(rootView: SelectionToolbarView(perform: perform, pickSnippet: pickSnippet))
+        FirstMouseHostingView(rootView: SelectionToolbarView(kinds: kinds, perform: perform, pickSnippet: pickSnippet))
     }
 
     private func makePanel() -> NSPanel {
@@ -69,12 +71,13 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
 }
 
 private struct SelectionToolbarView: View {
+    let kinds: [MarkKind]
     let perform: (MarkKind) -> Void
     let pickSnippet: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(MarkKind.allCases, id: \.self) { kind in
+            ForEach(kinds, id: \.self) { kind in
                 Button {
                     perform(kind)
                 } label: {

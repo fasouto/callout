@@ -699,8 +699,16 @@ extension MarkKind {
         }
     }
 
+    /// The kinds a review can make. Expand is left out: reviews from before still hold it, but it is no longer offered.
+    static let offered: [MarkKind] = [.delete, .replace, .insert, .comment, .summarize, .keep]
+
+    /// The kinds on the selection bar. Typing at the caret adds words in text, so Insert is on the bar only in a PDF, which has no caret.
+    static func bar(pdf: Bool) -> [MarkKind] {
+        pdf ? offered : offered.filter { $0 != .insert }
+    }
+
     init?(key: String) {
-        guard let kind = MarkKind.allCases.first(where: { $0.key.lowercased() == key.lowercased() }) else { return nil }
+        guard let kind = MarkKind.offered.first(where: { $0.key.lowercased() == key.lowercased() }) else { return nil }
         self = kind
     }
 }

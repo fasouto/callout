@@ -231,7 +231,7 @@ private struct MarginGuide: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
-                ForEach(MarkKind.allCases, id: \.self) { kind in
+                ForEach(MarkKind.bar(pdf: false), id: \.self) { kind in
                     GridRow {
                         KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
                         HStack(spacing: 7) {

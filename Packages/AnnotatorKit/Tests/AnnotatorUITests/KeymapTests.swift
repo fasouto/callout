@@ -9,10 +9,9 @@ extension OnTheMainThread {
     @Suite("Keys")
     struct KeymapTests {
         @Test func everyMarkHasItsOwnKey() {
-            let keys = MarkKind.allCases.map(\.key) + ["S", "O"]
+            let keys = MarkKind.offered.map(\.key) + ["S", "O"]
             #expect(Set(keys).count == keys.count)
             #expect(Keymap.command(for: "d", modifiers: .option, vim: false) == .mark(.delete))
-            #expect(Keymap.command(for: "X", modifiers: .option, vim: false) == .mark(.expand))
             #expect(Keymap.command(for: "m", modifiers: .option, vim: false) == .mark(.summarize))
             #expect(Keymap.command(for: "k", modifiers: .option, vim: false) == .mark(.keep))
             #expect(Keymap.command(for: "s", modifiers: .option, vim: false) == .snippets)
@@ -28,14 +27,29 @@ extension OnTheMainThread {
         @Test func everyMarkShowsItsKeyInsideItsName() throws {
             // The toolbar sets the key letter in bold within the word, so each
             // name has to contain its key.
-            for kind in MarkKind.allCases {
+            for kind in MarkKind.offered {
                 let parts = try #require(MarkWord.split(kind.label, key: kind.key), "\(kind.label) has no \(kind.key)")
                 #expect(String(parts.before + parts.key + parts.after) == kind.label)
                 #expect(parts.key.uppercased() == kind.key)
             }
-            #expect(MarkWord.split("Expand", key: "X").map { String($0.before) } == "E")
             #expect(MarkWord.split("Summarize", key: "M").map { String($0.key) } == "m")
             #expect(MarkWord.split("Saved…", key: "S") != nil)
+        }
+
+        @Test func expandIsNoLongerACommand() {
+            for vim in [false, true] {
+                #expect(Keymap.command(for: "x", modifiers: .option, vim: vim) == nil)
+                #expect(Keymap.command(for: "X", modifiers: .option, vim: vim) == nil)
+                #expect(Keymap.command(for: "m", modifiers: .option, vim: vim) == .mark(.summarize))
+            }
+            #expect(Keymap.command(for: "x", modifiers: [], vim: true) == nil)
+            #expect(Keymap.command(for: "i", modifiers: .option, vim: false) == .mark(.insert))
+        }
+
+        @Test func theBarOffersTheKindsAReviewCanMake() {
+            #expect(MarkKind.bar(pdf: false) == [.delete, .replace, .comment, .summarize, .keep])
+            #expect(MarkKind.bar(pdf: true) == [.delete, .replace, .insert, .comment, .summarize, .keep])
+            #expect(!MarkKind.offered.contains(.expand))
         }
 
         @Test func withVimKeysAPlainKMovesAndShiftKKeeps() {

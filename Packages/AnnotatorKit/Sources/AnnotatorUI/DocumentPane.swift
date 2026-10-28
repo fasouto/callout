@@ -73,6 +73,7 @@ struct DocumentPane: NSViewRepresentable {
         /// Bumped whenever layout starts over, so a part left from before is not laid out.
         private var layoutRound = 0
         private lazy var toolbar = SelectionToolbar(
+            kinds: MarkKind.bar(pdf: false),
             perform: { [weak self] kind in self?.perform(kind) },
             pickSnippet: { [weak self] in self?.pickSnippet() }
         )
