@@ -21,7 +21,7 @@ A review takes as long as the user needs, which can be longer than a foreground 
 
 When the command finishes, read its output.
 
-- **It starts with `## Feedback`.** This is the user's response to your previous reply, item by item. Each numbered item quotes the exact text it refers to; "Expand" asks for more on the quoted passage and "Summarize" for the same in fewer words; "Which one" lines tell repeated phrases apart; "Keep as is" lists text that must not change; "General" applies to the whole reply.
+- **It starts with `## Feedback`.** This is the user's response to your previous reply, item by item. Each numbered item quotes the exact text it refers to; an "Insert after" or "Comment after" item ("before" at the start of a line) quotes the text beside a spot instead, where an insert's words go and a comment is a note about that spot, not text to add; "Expand" asks for more on the quoted passage and "Summarize" for the same in fewer words; "Which one" lines tell repeated phrases apart; "Keep as is" lists text that must not change; "General" applies to the whole reply.
 
   Read each item for what it asks of you:
   - A deletion, replacement or insertion that edits the wording is a correction. Apply it.

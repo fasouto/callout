@@ -118,9 +118,9 @@ private struct ActionBar: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
-                            .help(session.isAddingWords
-                                ? "Keys type into the document. Esc goes back to moving."
-                                : "Moving extends the selection. Press a mark key, or Esc to let go.")
+                            .help(!session.isAddingWords ? "Moving extends the selection. Press a mark key, or Esc to let go."
+                                : Keymap.usesVimKeys ? "Keys add words to the document. Esc goes back to moving."
+                                : "Keys add words to the document. Esc stops, and so does a click elsewhere.")
                     }
                     if let message = session.statusMessage {
                         Text(message)
@@ -156,8 +156,8 @@ private struct ActionBar: View {
         }
         .background(.bar)
         .background {
-            // ⌘O from anywhere in the window. A plain O only works where letters
-            // are commands; at a caret it types.
+            // ⌘O from anywhere in the window, a margin field included. ⌥O (O with
+            // vim keys) works only in the document, and types while adding words.
             Button("Write the overall comment") { session.focusOverallComment() }
                 .keyboardShortcut("o", modifiers: .command)
                 .hidden()
@@ -309,6 +309,12 @@ private struct OverviewRow: View {
         return quote.split(whereSeparator: \.isNewline).joined(separator: " ")
     }
 
+    /// Where a mark on no words is, in place of the words it does not have.
+    private var place: String? {
+        guard mark.anchor.isPoint, let place = mark.anchor.pointPlace else { return nil }
+        return place.prefix(1).uppercased() + place.dropFirst()
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 1) {
@@ -317,6 +323,10 @@ private struct OverviewRow: View {
                         .lineLimit(1)
                         .strikethrough(mark.kind == .delete || mark.kind == .replace)
                         .foregroundStyle(mark.kind == .delete || mark.kind == .replace ? .secondary : .primary)
+                } else if let place {
+                    Text(place)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
                 }
                 if let text = mark.text?.nilIfBlank {
                     Text(text)

@@ -59,17 +59,17 @@ To work on it in Xcode, run `xcodegen generate && open Annotator.xcodeproj`, sel
 
 The document is a page; your notes go in its margin, beside the lines they refer to. Quotes and dashes are set as in print, but the text that goes back is exactly what was written.
 
-**Just type.** With the caret in the text and nothing selected, typing adds words there and `⌫` strikes out what is before the caret. Your words show in blue, what you struck shows in red, and the document itself is never changed: every edit is a mark, so it can be undone, and Claude gets each one as a separate correction. Typing is for words; it does not restructure lists or tables. There is no key to press first: `⌥I` is only for putting the caret after a selection. (With vim keys on, `i` starts typing, as in vim.)
+**Just type to comment.** Select words and type, and what you type is a comment on them, written in the margin. With nothing selected, typing starts a comment pinned to that spot: a small yellow pin in the text, its note in the margin. To add words to the document instead, press `⌥I` first: what you type then goes into the text, in blue, until `Esc` or a click elsewhere. Click inside words you added and type to change them. `⌫` strikes out what is before the caret. Your words show in blue, what you struck shows in red, and the document itself is never changed: every edit is a mark, so it can be undone, and Claude gets each one as a separate correction. Added words do not restructure lists or tables. (With vim keys on, `i` starts adding words and `c` pins a comment at the caret.)
 
 Tables are set in columns, with long column names wrapping above their figures and numbers lined up on the right. A table wider than the window is set smaller to fit. One whose cells are long sentences shows each row cell by cell, each cell after the name of its column. Every cell can be marked either way.
 
-**Or select, then type to comment on it.** For the other marks, press ⌥ and a key, or use the bar that appears above the selection:
+**Other marks.** Select words, then press ⌥ and a key, or use the bar that appears above the selection:
 
 | Key | Mark |
 |---|---|
 | `⌥D` or `⌫` | Strike it out |
 | `⌥R` | Replace it: type the new text right there |
-| `⌥I` | Put the caret after the selection, ready to type |
+| `⌥I` | Add words: after the selection, or at the caret |
 | typing, or `⌥C` | Comment on it |
 | `⌥X` | Expand: ask for more here |
 | `⌥M` | Summarize: ask for it shorter |
@@ -82,19 +82,19 @@ Comments and strikes open a note in the margin with the keyboard already in it, 
 |---|---|
 | `Tab`, `⇧Tab` | Next and previous mark |
 | `↩` | Write in the selected mark's note |
-| `⌥↩` | A line break in the text you are typing |
+| `⌥↩` | A line break in the words you are adding |
 | `⌘⌫` | Remove the mark the caret is on |
 | `⌘O` | Write the overall comment |
 | `⌘Z`, `⇧⌘Z` | Undo and redo |
 | `⌘↩` | Send feedback |
 | `⌘⇧↩` | Apply edits, or approve when the request allows it |
-| `Esc` | Cancel |
+| `Esc` | Stop adding words; otherwise cancel |
 
 In a PDF there is no caret to type at: select text and use the keys, and write replacements and additions in the margin, as a copy editor marks a proof. The page shows where each goes: a replacement is struck out in blue, an addition has a caret. Select a note and a line links it to its mark. `scripts/run.sh docs/sample-cv.pdf` opens a sample to try.
 
-**Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `i` and `a` start typing and `Esc` stops; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, letters only type in insert mode: on a selection the plain letters are the marks, as in vim (`d`, `r`, `c`…), and Keep moves to `⇧K` (a plain `k` moves up). `o` opens the overall comment, and `Esc` never cancels the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
+**Vim keys.** Turn on *Move with vim keys* in Settings to move through the document from the keyboard: `h` `j` `k` `l`, `w` `b` `e`, `0` `$`, `{` `}`, `gg` and `G` move the caret; `v` starts a selection and `V` takes the line; `i` and `a` start adding words and `Esc` stops; `n` and `N` go to the next and previous mark; `u` undoes and `⌃R` redoes. With vim keys on, letters only type in insert mode: on a selection the plain letters are the marks, as in vim (`d`, `r`, `c`…), at the caret `c` pins a comment there, and Keep moves to `⇧K` (a plain `k` moves up). `o` opens the overall comment, and `Esc` never cancels the review. In a PDF, `j` and `k` scroll; text is still selected with the mouse.
 
-**Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `⌥S` on a selection to pick one; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
+**Saved comments.** Some comments you write again and again: "Too complex, simplify.", "No tests for this." Press `⌥S` to pick one, on a selection or at the caret; type to filter, or press its number. The ones for what you are reviewing (plans, documents, GitLab, blog) come first. Edit them in Settings.
 
 **History.** Every finished review is kept: what was reviewed, each mark, and what went back. *History…* in the menu-bar menu shows them as a shelf of the pages you marked, searchable by title, text, feedback and overall comment; select one to see what was sent back. It all stays on this Mac, in `~/Library/Application Support/Annotator/annotator.sqlite`.
 

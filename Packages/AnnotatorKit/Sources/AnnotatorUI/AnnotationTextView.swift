@@ -299,7 +299,7 @@ final class AnnotationTextView: NSTextView {
         case "n": onTabKey?(true)
         case "N": onTabKey?(false)
         case "a" where visualAnchor == nil:
-            // Append: start typing after the character under the caret.
+            // Append: start adding words after the character under the caret.
             move(to: min(text.length, head + 1))
             isAddingWords = true
         case "i" where visualAnchor == nil && selectedRange().length == 0:

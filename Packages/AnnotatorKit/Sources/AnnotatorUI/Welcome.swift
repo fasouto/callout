@@ -50,6 +50,8 @@ struct LessonStep: Identifiable {
 
 @MainActor
 enum Lesson {
+    private static let claim = "keeps every result forever"
+
     /// The steps, with the keys as they are set: with vim keys on, the letters
     /// alone, and a comment is started with c rather than by typing.
     static var steps: [LessonStep] {
@@ -64,10 +66,13 @@ enum Lesson {
             LessonStep(
                 id: 2, title: "Question a claim",
                 instruction: vim
-                    ? "Select **keeps every result forever**, press C and say what worries you."
-                    : "Select **keeps every result forever** and type what worries you."
+                    ? "Select **\(claim)**, press C and say what worries you."
+                    : "Select **\(claim)** and type what worries you."
             ) { session in
-                session.marks.contains { $0.kind == .comment }
+                // On the claim's words: a comment pinned to a point, as a stray key at the caret makes, is not about them.
+                let found = (session.source as NSString).range(of: claim)
+                let words = TextSpan(found.location, NSMaxRange(found))
+                return session.marks.contains { $0.kind == .comment && !$0.anchor.isPoint && $0.anchor.span.overlaps(words) }
             },
             LessonStep(id: 3, title: "Hand it in", instruction: "Press Send Feedback, or ⌘↩. Claude gets your marks as a list it can act on.") { _ in
                 false

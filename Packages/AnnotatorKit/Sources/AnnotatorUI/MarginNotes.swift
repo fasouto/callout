@@ -225,8 +225,8 @@ private struct MarginGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
-                ? "Press v and move to select, then press a key. Press i to type."
-                : "To add words, click where they go and type. To comment on words, select them and type. To mark them another way, press:")
+                ? "Press v and move to select, then press a key. Press i to add words, or c to comment at the caret."
+                : "Type to comment, on the words you select or at the caret. To add words to the text, press ⌥I first. To mark selected words another way, press:")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -288,7 +288,7 @@ extension MarkKind {
         switch self {
         case .delete: "Strike it out"
         case .replace: "Replace it"
-        case .insert: "Add text after it"
+        case .insert: "Add words after it"
         case .comment: "Comment on it"
         case .expand: "Ask for more here"
         case .summarize: "Ask for it shorter"

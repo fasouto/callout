@@ -8,6 +8,7 @@ extension Mark {
         let text = text?.nilIfBlank.map(Self.spoken)
         let note = note.map(Self.spoken)
         let page = anchor.page.map { ", page \($0)" } ?? ""
+        let place = anchor.pointPlace.map { " \(Self.spoken($0))" } ?? ""
         let said: String
         switch kind {
         case .delete:
@@ -15,11 +16,9 @@ extension Mark {
         case .replace:
             said = text.map { "Replaced: \(quote), with: \($0)" } ?? "Replacing: \(quote)"
         case .insert:
-            // The few words before the insertion, from its own line.
-            let line = anchor.prefix.split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
-            let after = line.split(whereSeparator: \.isWhitespace).suffix(3).joined(separator: " ")
-            let place = after.isEmpty ? "" : " after \(Self.spoken(after))"
             said = text.map { "Added\(place): \($0)" } ?? "Adding text\(place)"
+        case .comment where anchor.isPoint:
+            said = note.map { "Comment\(place): \($0)" } ?? "Comment\(place)"
         case .comment:
             said = note.map { "Comment on \(quote): \($0)" } ?? "Comment on: \(quote)"
         case .expand:
@@ -36,6 +35,19 @@ extension Mark {
     private static func spoken(_ text: String) -> String {
         let line = text.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return line.count > 120 ? String(line.prefix(117)) + "…" : line
+    }
+}
+
+extension Anchor {
+    /// Where a point is, in a few words of its own line: after the ones before
+    /// it, or at the start of a line, before the ones after it.
+    var pointPlace: String? {
+        let lineBefore = prefix.split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
+        let before = lineBefore.split(whereSeparator: \.isWhitespace).suffix(3).joined(separator: " ")
+        if !before.isEmpty { return "after \(before)" }
+        let lineAfter = suffix.split(separator: "\n", omittingEmptySubsequences: false).first ?? ""
+        let after = lineAfter.split(whereSeparator: \.isWhitespace).prefix(3).joined(separator: " ")
+        return after.isEmpty ? nil : "before \(after)"
     }
 }
 

@@ -32,6 +32,18 @@ struct VoiceOverTests {
         #expect(said(session.addMark(.summarize, span: span("We will"))) == "Asked to shorten: We will")
         let end = span("Ship it").end
         #expect(said(session.addMark(.insert, span: TextSpan(end, end), text: "carefully")) == "Added after Ship it: carefully")
+        // A comment on no words is said like an insertion: where it is, then what it says.
+        let point = span("very robust").end
+        #expect(said(session.addMark(.comment, span: TextSpan(point, point), note: "Says who?")) == "Comment after a very robust: Says who?")
+        #expect(said(session.addMark(.comment, span: TextSpan(point, point))) == "Comment after a very robust")
+    }
+
+    @Test func aCommentAtALineStartSaysWhatItIsBefore() throws {
+        let session = session()
+        session.announce = { _ in }
+        let start = span("Ship it").start
+        let mark = try #require(session.addMark(.comment, span: TextSpan(start, start), note: "Too soon?"))
+        #expect(mark.spokenDescription == "Comment before Ship it on: Too soon?")
     }
 
     @Test func makingAndRemovingAMarkIsAnnounced() throws {
