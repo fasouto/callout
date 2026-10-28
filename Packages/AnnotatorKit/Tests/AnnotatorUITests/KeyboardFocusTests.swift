@@ -14,7 +14,7 @@ struct KeyboardFocusTests {
         let window: NSWindow
     }
 
-    private func makeHarness() async -> Harness {
+    private func makeHarness(finish: @escaping (ReviewOutcome) -> Void = { _ in }) async -> Harness {
         _ = NSApplication.shared
         let request = ReviewRequest(
             content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .planHook,
@@ -23,7 +23,7 @@ struct KeyboardFocusTests {
         let session = ReviewSession(request: request)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
+        window.contentView = NSHostingView(rootView: ReviewView(session: session, finish: finish))
         let harness = Harness(session: session, window: window)
         await settle(harness)
         return harness
@@ -58,6 +58,19 @@ struct KeyboardFocusTests {
     private func press(_ selector: Selector, in harness: Harness) throws {
         let editor = try #require(harness.window.firstResponder as? NSTextView)
         editor.doCommand(by: selector)
+    }
+
+    /// Presses keys in the document, each character as its own key.
+    private func press(
+        _ keys: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = [], on textView: AnnotationTextView
+    ) throws {
+        for key in keys {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: textView.window?.windowNumber ?? 0,
+                context: nil, characters: String(key), charactersIgnoringModifiers: String(key), isARepeat: false, keyCode: keyCode
+            ))
+            textView.keyDown(with: event)
+        }
     }
 
     @Test func aReviewOpensWithTheKeyboardInTheDocument() async {
@@ -227,6 +240,77 @@ struct KeyboardFocusTests {
         }
         #expect(session.marks.map(\.kind) == [.comment])
         #expect(session.marks.first?.note == "too vague")
+        #expect(try session.editedText() == "We will leverage a very robust approach here.")
+    }
+
+    /// ⌥D's reason, typed before its field has the keyboard, is the reason.
+    /// Backspace then takes back what was typed, as in the field, and never
+    /// strikes more of the document.
+    @Test func aReasonTypedBeforeItsFieldHasTheKeyboardIsTheReason() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust "))
+
+        try press("d", keyCode: 2, modifiers: .option, on: textView)
+        spin(harness.window)
+        #expect(harness.window.firstResponder === textView, "the field has not taken the keyboard yet")
+        try press("\u{7F}", keyCode: KeyCode.delete, on: textView)
+        try press("fillx", on: textView)
+        try press("\u{7F}", keyCode: KeyCode.delete, on: textView)
+        try press("er", on: textView)
+
+        #expect(session.marks.map(\.kind) == [.delete])
+        #expect(session.marks.first?.note == "filler")
+        #expect(try session.editedText() == "We will leverage a approach here.")
+    }
+
+    /// Return or Esc pressed before the field has the keyboard finishes the
+    /// note, as either does in the field. Esc does not cancel the review, and
+    /// the keyboard stays in the document.
+    @Test func returnOrEscapeBeforeTheFieldHasTheKeyboardFinishesTheNote() async throws {
+        var outcomes: [ReviewOutcome] = []
+        let harness = await makeHarness { outcomes.append($0) }
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust"))
+        try press("o", on: textView)
+        spin(harness.window)
+        try press("k", on: textView)
+        try press("\r", keyCode: KeyCode.return, on: textView)
+        await settle(harness)
+        #expect(session.editing == nil)
+        #expect(harness.window.firstResponder === textView)
+        #expect(session.marks.map(\.note) == ["ok"])
+
+        textView.setSelectedRange((textView.string as NSString).range(of: "here"))
+        try press("d", keyCode: 2, modifiers: .option, on: textView)
+        spin(harness.window)
+        try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
+        await settle(harness)
+        #expect(outcomes.isEmpty)
+        #expect(session.editing == nil)
+        #expect(harness.window.firstResponder === textView)
+        #expect(session.marks.map(\.kind) == [.comment, .delete])
+    }
+
+    /// With vim keys, letters are commands, except while a note's field is on
+    /// its way to the keyboard: then they are the note.
+    @Test func withVimKeysLettersTypedBeforeTheFieldHasTheKeyboardAreTheNote() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+        textView.usesVimKeys = true
+        textView.setSelectedRange((textView.string as NSString).range(of: "leverage"))
+
+        try press("c", on: textView)
+        spin(harness.window)
+        #expect(harness.window.firstResponder === textView, "the field has not taken the keyboard yet")
+        try press("jargon", on: textView)
+
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.marks.first?.note == "jargon")
         #expect(try session.editedText() == "We will leverage a very robust approach here.")
     }
 

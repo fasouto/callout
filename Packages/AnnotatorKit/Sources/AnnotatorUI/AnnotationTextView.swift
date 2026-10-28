@@ -29,6 +29,10 @@ final class AnnotationTextView: NSTextView {
     var onVisualModeChange: ((Bool) -> Void)?
     /// With vim keys: called when insert mode starts or ends.
     var onInsertModeChange: ((Bool) -> Void)?
+    /// True while a margin field is on its way to the keyboard: keys belong to it.
+    var isHandingKeysToField: () -> Bool = { false }
+    /// A key for that margin field.
+    var onFieldKey: ((FieldKey) -> Void)?
 
     /// True while a vim movement is adjusting the selection in steps; the
     /// selection only counts once it has settled.
@@ -75,6 +79,16 @@ final class AnnotationTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if isHandingKeysToField() {
+            switch Keymap.fieldInput(for: event) {
+            case .key(let key): onFieldKey?(key)
+            // Through the input system, so accents and other composed characters work.
+            case .typing: interpretKeyEvents([event])
+            case .shortcut: super.keyDown(with: event)
+            case .ignored: break
+            }
+            return
+        }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
         let hasSelection = selectedRange().length > 0
@@ -132,7 +146,9 @@ final class AnnotationTextView: NSTextView {
     override func insertText(_ string: Any, replacementRange: NSRange) {
         let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
         guard !text.isEmpty else { return }
-        if canType {
+        if isHandingKeysToField() {
+            onFieldKey?(.text(text))
+        } else if canType {
             onType?(text)
         } else if commentsOnTyping {
             onTypeOnSelection?(text)

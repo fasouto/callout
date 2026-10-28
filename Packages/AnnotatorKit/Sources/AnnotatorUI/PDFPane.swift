@@ -17,9 +17,22 @@ final class AnnotationPDFView: PDFView {
     var onCancelKey: (() -> Void)?
     /// Called when the mouse is released, at a point in view coordinates.
     var onMouseUp: ((NSPoint) -> Void)?
+    /// True while a margin field is on its way to the keyboard: keys belong to it.
+    var isHandingKeysToField: () -> Bool = { false }
+    /// A key for that margin field.
+    var onFieldKey: ((FieldKey) -> Void)?
     private var awaitsSecondG = false
 
     override func keyDown(with event: NSEvent) {
+        if isHandingKeysToField() {
+            switch Keymap.fieldInput(for: event) {
+            case .key(let key): onFieldKey?(key)
+            case .typing: if let text = Keymap.typedText(of: event) { onFieldKey?(.text(text)) }
+            case .shortcut: super.keyDown(with: event)
+            case .ignored: break
+            }
+            return
+        }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let characters = event.charactersIgnoringModifiers ?? ""
 
@@ -258,6 +271,8 @@ struct PDFPane: NSViewRepresentable {
                 }
             }
             view.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
+            view.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
+            view.onFieldKey = { [weak self] key in self?.session.press(key) }
             view.onDeleteKey = { [weak self] in
                 guard let self else { return }
                 // ⌫ strikes out the selected text, or takes the strike back from text

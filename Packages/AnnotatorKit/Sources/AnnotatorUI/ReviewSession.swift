@@ -50,8 +50,14 @@ final class ReviewSession {
             if let statusMessage, statusMessage != oldValue { announce(statusMessage) }
         }
     }
+    /// The margin field being written, and whether it has the keyboard yet.
+    private var writing: Writing?
     /// The margin field that should have the keyboard, if any.
-    private(set) var editing: EditTarget?
+    var editing: EditTarget? { writing?.target }
+    /// True between asking a margin field to take the keyboard and its taking it.
+    /// The field takes it a moment after the page redraws, and keys pressed in
+    /// the document meanwhile belong to the field.
+    var isHandingKeyboardToField: Bool { writing?.fieldHasKeyboard == false }
     /// Bumped to hand the keyboard back to the document.
     private(set) var documentFocusToken = 0
     /// Whether the document has a selection that marks can be applied to.
@@ -355,15 +361,9 @@ final class ReviewSession {
     }
 
     /// Text typed on a selection starts a comment on it, and the keyboard goes
-    /// to the comment's field. Keys pressed before the field has the keyboard
-    /// are added to the comment being written.
+    /// to the comment's field.
     @discardableResult
     func comment(typing text: String, anchor: Anchor?) -> Mark? {
-        if let target = editing, target.field == .note,
-           let mark = marks.first(where: { $0.id == target.markID }), mark.kind == .comment {
-            update(mark.id, note: (mark.note ?? "") + text)
-            return marks.first { $0.id == mark.id }
-        }
         // A space is not the start of anything.
         guard text.nilIfBlank != nil else { return nil }
         return addMarkToWrite(.comment, anchor: anchor, note: text)
@@ -387,7 +387,39 @@ final class ReviewSession {
         guard let mark = marks.first(where: { $0.id == id }), mark.kind != .keep else { return }
         let natural: MarkField = mark.kind == .replace || mark.kind == .insert ? .text : .note
         selectedMarkID = id
-        editing = EditTarget(markID: id, field: field ?? natural)
+        let target = EditTarget(markID: id, field: field ?? natural)
+        // The field asked for again: it already has the keyboard, or is on its way to it.
+        if writing?.target != target { writing = Writing(target: target, fieldHasKeyboard: false) }
+    }
+
+    /// The field being written has the keyboard: keys reach it directly from now on.
+    func fieldTookKeyboard(_ target: EditTarget) {
+        guard writing?.target == target else { return }
+        writing?.fieldHasKeyboard = true
+    }
+
+    /// Does what a key does in the field being written, for a key pressed in
+    /// the document before the field has the keyboard. The field takes the
+    /// keyboard with its caret at the end, so text goes on the end and
+    /// Backspace takes off the last character.
+    func press(_ key: FieldKey) {
+        guard let target = editing, let mark = marks.first(where: { $0.id == target.markID }) else { return }
+        let written = (target.field == .note ? mark.note : mark.text) ?? ""
+        let edited: String
+        switch key {
+        case .text(let text):
+            edited = written + text
+        case .deleteBackward:
+            guard !written.isEmpty else { return }
+            edited = String(written.dropLast())
+        case .commit, .cancel:
+            endEditing()
+            return
+        }
+        switch target.field {
+        case .note: update(mark.id, note: edited)
+        case .text: update(mark.id, text: edited)
+        }
     }
 
     /// Gives the keyboard to the overall comment.
@@ -421,7 +453,7 @@ final class ReviewSession {
         }
         unwritten = nil
         coalescedEdit = nil
-        editing = nil
+        writing = nil
         documentFocusToken += 1
     }
 
@@ -447,7 +479,7 @@ final class ReviewSession {
         drop(id)
         announce("Removed. \(mark.spokenDescription)")
         if editing?.markID == id {
-            editing = nil
+            writing = nil
             documentFocusToken += 1
         }
     }
@@ -502,7 +534,7 @@ final class ReviewSession {
         registerUndo(name)
         unwritten = nil
         coalescedEdit = nil
-        editing = nil
+        writing = nil
         self.marks = marks
         selectedMarkID = marks.contains { $0.id == selection } ? selection : nil
         marksChanged()
@@ -563,6 +595,22 @@ enum MarkField: Hashable {
 struct EditTarget: Equatable {
     var markID: UUID
     var field: MarkField
+}
+
+/// The margin field being written, and whether it has the keyboard yet.
+private struct Writing {
+    let target: EditTarget
+    var fieldHasKeyboard: Bool
+}
+
+/// A key as a margin field takes it.
+enum FieldKey: Equatable {
+    case text(String)
+    case deleteBackward
+    /// Return.
+    case commit
+    /// Esc.
+    case cancel
 }
 
 enum SelectionState: Equatable {

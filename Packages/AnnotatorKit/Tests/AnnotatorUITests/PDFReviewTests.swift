@@ -145,6 +145,7 @@ struct PDFReviewTests {
 
         try select("Passionate, results-driven", page: 0, in: harness)
         try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
         try select("Worked at CERN", page: 1, in: harness)
         try mark("k", keyCode: 40, in: harness)
 
@@ -169,6 +170,7 @@ struct PDFReviewTests {
 
         try select("Passionate, results-driven", page: 0, in: harness)
         try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
 
         try select("Worked at CERN", page: 1, in: harness)
         try mark("c", keyCode: 8, in: harness)
@@ -240,6 +242,7 @@ struct PDFReviewTests {
         session.endEditing()
         try select("Passionate, results-driven", page: 0, in: harness)
         try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
         try select("browser automation", page: 0, in: harness)
         try mark("c", keyCode: 8, in: harness)
         session.update(try #require(session.selectedMarkID), note: "Say which insurer, and how many quotes a day.")
@@ -358,6 +361,35 @@ struct PDFReviewTests {
         #expect(harness.session.marks.first?.note == "why?")
     }
 
+    /// Once the comment's field has had the keyboard, the page is the page again:
+    /// words typed on a new selection are a new comment, not more of the first.
+    @Test func typingOnANewSelectionAfterTheFieldHadTheKeyboardStartsANewComment() async throws {
+        let harness = try makeHarness()
+        try select("Built browser automation", page: 0, in: harness)
+        try press("w", keyCode: 0, in: harness)
+        settle(harness.window)
+        try await Task.sleep(for: .milliseconds(60))
+        #expect((harness.window.firstResponder as? NSTextView)?.isFieldEditor == true, "the field has the keyboard")
+
+        harness.window.makeFirstResponder(harness.view)
+        try select("Worked at CERN", page: 1, in: harness)
+        for key in "ok" { try press(String(key), keyCode: 0, in: harness) }
+        #expect(harness.session.marks.map(\.note) == ["w", "ok"])
+    }
+
+    /// ⌥R's words, typed before the replacement's field has the keyboard, are the replacement.
+    @Test func wordsTypedBeforeTheReplacementsFieldHasTheKeyboardAreTheReplacement() throws {
+        let harness = try makeHarness()
+        try select("with a proven track record", page: 0, in: harness)
+        try mark("r", keyCode: 15, in: harness)
+        harness.window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        #expect(harness.window.firstResponder === harness.view, "the field has not taken the keyboard yet")
+        for key in "who ships" { try press(String(key), keyCode: 0, in: harness) }
+        #expect(harness.session.marks.map(\.kind) == [.replace])
+        #expect(harness.session.marks.first?.text == "who ships")
+    }
+
     @Test func keysNeedASelection() throws {
         let harness = try makeHarness()
         harness.view.clearSelection()
@@ -372,6 +404,7 @@ struct PDFReviewTests {
         let session = harness.session
         try select("Built browser automation", page: 0, in: harness)
         try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
         try select("browser automation for insurance", page: 0, in: harness)
         try mark("d", keyCode: 2, in: harness)
         #expect(session.marks.count == 1)

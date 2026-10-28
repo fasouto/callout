@@ -42,6 +42,39 @@ enum Keymap {
         vim ? letter : "⌥" + letter
     }
 
+    /// What a key pressed in the document is to a margin field on its way to
+    /// the keyboard: what it would be in the field, with the caret at its end.
+    enum FieldInput: Equatable {
+        case key(FieldKey)
+        /// The key types. Each view reads the text its own way.
+        case typing
+        /// ⌘ or ⌃ and a key: the view's, as it always is.
+        case shortcut
+        /// An arrow, Tab or forward delete, which do nothing useful at the end
+        /// of the field, and in the document would move the caret or strike text.
+        case ignored
+    }
+
+    static func fieldInput(for event: NSEvent) -> FieldInput {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers.contains(.command) || modifiers.contains(.control) { return .shortcut }
+        switch event.keyCode {
+        case KeyCode.delete:
+            return .key(.deleteBackward)
+        case KeyCode.escape:
+            return .key(.cancel)
+        case KeyCode.return, KeyCode.enter:
+            // Only Option-Return is a line break in the field; Shift-Return is Return there.
+            return .key(modifiers == .option ? .text("\n") : .commit)
+        case KeyCode.tab, KeyCode.forwardDelete:
+            return .ignored
+        case let code where KeyCode.navigation.contains(code):
+            return .ignored
+        default:
+            return .typing
+        }
+    }
+
     /// The text a key press types, if it types any: not a shortcut, a movement
     /// or a function key.
     static func typedText(of event: NSEvent) -> String? {

@@ -160,6 +160,7 @@ struct ReviewWindowTests {
         select("very robust ", in: harness)
         try mark("d", keyCode: 2, in: harness)
         #expect(harness.session.marks.count == 1)
+        harness.session.endEditing()
 
         try press("\u{7F}", keyCode: KeyCode.delete, in: harness)
         #expect(harness.session.marks.isEmpty)

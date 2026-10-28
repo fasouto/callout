@@ -51,8 +51,10 @@ struct NoteField: NSViewRepresentable {
 
         // Take the keyboard when asked to, once per request.
         if wantsFocus, !context.coordinator.hadFocusRequest {
-            DispatchQueue.main.async { [weak field] in
-                guard let field, let window = field.window, field.currentEditor() == nil else { return }
+            DispatchQueue.main.async { [weak field, weak coordinator = context.coordinator] in
+                // Not if the request was taken back meanwhile, as by Return pressed before the field had the keyboard.
+                guard let field, let window = field.window, field.currentEditor() == nil,
+                      coordinator?.parent.wantsFocus == true else { return }
                 window.makeFirstResponder(field)
             }
         }

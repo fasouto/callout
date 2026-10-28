@@ -202,6 +202,7 @@ private struct MarginNote: View {
             onFocusChange: { focused in
                 if focused {
                     focus = which
+                    session.fieldTookKeyboard(EditTarget(markID: mark.id, field: which))
                 } else if focus == which {
                     focus = nil
                     draftNote = nil

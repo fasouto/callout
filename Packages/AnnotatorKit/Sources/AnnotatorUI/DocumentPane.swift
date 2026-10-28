@@ -115,6 +115,8 @@ struct DocumentPane: NSViewRepresentable {
             textView.onInsertModeChange = { [weak self] isOn in self?.session.isTypingMode = isOn }
             textView.onType = { [weak self] text in self?.type(text) }
             textView.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
+            textView.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
+            textView.onFieldKey = { [weak self] key in self?.session.press(key) }
             textView.onDeleteCharacter = { [weak self] forward in self?.deleteCharacter(forward: forward) }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onRemoveMark = { [weak self] in
