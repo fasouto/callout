@@ -187,17 +187,25 @@ final class ReviewSession {
     }
 
     /// The mark at a caret position, edits before comments. The end of a mark's
-    /// text counts, because that is where its words are typed.
+    /// text counts, because that is where its words are typed, and so does the
+    /// point a comment on no words is pinned to.
     func mark(atView offset: Int) -> Mark? {
         let hits = marks.filter { mark in
             if layout.ghosts.contains(where: { $0.markID == mark.id && $0.range.lowerBound <= offset && offset <= $0.range.upperBound }) {
                 return true
             }
+            if mark.isPointComment { return pointViewOffset(of: mark) == offset }
             let ranges = layout.viewRanges(forSource: mark.anchor.span)
             if ranges.contains(where: { $0.contains(offset) }) { return true }
             return mark.kind.isEdit && ranges.last?.upperBound == offset
         }
         return hits.first { $0.kind.isEdit } ?? hits.first
+    }
+
+    /// Where a comment on no words is pinned in the view: after any words added
+    /// at its point, where the caret goes and its pin is drawn.
+    private func pointViewOffset(of mark: Mark) -> Int? {
+        document.displayedOffset(forSource: mark.anchor.span.start).map(layout.viewOffset(forDisplayed:))
     }
 
     // MARK: - Typing in the document

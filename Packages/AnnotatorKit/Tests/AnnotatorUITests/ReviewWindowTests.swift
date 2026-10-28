@@ -257,6 +257,108 @@ struct ReviewWindowTests {
         #expect(try session.editedText().contains("cover websockets or streaming."))
     }
 
+    // MARK: Comments pinned to a point
+
+    @Test func aPointCommentIsPinnedWithoutChangingTheText() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let before = harness.textView.snapshotBitmap()?.tiffRepresentation
+        let point = sourceSpan(of: "very robust").end
+        try #require(session.addMark(.comment, span: TextSpan(point, point), note: "Says who?"))
+        settle(harness.window)
+
+        #expect(harness.textView.string == session.document.text)
+        let storage = try #require(harness.textView.textStorage)
+        let after = NSMaxRange((harness.textView.string as NSString).range(of: "very robust"))
+        #expect(storage.attribute(.annotatorPin, at: after, effectiveRange: nil) as? Pin == Pin(isAfter: false, selected: true))
+        #expect(storage.attribute(.annotatorPin, at: after - 1, effectiveRange: nil) == nil)
+        #expect(harness.textView.snapshotBitmap()?.tiffRepresentation != before)
+
+        session.selectedMarkID = nil
+        settle(harness.window)
+        #expect(storage.attribute(.annotatorPin, at: after, effectiveRange: nil) as? Pin == Pin(isAfter: false, selected: false))
+    }
+
+    @Test func theCaretOnAPointCommentSelectsItAndCommandBackspaceRemovesIt() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        let point = sourceSpan(of: "very robust").end
+        let comment = try #require(session.addMark(.comment, span: TextSpan(point, point), note: "Says who?"))
+        settle(harness.window)
+        let at = NSMaxRange((harness.textView.string as NSString).range(of: "very robust"))
+
+        harness.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(session.selectedMarkID == nil)
+        harness.textView.setSelectedRange(NSRange(location: at, length: 0))
+        #expect(session.selectedMarkID == comment.id)
+        harness.textView.setSelectedRange(NSRange(location: at + 1, length: 0))
+        #expect(session.selectedMarkID == nil)
+
+        harness.textView.setSelectedRange(NSRange(location: at, length: 0))
+        try press("\u{7F}", keyCode: KeyCode.delete, modifiers: .command, in: harness)
+        #expect(session.marks.isEmpty)
+
+        // Words added at the same point are an edit, and edits come first.
+        try #require(session.addMark(.comment, span: TextSpan(point, point), note: "Says who?"))
+        let insert = try #require(session.addMark(.insert, span: TextSpan(point, point), text: " and simple"))
+        settle(harness.window)
+        let end = NSMaxRange((harness.textView.string as NSString).range(of: "very robust and simple"))
+        session.selectedMarkID = nil
+        harness.textView.setSelectedRange(NSRange(location: end, length: 0))
+        #expect(session.selectedMarkID == insert.id)
+    }
+
+    @Test func twoCommentsAtOnePointAreTwoMarks() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        harness.textView.usesVimKeys = false
+        let at = NSMaxRange((harness.textView.string as NSString).range(of: "very robust"))
+
+        harness.textView.setSelectedRange(NSRange(location: at, length: 0))
+        harness.textView.insertText("Says who?", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try press("\r", keyCode: KeyCode.return, in: harness)
+        settle(harness.window)
+        harness.textView.setSelectedRange(NSRange(location: at, length: 0))
+        let first = try #require(session.marks.first)
+        #expect(session.selectedMarkID == first.id)
+        harness.textView.insertText("Measured how?", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try press("\r", keyCode: KeyCode.return, in: harness)
+        settle(harness.window)
+
+        #expect(session.marks.map(\.kind) == [.comment, .comment])
+        #expect(session.marks.map(\.anchor.span) == [first.anchor.span, first.anchor.span])
+        #expect(harness.textView.string == session.document.text)
+        session.selectedMarkID = nil
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        #expect(session.selectedMarkID == first.id)
+        try press("\t", keyCode: KeyCode.tab, in: harness)
+        #expect(session.selectedMarkID == session.marks.last?.id)
+        #expect(session.feedback().contains("""
+        ### 1. Comment after
+        > We will leverage a very robust
+        Says who?
+
+        ### 2. Comment after
+        > We will leverage a very robust
+        Measured how?
+        """))
+    }
+
+    @Test func pointCommentsArePinsInTheText() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        for (words, note) in [("# Plan:", "Which plan?"), ("token bucket", "Why a bucket?"), ("Bucket size", "In what unit?"), ("today,", "Since when?")] {
+            let point = sourceSpan(of: words).end
+            try #require(session.addMark(.comment, span: TextSpan(point, point), note: note))
+        }
+        settle(harness.window)
+        #expect(harness.textView.string == session.document.text)
+        // One of them is selected, and drawn stronger: the last one made.
+        let selected = NSMaxRange((harness.textView.string as NSString).range(of: "today,"))
+        #expect(harness.textView.textStorage?.attribute(.annotatorPin, at: selected, effectiveRange: nil) as? Pin == Pin(isAfter: false, selected: true))
+        snapshot(harness.window, named: "review-point-comments")
+    }
+
     @Test func returnOpensTheSelectedMarkForWriting() throws {
         let harness = try makeHarness()
         let session = harness.session

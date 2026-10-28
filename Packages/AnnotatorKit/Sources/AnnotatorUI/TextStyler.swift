@@ -6,6 +6,18 @@ extension NSAttributedString.Key {
     static let annotatorMark = NSAttributedString.Key("annotatorMark")
     /// A `BlockDecoration` drawn behind a paragraph.
     static let annotatorBlock = NSAttributedString.Key("annotatorBlock")
+    /// A comment pinned between two characters: a `Pin`, set on the character
+    /// after its point. `BlockFragment` draws it.
+    static let annotatorPin = NSAttributedString.Key("annotatorPin")
+}
+
+/// A comment pinned to a point between two characters. It is set on the
+/// character after the point, or at the very end of the text on the last one.
+struct Pin: Hashable {
+    /// The point is after its character: only at the end of the text.
+    var isAfter: Bool
+    /// Comments pinned to one point are one pin, selected when any of them is.
+    var selected: Bool
 }
 
 /// Something drawn behind a paragraph rather than set in type.
@@ -22,6 +34,14 @@ enum BlockDecoration: Hashable {
     case tableRow(header: Bool, last: Bool, indent: CGFloat, width: CGFloat?)
 }
 
+/// How a comment on no words shows on a page.
+enum PinStyle {
+    /// A `Pin` for the page's layout to draw as a bar between two characters.
+    case bar
+    /// A wash on one character, for a picture drawn without the page's layout.
+    case wash
+}
+
 /// Builds what the text view shows from the rendered document and the marks.
 ///
 /// A page is built in two layers: the document as set in type, which stays the
@@ -32,10 +52,11 @@ enum TextStyler {
     ///   - added: source spans that are new since the previous version, to be tinted.
     ///   - measure: how wide the page is.
     static func attributedString(
-        layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = [], measure: CGFloat = Theme.measure
+        layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = [], measure: CGFloat = Theme.measure,
+        pins: PinStyle = .bar
     ) -> NSAttributedString {
         let base = basePage(of: layout.document, added: added, measure: measure).text
-        return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length)
+        return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length, pins: pins)
     }
 
     /// The document as set in type, without marks: one character for each of
@@ -115,7 +136,8 @@ enum TextStyler {
     /// Part of a page: the base page's text in `displayed`, with the marks on it
     /// and the ghosts that sit anywhere from its start to its end, both included.
     static func marked(
-        _ base: NSAttributedString, layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, displayed: Range<Int>
+        _ base: NSAttributedString, layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, displayed: Range<Int>,
+        pins: PinStyle = .bar
     ) -> NSAttributedString {
         let document = layout.document
         let start = displayed.lowerBound
@@ -124,6 +146,12 @@ enum TextStyler {
         // Marks are applied in displayed offsets, before ghosts shift anything.
         for mark in marks {
             let selected = mark.id == selectedMarkID
+            if mark.isPointComment {
+                if let point = document.displayedOffset(forSource: mark.anchor.span.start) {
+                    pin(at: point, selected: selected, style: pins, in: result, base: base, displayed: displayed)
+                }
+                continue
+            }
             let ranges = document.displayedRanges(forSource: mark.anchor.span)
             for range in ranges {
                 let part = range.clamped(to: displayed)
@@ -157,6 +185,32 @@ enum TextStyler {
     }
 
     // MARK: - Marks
+
+    /// A comment on no words, pinned to `point`, a displayed offset. It goes on
+    /// the character after the point, before ghosts go in, so words added at the
+    /// same point come before it, as the caret does.
+    private static func pin(
+        at point: Int, selected: Bool, style: PinStyle, in result: NSMutableAttributedString, base: NSAttributedString, displayed: Range<Int>
+    ) {
+        let characters = base.string as NSString
+        guard characters.length > 0 else { return }
+        var isAfter = point >= characters.length
+        // A wash on a line break would not show: it goes on the character before.
+        if style == .wash, !isAfter, point > 0, characters.character(at: point) == 0x0A || characters.character(at: point) == 0x2028 {
+            isAfter = true
+        }
+        let index = isAfter ? min(point, characters.length) - 1 : point
+        guard displayed.contains(index) else { return }
+        let character = NSIntersectionRange(characters.rangeOfComposedCharacterSequence(at: index), NSRange(displayed))
+        let range = NSRange(location: character.location - displayed.lowerBound, length: character.length)
+        switch style {
+        case .bar:
+            let shared = result.attribute(.annotatorPin, at: range.location, effectiveRange: nil) as? Pin
+            result.addAttribute(.annotatorPin, value: Pin(isAfter: isAfter, selected: selected || shared?.selected == true), range: range)
+        case .wash:
+            result.addAttribute(.backgroundColor, value: Theme.highlightWash(selected: selected), range: range)
+        }
+    }
 
     private static func attributes(for mark: Mark, selected: Bool) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [.annotatorMark: mark.id.uuidString]

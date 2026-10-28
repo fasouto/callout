@@ -156,7 +156,15 @@ struct StyledPageTests {
             let choice = Int.random(in: 0..<14, using: &random)
             var name = "step \(step)"
             switch choice {
-            case 0, 1:
+            case 1:
+                // At a word, at either end of its paragraph, or at the end of the text.
+                let text = session.layout.text as NSString
+                let paragraph = text.paragraphRange(for: NSRange(location: min(word.lowerBound, text.length), length: 0))
+                let paragraphEnd = NSMaxRange(paragraph) - (text.substring(with: paragraph).hasSuffix("\n") ? 1 : 0)
+                let point = [word.lowerBound, word.upperBound, paragraph.location, paragraphEnd, text.length].randomElement(using: &random)!
+                name += ": comment pinned at \(point)"
+                session.addMark(.comment, anchor: session.pointAnchor(atView: point), note: "here?")
+            case 0:
                 let kind = [MarkKind.delete, .keep, .comment, .expand, .summarize].randomElement(using: &random)!
                 name += ": \(kind) on \(word)"
                 if let span = session.sourceSpan(forView: Bool.random(using: &random) ? word : wide) { session.addMark(kind, span: span) }
@@ -294,6 +302,12 @@ struct StyledPageWindowTests {
         settle(); expectFresh("a line typed at the start of a list item")
         session.addMark(.comment, span: try span("RateLimiter"), note: "Name?")
         settle(); expectFresh("a comment")
+        let end = (textView.string as NSString).length
+        let pinned = try #require(session.addMark(.comment, anchor: session.pointAnchor(atView: end), note: "And then?"))
+        session.addMark(.comment, anchor: session.pointAnchor(atView: (textView.string as NSString).range(of: "Not websockets").location), note: "Why not?")
+        settle(); expectFresh("comments pinned to points")
+        session.remove(pinned.id)
+        settle(); expectFresh("a pinned comment removed")
         session.selectedMarkID = struck.id
         settle(); expectFresh("another mark selected")
         session.remove(struck.id)

@@ -1,26 +1,57 @@
 import AppKit
 
-/// Hands out layout fragments that draw a paragraph's decoration: the panel
-/// behind code and tables, the bar beside a quotation, the rule of a break.
+/// Hands out layout fragments that draw what is not set in type: a paragraph's
+/// decoration (the panel behind code and tables, the bar beside a quotation,
+/// the rule of a break) and the pins of comments on no words.
 final class BlockDecorator: NSObject, NSTextLayoutManagerDelegate {
     func textLayoutManager(
         _ textLayoutManager: NSTextLayoutManager,
         textLayoutFragmentFor location: NSTextLocation,
         in textElement: NSTextElement
     ) -> NSTextLayoutFragment {
-        if let paragraph = textElement as? NSTextParagraph, paragraph.attributedString.length > 0,
-           let decoration = paragraph.attributedString.attribute(.annotatorBlock, at: 0, effectiveRange: nil) as? BlockDecoration {
-            return BlockFragment(decoration: decoration, textElement: textElement, range: textElement.elementRange)
+        if let paragraph = textElement as? NSTextParagraph, paragraph.attributedString.length > 0 {
+            let text = paragraph.attributedString
+            let decoration = text.attribute(.annotatorBlock, at: 0, effectiveRange: nil) as? BlockDecoration
+            let pins = Self.pins(in: text)
+            if decoration != nil || !pins.isEmpty {
+                return BlockFragment(decoration: decoration, pins: pins, textElement: textElement, range: textElement.elementRange)
+            }
         }
         return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+    }
+
+    /// The pins in a paragraph, one for each character that carries one:
+    /// neighbouring pins that look alike share a run of the attribute.
+    static func pins(in text: NSAttributedString) -> [BlockFragment.PinnedPoint] {
+        let characters = text.string as NSString
+        var pins: [BlockFragment.PinnedPoint] = []
+        text.enumerateAttribute(.annotatorPin, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let pin = value as? Pin else { return }
+            var index = range.location
+            while index < NSMaxRange(range) {
+                let character = characters.rangeOfComposedCharacterSequence(at: index)
+                pins.append(.init(offset: pin.isAfter ? NSMaxRange(character) : character.location, selected: pin.selected))
+                index = NSMaxRange(character)
+            }
+        }
+        return pins
     }
 }
 
 final class BlockFragment: NSTextLayoutFragment {
-    private let decoration: BlockDecoration
+    /// A comment pinned between two characters of the paragraph.
+    struct PinnedPoint: Equatable {
+        /// The point, as an offset into the paragraph.
+        var offset: Int
+        var selected: Bool
+    }
 
-    init(decoration: BlockDecoration, textElement: NSTextElement, range: NSTextRange?) {
+    private let decoration: BlockDecoration?
+    private let pins: [PinnedPoint]
+
+    init(decoration: BlockDecoration?, pins: [PinnedPoint], textElement: NSTextElement, range: NSTextRange?) {
         self.decoration = decoration
+        self.pins = pins
         super.init(textElement: textElement, range: range)
     }
 
@@ -34,11 +65,13 @@ final class BlockFragment: NSTextLayoutFragment {
     }
 
     /// The decoration's rectangle, in the fragment's own coordinates.
-    private var decorationRect: CGRect {
+    private var decorationRect: CGRect? {
         let frame = layoutFragmentFrame
         // The fragment's origin can sit to the right of the container's edge.
         let left = -frame.minX
         switch decoration {
+        case nil:
+            return nil
         case .panel(let first, let last, let indent):
             var rect = CGRect(x: left + indent, y: 0, width: containerWidth - indent, height: frame.height)
             if first {
@@ -57,14 +90,61 @@ final class BlockFragment: NSTextLayoutFragment {
         }
     }
 
+    /// A pin's bar, in the fragment's own coordinates: at its point, as tall as
+    /// the letters there, as the caret is. A point where a line wraps belongs to
+    /// the line it starts.
+    private func bar(at offset: Int) -> CGRect? {
+        guard let line = textLineFragments.first(where: { NSLocationInRange(offset, $0.characterRange) })
+            ?? textLineFragments.last(where: { NSMaxRange($0.characterRange) == offset }) else { return nil }
+        let text = line.attributedString
+        guard text.length > 0 else { return nil }
+        let font = text.attribute(.font, at: min(offset, text.length - 1), effectiveRange: nil) as? NSFont ?? Theme.serif(Theme.bodySize)
+        let bounds = line.typographicBounds
+        let x = bounds.minX + line.locationForCharacter(at: offset).x
+        let baseline = bounds.minY + line.glyphOrigin.y
+        return CGRect(x: x, y: baseline - font.ascender, width: 0, height: font.ascender - font.descender)
+    }
+
+    /// How far a pin's head and its wash reach around its bar.
+    private static let pinReach: CGFloat = 4
+
     override var renderingSurfaceBounds: CGRect {
-        super.renderingSurfaceBounds.union(decorationRect)
+        var bounds = super.renderingSurfaceBounds
+        if let decorationRect { bounds = bounds.union(decorationRect) }
+        for pin in pins {
+            if let bar = bar(at: pin.offset) { bounds = bounds.union(bar.insetBy(dx: -Self.pinReach, dy: -Self.pinReach)) }
+        }
+        return bounds
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
+        if let decorationRect { drawDecoration(in: decorationRect.offsetBy(dx: point.x, dy: point.y), context: context) }
+        let bars = pins.compactMap { pin in bar(at: pin.offset).map { (rect: $0.offsetBy(dx: point.x, dy: point.y), selected: pin.selected) } }
         context.saveGState()
-        let rect = decorationRect.offsetBy(dx: point.x, dy: point.y)
+        // A selected pin is washed, as selected highlighted words are, behind the letters.
+        context.setFillColor(Theme.highlightWash(selected: true).cgColor)
+        for bar in bars where bar.selected {
+            context.addPath(CGPath(roundedRect: bar.rect.insetBy(dx: -3, dy: -1), cornerWidth: 2, cornerHeight: 2, transform: nil))
+            context.fillPath()
+        }
+        context.restoreGState()
+        super.draw(at: point, in: context)
+        // Over the letters, a map pin between them: a bar with a round head, so
+        // it is not taken for the caret, which is a plain line.
+        context.saveGState()
+        for bar in bars {
+            context.setFillColor(Theme.pointBar(selected: bar.selected).cgColor)
+            let width: CGFloat = bar.selected ? 2 : 1.5
+            let head: CGFloat = bar.selected ? 6 : 5
+            context.fill(CGRect(x: bar.rect.midX - width / 2, y: bar.rect.minY, width: width, height: bar.rect.height))
+            context.fillEllipse(in: CGRect(x: bar.rect.midX - head / 2, y: bar.rect.minY - head / 2, width: head, height: head))
+        }
+        context.restoreGState()
+    }
 
+    private func drawDecoration(in rect: CGRect, context: CGContext) {
+        guard let decoration else { return }
+        context.saveGState()
         switch decoration {
         case .panel(let first, let last, _):
             context.setFillColor(NSColor.quaternaryLabelColor.withAlphaComponent(0.07).cgColor)
@@ -87,7 +167,6 @@ final class BlockFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: rect.minX, y: rect.maxY.rounded() - 1, width: rect.width, height: 1))
         }
         context.restoreGState()
-        super.draw(at: point, in: context)
     }
 
     /// A rectangle rounded only where the panel begins and ends.

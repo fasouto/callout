@@ -72,6 +72,24 @@ enum Theme {
         }
     }
 
+    /// The bar of a comment pinned between two characters: the highlighter's
+    /// colour, deep enough on a white page to read as a shape.
+    static func pointBar(selected: Bool) -> NSColor {
+        selected ? selectedPointBar : plainPointBar
+    }
+
+    private static let plainPointBar = makePointBar(selected: false)
+    private static let selectedPointBar = makePointBar(selected: true)
+
+    private static func makePointBar(selected: Bool) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let alpha: CGFloat = selected || increasesContrast ? 1 : 0.75
+            return isDark(appearance)
+                ? NSColor.systemYellow.withAlphaComponent(alpha)
+                : NSColor(srgbRed: 0.72, green: 0.52, blue: 0.0, alpha: alpha)
+        }
+    }
+
     /// The colour of highlighted words: the page's ink in light mode, the
     /// highlighter's yellow in dark mode.
     static let highlightedText = NSColor(name: nil) { appearance in

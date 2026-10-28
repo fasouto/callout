@@ -73,6 +73,22 @@ struct SnippetsAndHistoryTests {
 
     // MARK: History
 
+    @Test func aPointCommentShowsInItsThumbnail() throws {
+        let store = try Store()
+        let text = "We will leverage a very robust approach here."
+        let point = NSMaxRange((text as NSString).range(of: "very robust"))
+        let comment = Mark(kind: .comment, anchor: try #require(Anchor.make(in: text, span: TextSpan(point, point))), note: "Says who?")
+        var thumbnails: [Data?] = []
+        for marks in [[], [comment]] {
+            let request = request(text: text)
+            try store.saveReview(request, result: ReviewResult(id: request.id, decision: .feedback, feedback: ""), marks: marks, generalComment: "")
+            let detail = try #require(try store.review(request.id))
+            thumbnails.append(try #require(HistoryThumbnails.draw(detail)).tiffRepresentation)
+        }
+        #expect(thumbnails[0] != nil)
+        #expect(thumbnails[0] != thumbnails[1])
+    }
+
     @Test func aFinishedReviewGoesIntoTheHistory() throws {
         _ = NSApplication.shared
         let store = try Store()
