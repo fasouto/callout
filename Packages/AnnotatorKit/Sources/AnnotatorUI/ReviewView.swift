@@ -112,13 +112,13 @@ private struct ActionBar: View {
                 }
                 overallComment
                 HStack(spacing: 12) {
-                    if session.isSelectingByKeyboard || session.isTypingMode {
-                        Text(session.isTypingMode ? "Insert" : "Visual")
+                    if session.isSelectingByKeyboard || session.isAddingWords {
+                        Text(session.isAddingWords ? "Insert" : "Visual")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
-                            .help(session.isTypingMode
+                            .help(session.isAddingWords
                                 ? "Keys type into the document. Esc goes back to moving."
                                 : "Moving extends the selection. Press a mark key, or Esc to let go.")
                     }

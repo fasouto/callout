@@ -65,8 +65,12 @@ final class ReviewSession {
     private(set) var overallFocusToken = 0
     /// With vim keys: whether a selection is being extended by moving (visual mode).
     var isSelectingByKeyboard = false
-    /// With vim keys: whether keys type into the document (insert mode).
-    var isTypingMode = false
+    /// Whether keys add words to the document: after ⌥I or ⌥R, or in vim's insert
+    /// mode. The text view decides; this is what the Insert badge shows.
+    var isAddingWords = false {
+        // Words added once adding has stopped and started again are a new undo step.
+        didSet { if !isAddingWords { coalescedEdit = nil } }
+    }
     /// The reusable comments on offer, loaded when the picker is first asked for.
     @ObservationIgnored var loadSnippets: () -> [Snippet] = { [] }
     /// For comments that came from a snippet, which one: the history remembers it.
@@ -166,6 +170,20 @@ final class ReviewSession {
 
     func sourceOffset(forView offset: Int) -> Int? {
         document.sourceOffset(forDisplayed: layout.displayedOffset(forView: offset))
+    }
+
+    /// Whether a caret is in the middle of words a mark added: typing there edits
+    /// them. At either edge it is not: that is a point of the document, where a
+    /// comment can be pinned.
+    func isInsideAddedWords(atView offset: Int) -> Bool {
+        layout.ghosts.contains { $0.markID != nil && $0.range.lowerBound < offset && offset < $0.range.upperBound }
+    }
+
+    /// The anchor of a comment pinned to a caret: a point of the source, on no
+    /// words. Nil inside added words, which are in no source.
+    func pointAnchor(atView offset: Int) -> Anchor? {
+        guard !isPDF, !isInsideAddedWords(atView: offset), let position = sourceOffset(forView: offset) else { return nil }
+        return Anchor.make(in: source, span: TextSpan(position, position))
     }
 
     /// The mark at a caret position, edits before comments. The end of a mark's
@@ -359,8 +377,8 @@ final class ReviewSession {
         return mark
     }
 
-    /// Text typed on a selection starts a comment on it, and the keyboard goes
-    /// to the comment's field.
+    /// Text typed where it starts a comment, on a selection or at a caret,
+    /// starts one, and the keyboard goes to the comment's field.
     @discardableResult
     func comment(typing text: String, anchor: Anchor?) -> Mark? {
         // A space is not the start of anything.
@@ -607,7 +625,7 @@ enum FieldKey: Equatable {
 
 enum SelectionState: Equatable {
     case none
-    /// A caret in the document: text can be inserted there.
+    /// A caret in the document: a comment can be pinned there, or words added after ⌥I.
     case caret
     /// Selected document text: any mark applies.
     case range

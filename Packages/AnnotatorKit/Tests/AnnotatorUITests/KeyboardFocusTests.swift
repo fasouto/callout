@@ -72,6 +72,17 @@ struct KeyboardFocusTests {
         }
     }
 
+    /// The document view, with the keyboard in it and vim keys off.
+    private func document(_ harness: Harness) throws -> AnnotationTextView {
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+        textView.usesVimKeys = false
+        return textView
+    }
+
+    private func caret(after phrase: String, in textView: AnnotationTextView) {
+        textView.setSelectedRange(NSRange(location: NSMaxRange((textView.string as NSString).range(of: phrase)), length: 0))
+    }
+
     @Test func aReviewOpensWithTheKeyboardInTheDocument() async {
         let harness = await makeHarness()
         #expect(harness.window.firstResponder is AnnotationTextView)
@@ -374,5 +385,169 @@ struct KeyboardFocusTests {
         ))
         textView.keyDown(with: event)
         #expect(session.marks.isEmpty)
+    }
+
+    // MARK: Typing at a caret
+
+    /// With nothing selected, typing starts a comment pinned to the caret's
+    /// point, keys pressed before its field has the keyboard included. Nothing
+    /// goes into the document.
+    @Test func typingAtABareCaretWritesACommentPinnedThere() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try document(harness)
+        caret(after: "very robust", in: textView)
+
+        try press("this ", on: textView)
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.marks.first?.anchor.span == TextSpan(30, 30))
+        #expect(session.marks.first?.note == "this ")
+
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Comment")
+        try type("is vague", in: harness)
+        try press(#selector(NSResponder.insertNewline(_:)), in: harness)
+        await settle(harness)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+        #expect(try session.editedText() == "We will leverage a very robust approach here.")
+        #expect(session.feedback().contains("### 1. Comment after\n> We will leverage a very robust\nthis is vague\n"))
+    }
+
+    @Test func optionCAtABareCaretOpensAnEmptyCommentThere() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let undoManager = UndoManager()
+        session.undoManager = undoManager
+        let textView = try document(harness)
+        caret(after: "We will", in: textView)
+
+        try press("c", keyCode: 8, modifiers: .option, on: textView)
+        #expect(session.marks.map(\.anchor.span) == [TextSpan(7, 7)])
+        #expect(session.marks.first?.note == nil)
+        await settle(harness)
+        #expect(fieldInFocus(harness)?.accessibilityLabel() == "Comment")
+
+        // Left empty, it never happened.
+        try press(#selector(NSResponder.cancelOperation(_:)), in: harness)
+        await settle(harness)
+        #expect(session.marks.isEmpty)
+        #expect(!undoManager.canUndo)
+        #expect(harness.window.firstResponder is AnnotationTextView)
+    }
+
+    @Test func aSpaceAtABareCaretStartsNothing() async throws {
+        let harness = await makeHarness()
+        let textView = try document(harness)
+        caret(after: "robust", in: textView)
+        try press(" ", on: textView)
+        #expect(harness.session.marks.isEmpty)
+        #expect(harness.session.editing == nil)
+    }
+
+    @Test func optionLettersAtABareCaretAreCommands() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try document(harness)
+        caret(after: "robust", in: textView)
+
+        try press("d", keyCode: 2, modifiers: .option, on: textView)
+        try press("x", keyCode: 7, modifiers: .option, on: textView)
+        try press("k", keyCode: 40, modifiers: .option, on: textView)
+        #expect(session.marks.isEmpty)
+        #expect(session.statusMessage == "Select some text of the document first.")
+
+        let token = session.overallFocusToken
+        try press("o", keyCode: 31, modifiers: .option, on: textView)
+        #expect(session.overallFocusToken == token + 1)
+
+        try press("i", keyCode: 34, modifiers: .option, on: textView)
+        #expect(session.isAddingWords)
+        #expect(session.marks.isEmpty)
+    }
+
+    /// Esc stops adding words and the review stays open. Esc at a caret that
+    /// is not adding words cancels the review, as it always has.
+    @Test func escapeStopsAddingWordsWithoutCancelling() async throws {
+        var outcomes: [ReviewOutcome] = []
+        let harness = await makeHarness { outcomes.append($0) }
+        let session = harness.session
+        let textView = try document(harness)
+        caret(after: "robust", in: textView)
+
+        try press("i", keyCode: 34, modifiers: .option, on: textView)
+        try press(" and", on: textView)
+        try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
+        #expect(!session.isAddingWords)
+        #expect(outcomes.isEmpty)
+        #expect(session.marks.map(\.text) == [" and"])
+
+        // The next key starts a comment.
+        try press("x", on: textView)
+        #expect(session.marks.map(\.kind) == [.insert, .comment])
+        try press("\r", keyCode: KeyCode.return, on: textView)
+        await settle(harness)
+        #expect(harness.window.firstResponder === textView)
+
+        try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
+        #expect(outcomes == [.cancel])
+    }
+
+    /// In the middle of words added before, typing edits them. At their edge
+    /// it is a point of the document again, where typing comments.
+    @Test func typingInsideAddedWordsEditsThemButAtTheirEdgeComments() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try document(harness)
+        caret(after: "robust", in: textView)
+        try press("i", keyCode: 34, modifiers: .option, on: textView)
+        try press(" and simple", on: textView)
+        try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
+
+        caret(after: "robust an", in: textView)
+        try press("x", on: textView)
+        #expect(session.marks.map(\.text) == [" anxd simple"])
+
+        caret(after: "simple", in: textView)
+        try press("y", on: textView)
+        #expect(session.marks.map(\.kind) == [.insert, .comment])
+        #expect(session.marks.last?.anchor.span == session.marks.first?.anchor.span)
+        #expect(session.marks.first?.text == " anxd simple")
+    }
+
+    @Test func pasteAtABareCaretIsRefusedUntilAddingWords() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try document(harness)
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("annotator-test-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setString(" gladly", forType: .string)
+        textView.pasteboard = pasteboard
+        let paste = NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        caret(after: "leverage", in: textView)
+
+        #expect(!textView.validateUserInterfaceItem(paste))
+        textView.paste(nil)
+        #expect(session.marks.isEmpty)
+
+        try press("i", keyCode: 34, modifiers: .option, on: textView)
+        #expect(textView.validateUserInterfaceItem(paste))
+        textView.paste(nil)
+        #expect(session.marks.map(\.text) == [" gladly"])
+    }
+
+    /// Without vim keys, selecting words stops adding words: typing on them comments.
+    @Test func aNewSelectionStopsAddingWords() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try document(harness)
+        caret(after: "robust", in: textView)
+        try press("i", keyCode: 34, modifiers: .option, on: textView)
+        #expect(session.isAddingWords)
+        textView.setSelectedRange((textView.string as NSString).range(of: "approach"))
+        #expect(!session.isAddingWords)
+        try press("v", on: textView)
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.marks.first?.anchor.quote == "approach")
     }
 }

@@ -60,9 +60,15 @@ struct TypingTests {
         for _ in 0..<times { try key(KeyCode.delete, "\u{7F}", in: harness) }
     }
 
-    @Test func typedTextGoesInWhereTheCaretIs() throws {
+    /// ⌥I: what is typed next is words added to the document.
+    private func addWords(in harness: Harness) throws {
+        try key(34, "i", flags: .option, in: harness)
+    }
+
+    @Test func wordsAddedWithOptionIGoInWhereTheCaretIs() throws {
         let harness = try makeHarness()
         caret(after: "robust", in: harness)
+        try addWords(in: harness)
         type(" and simple", in: harness)
 
         #expect(harness.session.marks.map(\.kind) == [.insert])
@@ -76,6 +82,7 @@ struct TypingTests {
     @Test func typingContinuesTheSameInsertionAndCanGoBackIntoIt() throws {
         let harness = try makeHarness()
         caret(after: "robust", in: harness)
+        try addWords(in: harness)
         type(" and", in: harness)
         type(" simple", in: harness)
         #expect(harness.session.marks.count == 1)
@@ -89,9 +96,10 @@ struct TypingTests {
         #expect(harness.textView.selectedRange().location == NSMaxRange(harness.text.range(of: "robust and very")))
     }
 
-    @Test func backspaceOverTypedTextDeletesIt() throws {
+    @Test func backspaceOverAddedWordsDeletesThem() throws {
         let harness = try makeHarness()
         caret(after: "robust", in: harness)
+        try addWords(in: harness)
         type(" annd", in: harness)
         try backspace(2, in: harness)
         type("d", in: harness)
@@ -125,10 +133,11 @@ struct TypingTests {
         #expect(harness.textView.selectedRange().location == NSMaxRange(harness.text.range(of: "very ")))
     }
 
-    @Test func strikingThenTypingReadsAsAReplacementInTheResult() throws {
+    @Test func strikingThenAddingWordsReadsAsAReplacementInTheResult() throws {
         let harness = try makeHarness()
         caret(after: "leverage", in: harness)
         try backspace(8, in: harness)
+        try addWords(in: harness)
         type("use", in: harness)
         #expect(try harness.session.editedText().hasPrefix("We will use a very robust approach here."))
         #expect(harness.session.marks.count == 2)
@@ -153,7 +162,21 @@ struct TypingTests {
         #expect(session.marks.count == 1)
     }
 
-    @Test func textCannotBeTypedIntoTheMiddleOfAStrike() throws {
+    @Test func wordsCannotBeAddedInTheMiddleOfAStrike() throws {
+        let harness = try makeHarness()
+        let session = harness.session
+        session.addMark(.delete, span: TextSpan(19, 31))
+        harness.window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        caret(after: "very ro", in: harness)
+        try addWords(in: harness)
+        type("x", in: harness)
+        #expect(session.marks.count == 1)
+        #expect(session.statusMessage != nil)
+    }
+
+    @Test func aCommentCanBePinnedInsideAStrike() throws {
         let harness = try makeHarness()
         let session = harness.session
         session.addMark(.delete, span: TextSpan(19, 31))
@@ -162,13 +185,15 @@ struct TypingTests {
 
         caret(after: "very ro", in: harness)
         type("x", in: harness)
-        #expect(session.marks.count == 1)
-        #expect(session.statusMessage != nil)
+        #expect(session.marks.map(\.kind) == [.delete, .comment])
+        #expect(session.marks.last?.anchor.span == TextSpan(26, 26))
+        #expect(session.marks.last?.note == "x")
     }
 
-    @Test func accentsAndPastedTextAreTyped() throws {
+    @Test func addedWordsTakeAccentsAndEmojiWhole() throws {
         let harness = try makeHarness()
         caret(after: "here", in: harness)
+        try addWords(in: harness)
         type(" mañana 🚀", in: harness)
         #expect(harness.session.marks.first?.text == " mañana 🚀")
         try backspace(1, in: harness)
@@ -177,9 +202,10 @@ struct TypingTests {
         #expect(try harness.session.editedText().hasPrefix("We will leverage a very robust approach here mañana ."))
     }
 
-    @Test func optionReturnTypesALineBreak() throws {
+    @Test func optionReturnAddsALineBreakWhileAddingWords() throws {
         let harness = try makeHarness()
         caret(after: "here.", in: harness)
+        try addWords(in: harness)
         try key(KeyCode.return, "\r", flags: .option, in: harness)
         type("One more line.", in: harness)
         #expect(harness.session.marks.first?.text == "\nOne more line.")

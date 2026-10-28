@@ -112,11 +112,12 @@ struct DocumentPane: NSViewRepresentable {
             textView.setAccessibilityCustomRotors([NSAccessibilityCustomRotor(label: "Marks", itemSearchDelegate: self)])
             textView.onCommand = { [weak self] command in self?.run(command) }
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
-            textView.onInsertModeChange = { [weak self] isOn in self?.session.isTypingMode = isOn }
+            textView.onAddingWordsChange = { [weak self] isOn in self?.session.isAddingWords = isOn }
             textView.onType = { [weak self] text in self?.type(text) }
-            textView.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
+            textView.onComment = { [weak self] text in self?.comment(typing: text) }
             textView.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
             textView.onFieldKey = { [weak self] key in self?.session.pressBeforeFieldHasKeyboard(key) }
+            textView.isInsideAddedWords = { [weak self] offset in self?.session.isInsideAddedWords(atView: offset) ?? false }
             textView.onDeleteCharacter = { [weak self] forward in self?.deleteCharacter(forward: forward) }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onRemoveMark = { [weak self] in
@@ -433,11 +434,24 @@ struct DocumentPane: NSViewRepresentable {
             redraw(caret: caret)
         }
 
-        /// Words typed on a selection are a comment on it.
+        /// Words typed where they start a comment: on the selection, or pinned to the caret's point.
         private func comment(typing text: String) {
             toolbar.hide()
-            let span = Range(textView.selectedRange()).flatMap { session.sourceSpan(forView: $0) }
-            session.comment(typing: text, anchor: span.flatMap { Anchor.make(in: session.source, span: $0) })
+            session.comment(typing: text, anchor: commentAnchor())
+        }
+
+        /// What a comment started now is on: the selected words, or with nothing
+        /// selected the caret's point.
+        private func commentAnchor() -> AnnotatorCore.Anchor? {
+            let selection = textView.selectedRange()
+            guard selection.length > 0 else { return session.pointAnchor(atView: selection.location) }
+            return Range(selection).flatMap(session.sourceSpan(forView:)).flatMap { Anchor.make(in: session.source, span: $0) }
+        }
+
+        private func refuseComment() {
+            session.statusMessage = textView.selectedRange().length == 0
+                ? "A comment can't be pinned here." : "Select some text of the document first."
+            NSSound.beep()
         }
 
         private func deleteCharacter(forward: Bool) {
@@ -470,7 +484,15 @@ struct DocumentPane: NSViewRepresentable {
                     return
                 }
                 textView.setSelectedRange(NSRange(location: selection.upperBound, length: 0))
-                textView.beginTyping()
+                textView.beginAddingWords()
+                return
+            }
+            if kind == .comment {
+                guard let anchor = commentAnchor() else {
+                    refuseComment()
+                    return
+                }
+                session.addMarkToWrite(.comment, anchor: anchor)
                 return
             }
 
@@ -489,30 +511,27 @@ struct DocumentPane: NSViewRepresentable {
                 // The replacement is typed in place, right after the struck text.
                 if let placed = session.replaceInPlace(span: span) {
                     redraw(caret: placed.caret)
-                    textView.beginTyping()
+                    textView.beginAddingWords()
                 }
-            case .comment:
-                session.addMarkToWrite(kind, span: span)
-            case .insert:
+            case .comment, .insert:
                 break
             }
         }
 
-        /// Comments on the selection with a reusable comment chosen from the picker.
+        /// Comments with a reusable comment chosen from the picker: on the
+        /// selection, or pinned to the caret's point.
         func pickSnippet() {
-            guard let selection = Range(textView.selectedRange()), !selection.isEmpty,
-                  let span = session.sourceSpan(forView: selection) else {
-                session.statusMessage = "Select some text of the document first."
-                NSSound.beep()
+            guard let anchor = commentAnchor() else {
+                refuseComment()
                 return
             }
             toolbar.hide()
-            let rect = textView.rect(forCharacterRange: NSRange(selection)) ?? textView.visibleRect
+            let rect = textView.rect(forCharacterRange: textView.selectedRange()) ?? textView.visibleRect
             snippetPicker.show(
                 snippets: session.loadSnippets(), preferred: .preferred(for: session.request), relativeTo: rect, of: textView
             ) { [weak self] snippet in
                 guard let self else { return }
-                if let snippet { self.session.addComment(from: snippet, anchor: Anchor.make(in: self.session.source, span: span)) }
+                if let snippet { self.session.addComment(from: snippet, anchor: anchor) }
                 self.textView.window?.makeFirstResponder(self.textView)
             }
         }

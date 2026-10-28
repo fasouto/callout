@@ -18,7 +18,7 @@ struct KeymapTests {
         #expect(Keymap.command(for: "o", modifiers: .option, vim: false) == .overall)
         #expect(Keymap.command(for: "q", modifiers: .option, vim: false) == nil)
         #expect(Keymap.command(for: "", modifiers: .option, vim: false) == nil)
-        // A plain letter types: on a selection, it starts a comment.
+        // A plain letter types: a comment, on a selection or at the caret.
         #expect(Keymap.command(for: "d", modifiers: [], vim: false) == nil)
         #expect(Keymap.command(for: "D", modifiers: .shift, vim: false) == nil)
         #expect(Keymap.command(for: "d", modifiers: .command, vim: false) == nil)
@@ -47,6 +47,48 @@ struct KeymapTests {
         #expect(MarkKind.delete.keyLabel(vim: true) == "D")
         // ⌥ and the letter work with vim keys too.
         #expect(Keymap.command(for: "k", modifiers: .option, vim: true) == .mark(.keep))
+    }
+
+    @Test func typingGoesWhereTheMomentSays() {
+        // A margin field on its way takes every key, whatever else holds.
+        for vim in [false, true] {
+            for selection in [false, true] {
+                for adding in [false, true] {
+                    for inside in [false, true] {
+                        #expect(Keymap.typing(
+                            fieldOnItsWay: true, vim: vim, hasSelection: selection, addingWords: adding, insideAddedWords: inside
+                        ) == .field)
+                    }
+                }
+            }
+        }
+        let rows: [(vim: Bool, selection: Bool, adding: Bool, inside: Bool, typing: Keymap.Typing)] = [
+            // Without vim keys typing comments, on the selection or at the caret, except while
+            // adding words and in the middle of words added before.
+            (false, false, false, false, .comment),
+            (false, false, false, true, .words),
+            (false, false, true, false, .words),
+            (false, false, true, true, .words),
+            (false, true, false, false, .comment),
+            (false, true, false, true, .comment),
+            (false, true, true, false, .comment),
+            (false, true, true, true, .comment),
+            // With vim keys only insert mode types, and only at a caret.
+            (true, false, false, false, .nowhere),
+            (true, false, false, true, .nowhere),
+            (true, false, true, false, .words),
+            (true, false, true, true, .words),
+            (true, true, false, false, .nowhere),
+            (true, true, false, true, .nowhere),
+            (true, true, true, false, .nowhere),
+            (true, true, true, true, .nowhere),
+        ]
+        for row in rows {
+            let typing = Keymap.typing(
+                fieldOnItsWay: false, vim: row.vim, hasSelection: row.selection, addingWords: row.adding, insideAddedWords: row.inside
+            )
+            #expect(typing == row.typing, "\(row)")
+        }
     }
 
     @Test func wordMovements() {
@@ -248,27 +290,40 @@ struct VimReviewTests {
         try type("u", in: harness)
         #expect(harness.session.marks.map(\.kind) == [.keep, .comment])
         harness.session.endEditing()
-        // At a caret, w, h and j are just letters to type.
+        // At a caret, w, h and j are not movements either: they start a comment pinned there.
         harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
         try type("whj", in: harness)
-        #expect(harness.session.marks.last?.text == "whj")
-        #expect(harness.textView.string.hasPrefix("We whjwill"))
+        let pinned = try #require(harness.session.marks.last)
+        #expect(pinned.kind == .comment)
+        #expect(pinned.anchor.span == TextSpan(3, 3))
+        #expect(pinned.note == "whj")
+        #expect(harness.textView.string == harness.session.document.text)
     }
 
-    @Test func withoutVimKeysIOnASelectionOnlyPlacesTheCaret() throws {
-        // ⌥I is a command on a selection: the caret goes after it and the letter
-        // itself is not typed. At a caret, i is a letter like any other.
+    @Test func withoutVimKeysOptionIStartsAddingWords() throws {
+        // ⌥I on a selection puts the caret after it, adding words; the letter itself is not typed.
         let harness = try makeHarness(vim: false)
         harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
         try type("i", in: harness, flags: .option)
         #expect(harness.session.marks.isEmpty)
         #expect(harness.textView.selectedRange() == NSRange(location: 16, length: 0))
+        #expect(harness.session.isAddingWords)
         try type("now", in: harness)
         #expect(harness.session.marks.map(\.text) == ["now"])
+        try escape(in: harness)
+        #expect(!harness.session.isAddingWords)
 
+        // At a caret, i is a letter like any other, and starts a comment; after ⌥I it is a word.
         harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
         try type("is", in: harness)
-        #expect(harness.session.marks.contains { $0.text == "is" })
+        #expect(harness.session.marks.last?.kind == .comment)
+        #expect(harness.session.marks.last?.note == "is")
+        harness.session.endEditing()
+        try type("i", in: harness, flags: .option)
+        try type("is", in: harness)
+        #expect(harness.session.marks.last?.kind == .insert)
+        #expect(harness.session.marks.last?.text == "is")
+        #expect(harness.session.marks.last?.anchor.span == TextSpan(3, 3))
     }
 
     // MARK: Insert mode
@@ -288,7 +343,7 @@ struct VimReviewTests {
         let harness = try makeHarness()
         try type("ww", in: harness)
         try type("i", in: harness)
-        #expect(harness.session.isTypingMode)
+        #expect(harness.session.isAddingWords)
         // In insert mode every key is text, the movement letters included.
         try type("jk ", in: harness)
         #expect(harness.session.marks.map(\.kind) == [.insert])
@@ -296,7 +351,7 @@ struct VimReviewTests {
         #expect(harness.textView.string.hasPrefix("We will jk leverage"))
 
         try escape(in: harness)
-        #expect(!harness.session.isTypingMode)
+        #expect(!harness.session.isAddingWords)
         // Back to moving: h is a movement again.
         let caret = harness.textView.selectedRange().location
         try type("h", in: harness)
@@ -307,7 +362,7 @@ struct VimReviewTests {
     @Test func aAppendsAfterTheCharacterUnderTheCaret() throws {
         let harness = try makeHarness()
         try type("a", in: harness)
-        #expect(harness.session.isTypingMode)
+        #expect(harness.session.isAddingWords)
         try type("X", in: harness)
         #expect(harness.textView.string.hasPrefix("WXe will"))
     }
@@ -317,10 +372,42 @@ struct VimReviewTests {
         try type("wwve", in: harness)
         try type("r", in: harness)
         #expect(harness.session.marks.map(\.kind) == [.replace])
-        #expect(harness.session.isTypingMode)
+        #expect(harness.session.isAddingWords)
         #expect(!harness.session.isSelectingByKeyboard)
         try type("use", in: harness)
         #expect(harness.session.marks.first?.text == "use")
         #expect(try harness.session.editedText().hasPrefix("We will use a very robust"))
+    }
+
+    @Test func cAtACaretPinsACommentAndTheNextLettersAreItsNote() throws {
+        let harness = try makeHarness()
+        try type("ww", in: harness)
+        try type("c", in: harness)
+        let comment = try #require(harness.session.marks.first)
+        #expect(comment.kind == .comment)
+        #expect(comment.anchor.span == TextSpan(8, 8))
+        #expect(harness.session.editing == EditTarget(markID: comment.id, field: .note))
+
+        try type("why", in: harness)
+        #expect(harness.session.marks.map(\.note) == ["why"])
+        #expect(harness.textView.string == harness.session.document.text)
+        #expect(try harness.session.editedText() == Self.source)
+    }
+
+    @Test func cInsideAddedWordsIsRefused() throws {
+        let harness = try makeHarness()
+        try type("ww", in: harness)
+        try type("i", in: harness)
+        insert("abc", in: harness)
+        try escape(in: harness)
+        try type("h", in: harness)
+        try type("c", in: harness)
+        #expect(harness.session.marks.map(\.kind) == [.insert])
+        #expect(harness.session.statusMessage == "A comment can't be pinned here.")
+
+        // Nor a saved one.
+        harness.session.statusMessage = nil
+        try type("s", in: harness)
+        #expect(harness.session.statusMessage == "A comment can't be pinned here.")
     }
 }
