@@ -226,7 +226,7 @@ private struct MarginGuide: View {
         VStack(alignment: .leading, spacing: 9) {
             Text(Keymap.usesVimKeys
                 ? "Press v and move to select, then press a key. Press i to add words, or c to comment at the caret."
-                : "Type to comment, on the words you select or at the caret. To add words to the text, press ⌥I first. To mark selected words another way, press:")
+                : "To add words, click where they go and type. To comment on words, select them and type. ⌥C with nothing selected pins a comment to the caret. To mark selected words another way, press:")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
