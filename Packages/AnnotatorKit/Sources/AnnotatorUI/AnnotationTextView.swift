@@ -103,9 +103,10 @@ final class AnnotationTextView: NSTextView {
             return
         }
 
-        // At the caret too, so a comment can be pinned there. Only in vim's insert
-        // mode does ⌥ type, because macOS makes accents and symbols with it.
-        if !isInserting, let command = Keymap.command(for: characters, modifiers: modifiers, vim: vimKeys) {
+        // ⌥ and a letter is a command at the caret too, so a comment can be pinned
+        // there. Only where vim's insert mode adds words does it type: macOS makes
+        // accents and symbols with it.
+        if hasSelection || !isInserting, let command = Keymap.command(for: characters, modifiers: modifiers, vim: vimKeys) {
             onCommand?(command)
             visualAnchor = nil
             return

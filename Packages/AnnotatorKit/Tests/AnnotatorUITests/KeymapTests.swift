@@ -373,6 +373,17 @@ extension OnTheMainThread {
             #expect(harness.textView.string.hasPrefix("WXe will"))
         }
 
+        @Test func inInsertModeOptionAndALetterOnAMouseSelectionIsItsCommand() throws {
+            let harness = try makeHarness()
+            try type("i", in: harness)
+            harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
+            try type("c", in: harness, flags: .option)
+            let comment = try #require(harness.session.marks.first)
+            #expect(comment.kind == .comment)
+            #expect(comment.anchor.span == TextSpan(8, 16))
+            #expect(harness.session.editing == EditTarget(markID: comment.id, field: .note))
+        }
+
         @Test func replacingAVisualSelectionGoesStraightToTyping() throws {
             let harness = try makeHarness()
             try type("wwve", in: harness)
