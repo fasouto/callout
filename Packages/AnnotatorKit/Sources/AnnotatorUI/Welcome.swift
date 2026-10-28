@@ -69,7 +69,6 @@ enum Lesson {
                     ? "Select **\(claim)**, press C and say what worries you."
                     : "Select **\(claim)** and type what worries you."
             ) { session in
-                // On the claim's words: a comment pinned to a point, as a stray key at the caret makes, is not about them.
                 let found = (session.source as NSString).range(of: claim)
                 let words = TextSpan(found.location, NSMaxRange(found))
                 return session.marks.contains { $0.kind == .comment && !$0.anchor.isPoint && $0.anchor.span.overlaps(words) }

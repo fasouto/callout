@@ -50,14 +50,13 @@ enum Keymap {
         case nowhere
     }
 
-    /// Where text typed now goes, worked out afresh for every key from what holds at that moment.
+    /// Where text typed now goes.
     nonisolated static func typing(
         fieldOnItsWay: Bool, vim: Bool, hasSelection: Bool, addingWords: Bool, insideAddedWords: Bool
     ) -> Typing {
         if fieldOnItsWay { return .field }
         if vim { return addingWords && !hasSelection ? .words : .nowhere }
         if hasSelection { return .comment }
-        // Words that are in no source have no point to pin a comment to: typing there edits them.
         return addingWords || insideAddedWords ? .words : .comment
     }
 

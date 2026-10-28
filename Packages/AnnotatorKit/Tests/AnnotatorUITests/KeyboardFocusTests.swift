@@ -427,7 +427,6 @@ struct KeyboardFocusTests {
         await settle(harness)
         #expect(fieldInFocus(harness)?.accessibilityLabel() == "Comment")
 
-        // Left empty, it never happened.
         try press(#selector(NSResponder.cancelOperation(_:)), in: harness)
         await settle(harness)
         #expect(session.marks.isEmpty)
@@ -466,7 +465,7 @@ struct KeyboardFocusTests {
     }
 
     /// Esc stops adding words and the review stays open. Esc at a caret that
-    /// is not adding words cancels the review, as it always has.
+    /// is not adding words cancels the review.
     @Test func escapeStopsAddingWordsWithoutCancelling() async throws {
         var outcomes: [ReviewOutcome] = []
         let harness = await makeHarness { outcomes.append($0) }
@@ -481,7 +480,6 @@ struct KeyboardFocusTests {
         #expect(outcomes.isEmpty)
         #expect(session.marks.map(\.text) == [" and"])
 
-        // The next key starts a comment.
         try press("x", on: textView)
         #expect(session.marks.map(\.kind) == [.insert, .comment])
         try press("\r", keyCode: KeyCode.return, on: textView)

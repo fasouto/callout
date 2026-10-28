@@ -39,7 +39,6 @@ struct WelcomeTests {
         session.update(replace.id, text: "use")
         #expect(Lesson.current(in: session) == 2)
 
-        // A comment pinned to a point inside the claim is not about its words.
         let inside = try span(of: "every result", in: session).start
         _ = try #require(session.addMark(.comment, span: TextSpan(inside, inside), note: "Here?"))
         #expect(Lesson.current(in: session) == 2)
@@ -52,7 +51,6 @@ struct WelcomeTests {
         let session = ReviewSession(request: Welcome.request(), isWelcome: true)
         _ = try #require(session.addMark(.delete, span: try span(of: "very robust and comprehensive", in: session)))
         _ = try #require(session.addMark(.replace, span: try span(of: "leverage", in: session), text: "use"))
-        // A key pressed by chance at the top of the page, and a comment on other words.
         _ = try #require(session.addMark(.comment, span: TextSpan(0, 0), note: "x"))
         _ = try #require(session.addMark(.comment, span: try span(of: "Friday", in: session), note: "Too soon?"))
         #expect(Lesson.current(in: session) == 2)

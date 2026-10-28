@@ -88,7 +88,7 @@ public struct Mark: Codable, Hashable, Sendable, Identifiable {
         self.note = note
     }
 
-    /// A comment on no words, pinned to a point of the text: what typing at a bare caret makes.
+    /// A comment on no words, pinned to a point of the text.
     public var isPointComment: Bool { kind == .comment && anchor.isPoint }
 }
 

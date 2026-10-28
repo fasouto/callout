@@ -91,11 +91,9 @@ final class BlockFragment: NSTextLayoutFragment {
     }
 
     /// A pin's bar, in the fragment's own coordinates: at its point, as tall as
-    /// the letters there, as the caret is. A point where a line wraps belongs to
-    /// the line it starts.
+    /// the letters there.
     private func bar(at offset: Int) -> CGRect? {
-        guard let line = textLineFragments.first(where: { NSLocationInRange(offset, $0.characterRange) })
-            ?? textLineFragments.last(where: { NSMaxRange($0.characterRange) == offset }) else { return nil }
+        guard let line = line(at: offset) else { return nil }
         let text = line.attributedString
         guard text.length > 0 else { return nil }
         let font = text.attribute(.font, at: min(offset, text.length - 1), effectiveRange: nil) as? NSFont ?? Theme.serif(Theme.bodySize)
@@ -103,6 +101,12 @@ final class BlockFragment: NSTextLayoutFragment {
         let x = bounds.minX + line.locationForCharacter(at: offset).x
         let baseline = bounds.minY + line.glyphOrigin.y
         return CGRect(x: x, y: baseline - font.ascender, width: 0, height: font.ascender - font.descender)
+    }
+
+    /// The line a point is on. A point where a line wraps is on the line it starts.
+    private func line(at offset: Int) -> NSTextLineFragment? {
+        textLineFragments.first { NSLocationInRange(offset, $0.characterRange) }
+            ?? textLineFragments.last { NSMaxRange($0.characterRange) == offset }
     }
 
     /// How far a pin's head and its wash reach around its bar.
@@ -120,17 +124,22 @@ final class BlockFragment: NSTextLayoutFragment {
     override func draw(at point: CGPoint, in context: CGContext) {
         if let decorationRect { drawDecoration(in: decorationRect.offsetBy(dx: point.x, dy: point.y), context: context) }
         let bars = pins.compactMap { pin in bar(at: pin.offset).map { (rect: $0.offsetBy(dx: point.x, dy: point.y), selected: pin.selected) } }
+        drawWashes(behind: bars.filter(\.selected).map(\.rect), context: context)
+        super.draw(at: point, in: context)
+        drawPins(bars, context: context)
+    }
+
+    private func drawWashes(behind bars: [CGRect], context: CGContext) {
         context.saveGState()
-        // A selected pin is washed, as selected highlighted words are, behind the letters.
         context.setFillColor(Theme.highlightWash(selected: true).cgColor)
-        for bar in bars where bar.selected {
-            context.addPath(CGPath(roundedRect: bar.rect.insetBy(dx: -3, dy: -1), cornerWidth: 2, cornerHeight: 2, transform: nil))
+        for bar in bars {
+            context.addPath(CGPath(roundedRect: bar.insetBy(dx: -3, dy: -1), cornerWidth: 2, cornerHeight: 2, transform: nil))
             context.fillPath()
         }
         context.restoreGState()
-        super.draw(at: point, in: context)
-        // Over the letters, a map pin between them: a bar with a round head, so
-        // it is not taken for the caret, which is a plain line.
+    }
+
+    private func drawPins(_ bars: [(rect: CGRect, selected: Bool)], context: CGContext) {
         context.saveGState()
         for bar in bars {
             context.setFillColor(Theme.pointBar(selected: bar.selected).cgColor)

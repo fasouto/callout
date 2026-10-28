@@ -156,8 +156,6 @@ private struct ActionBar: View {
         }
         .background(.bar)
         .background {
-            // ⌘O from anywhere in the window, a margin field included. ⌥O (O with
-            // vim keys) works only in the document, and types while adding words.
             Button("Write the overall comment") { session.focusOverallComment() }
                 .keyboardShortcut("o", modifiers: .command)
                 .hidden()

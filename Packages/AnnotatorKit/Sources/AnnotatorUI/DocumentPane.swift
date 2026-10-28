@@ -113,7 +113,7 @@ struct DocumentPane: NSViewRepresentable {
             textView.onCommand = { [weak self] command in self?.run(command) }
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
             textView.onAddingWordsChange = { [weak self] isOn in self?.session.isAddingWords = isOn }
-            textView.onType = { [weak self] text in self?.type(text) }
+            textView.onAddWords = { [weak self] text in self?.type(text) }
             textView.onComment = { [weak self] text in self?.comment(typing: text) }
             textView.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
             textView.onFieldKey = { [weak self] key in self?.session.pressBeforeFieldHasKeyboard(key) }
@@ -434,14 +434,11 @@ struct DocumentPane: NSViewRepresentable {
             redraw(caret: caret)
         }
 
-        /// Words typed where they start a comment: on the selection, or pinned to the caret's point.
         private func comment(typing text: String) {
             toolbar.hide()
             session.comment(typing: text, anchor: commentAnchor())
         }
 
-        /// What a comment started now is on: the selected words, or with nothing
-        /// selected the caret's point.
         private func commentAnchor() -> AnnotatorCore.Anchor? {
             let selection = textView.selectedRange()
             guard selection.length > 0 else { return session.pointAnchor(atView: selection.location) }
@@ -518,8 +515,7 @@ struct DocumentPane: NSViewRepresentable {
             }
         }
 
-        /// Comments with a reusable comment chosen from the picker: on the
-        /// selection, or pinned to the caret's point.
+        /// Comments with a reusable comment chosen from the picker.
         func pickSnippet() {
             guard let anchor = commentAnchor() else {
                 refuseComment()

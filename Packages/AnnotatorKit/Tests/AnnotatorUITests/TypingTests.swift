@@ -60,7 +60,6 @@ struct TypingTests {
         for _ in 0..<times { try key(KeyCode.delete, "\u{7F}", in: harness) }
     }
 
-    /// ⌥I: what is typed next is words added to the document.
     private func addWords(in harness: Harness) throws {
         try key(34, "i", flags: .option, in: harness)
     }

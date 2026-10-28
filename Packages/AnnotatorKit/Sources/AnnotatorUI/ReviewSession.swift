@@ -65,10 +65,8 @@ final class ReviewSession {
     private(set) var overallFocusToken = 0
     /// With vim keys: whether a selection is being extended by moving (visual mode).
     var isSelectingByKeyboard = false
-    /// Whether keys add words to the document: after ⌥I or ⌥R, or in vim's insert
-    /// mode. The text view decides; this is what the Insert badge shows.
+    /// Whether keys add words to the document: after ⌥I or ⌥R, or in vim's insert mode.
     var isAddingWords = false {
-        // Words added once adding has stopped and started again are a new undo step.
         didSet { if !isAddingWords { coalescedEdit = nil } }
     }
     /// The reusable comments on offer, loaded when the picker is first asked for.
@@ -172,23 +170,19 @@ final class ReviewSession {
         document.sourceOffset(forDisplayed: layout.displayedOffset(forView: offset))
     }
 
-    /// Whether a caret is in the middle of words a mark added: typing there edits
-    /// them. At either edge it is not: that is a point of the document, where a
-    /// comment can be pinned.
+    /// Whether a caret is in the middle of words a mark added.
     func isInsideAddedWords(atView offset: Int) -> Bool {
         layout.ghosts.contains { $0.markID != nil && $0.range.lowerBound < offset && offset < $0.range.upperBound }
     }
 
-    /// The anchor of a comment pinned to a caret: a point of the source, on no
-    /// words. Nil inside added words, which are in no source.
+    /// The anchor of a comment pinned to a caret: a point of the source, on no words.
     func pointAnchor(atView offset: Int) -> Anchor? {
         guard !isPDF, !isInsideAddedWords(atView: offset), let position = sourceOffset(forView: offset) else { return nil }
         return Anchor.make(in: source, span: TextSpan(position, position))
     }
 
     /// The mark at a caret position, edits before comments. The end of a mark's
-    /// text counts, because that is where its words are typed, and so does the
-    /// point a comment on no words is pinned to.
+    /// text counts, because that is where its words are typed.
     func mark(atView offset: Int) -> Mark? {
         let hits = marks.filter { mark in
             if layout.ghosts.contains(where: { $0.markID == mark.id && $0.range.lowerBound <= offset && offset <= $0.range.upperBound }) {
@@ -202,8 +196,7 @@ final class ReviewSession {
         return hits.first { $0.kind.isEdit } ?? hits.first
     }
 
-    /// Where a comment on no words is pinned in the view: after any words added
-    /// at its point, where the caret goes and its pin is drawn.
+    /// Where a comment on no words is pinned in the view.
     private func pointViewOffset(of mark: Mark) -> Int? {
         document.displayedOffset(forSource: mark.anchor.span.start).map(layout.viewOffset(forDisplayed:))
     }
@@ -385,8 +378,7 @@ final class ReviewSession {
         return mark
     }
 
-    /// Text typed where it starts a comment, on a selection or at a caret,
-    /// starts one, and the keyboard goes to the comment's field.
+    /// Text typed starts a comment, and the keyboard goes to the comment's field.
     @discardableResult
     func comment(typing text: String, anchor: Anchor?) -> Mark? {
         // A space is not the start of anything.

@@ -149,7 +149,6 @@ struct ReviewWindowTests {
         try mark("d", keyCode: 2, in: harness)
         try mark("x", keyCode: 7, in: harness)
 
-        // While words are being added the letters are text, not commands.
         #expect(session.marks.map(\.kind) == [.insert])
         #expect(session.marks.first?.text == "dx")
         #expect(harness.textView.string.hasPrefix("Plan:dx add rate limiting"))
@@ -190,7 +189,6 @@ struct ReviewWindowTests {
         let mark = try #require(session.marks.first)
         #expect(mark.kind == .replace)
         #expect(session.selectedMarkID == mark.id)
-        // No margin field takes over: the caret waits right after the struck word, adding words.
         #expect(session.editing == nil)
         #expect(session.isAddingWords)
         let struck = (harness.textView.string as NSString).range(of: "leverage")
@@ -298,7 +296,6 @@ struct ReviewWindowTests {
         try press("\u{7F}", keyCode: KeyCode.delete, modifiers: .command, in: harness)
         #expect(session.marks.isEmpty)
 
-        // Words added at the same point are an edit, and edits come first.
         try #require(session.addMark(.comment, span: TextSpan(point, point), note: "Says who?"))
         let insert = try #require(session.addMark(.insert, span: TextSpan(point, point), text: " and simple"))
         settle(harness.window)
@@ -353,7 +350,6 @@ struct ReviewWindowTests {
         }
         settle(harness.window)
         #expect(harness.textView.string == session.document.text)
-        // One of them is selected, and drawn stronger: the last one made.
         let selected = NSMaxRange((harness.textView.string as NSString).range(of: "today,"))
         #expect(harness.textView.textStorage?.attribute(.annotatorPin, at: selected, effectiveRange: nil) as? Pin == Pin(isAfter: false, selected: true))
         snapshot(harness.window, named: "review-point-comments")
@@ -612,7 +608,6 @@ struct ReviewWindowTests {
         #expect(session.overallFocusToken == token + 2)
         #expect(session.marks.isEmpty)
 
-        // While words are being added it is an O like any other. (⌘O always works.)
         try mark("i", keyCode: 34, in: harness)
         try mark("o", keyCode: 31, in: harness)
         #expect(session.overallFocusToken == token + 2)

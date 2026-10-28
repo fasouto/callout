@@ -157,7 +157,6 @@ struct StyledPageTests {
             var name = "step \(step)"
             switch choice {
             case 1:
-                // At a word, at either end of its paragraph, or at the end of the text.
                 let text = session.layout.text as NSString
                 let paragraph = text.paragraphRange(for: NSRange(location: min(word.lowerBound, text.length), length: 0))
                 let paragraphEnd = NSMaxRange(paragraph) - (text.substring(with: paragraph).hasSuffix("\n") ? 1 : 0)

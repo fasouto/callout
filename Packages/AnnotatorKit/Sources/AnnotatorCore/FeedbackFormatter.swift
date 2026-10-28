@@ -72,8 +72,7 @@ public enum FeedbackFormatter {
             lines += quoteLines(for: mark, in: document)
             lines += noteLines("Reason", mark.note)
         case .comment where mark.anchor.isPoint:
-            // On no words: found as an insertion is, by the text beside it.
-            let place = insertionContext(for: mark, in: document)
+            let place = pointContext(for: mark, in: document)
             lines.append("### \(number). Comment\(place.map { " \($0.relation)" } ?? "")\(page)")
             if let place { lines += quoted(place.text) }
             lines += noteLines(nil, mark.note)
@@ -87,7 +86,7 @@ public enum FeedbackFormatter {
             lines += quoteLines(for: mark, in: document)
             lines += noteLines(nil, mark.note)
         case .insert:
-            let place = insertionContext(for: mark, in: document)
+            let place = pointContext(for: mark, in: document)
             lines.append("### \(number). Insert\(place.map { " \($0.relation)" } ?? "")\(page)")
             if let place { lines += quoted(place.text) }
             lines += labelled("Add", mark.text ?? "")
@@ -166,9 +165,8 @@ public enum FeedbackFormatter {
 
     private static let contextLimit = 80
 
-    /// The text a point (an insertion, or a comment on no words) is after, or
-    /// before when it starts a line.
-    private static func insertionContext(for mark: Mark, in document: ReviewDocument) -> (relation: String, text: String)? {
+    /// The text a point is after, or before when it starts a line.
+    private static func pointContext(for mark: Mark, in document: ReviewDocument) -> (relation: String, text: String)? {
         var before = mark.anchor.prefix
         var after = mark.anchor.suffix
         if let scope = document.scope(for: mark.anchor), mark.anchor.span.start <= scope.utf16Length {

@@ -6,8 +6,7 @@ extension NSAttributedString.Key {
     static let annotatorMark = NSAttributedString.Key("annotatorMark")
     /// A `BlockDecoration` drawn behind a paragraph.
     static let annotatorBlock = NSAttributedString.Key("annotatorBlock")
-    /// A comment pinned between two characters: a `Pin`, set on the character
-    /// after its point. `BlockFragment` draws it.
+    /// A `Pin` drawn between two characters.
     static let annotatorPin = NSAttributedString.Key("annotatorPin")
 }
 
@@ -186,16 +185,14 @@ enum TextStyler {
 
     // MARK: - Marks
 
-    /// A comment on no words, pinned to `point`, a displayed offset. It goes on
-    /// the character after the point, before ghosts go in, so words added at the
-    /// same point come before it, as the caret does.
+    /// A comment on no words, pinned to `point`, a displayed offset.
     private static func pin(
         at point: Int, selected: Bool, style: PinStyle, in result: NSMutableAttributedString, base: NSAttributedString, displayed: Range<Int>
     ) {
         let characters = base.string as NSString
         guard characters.length > 0 else { return }
         var isAfter = point >= characters.length
-        // A wash on a line break would not show: it goes on the character before.
+        // A wash on a line break would run to the end of the line.
         if style == .wash, !isAfter, point > 0, characters.character(at: point) == 0x0A || characters.character(at: point) == 0x2028 {
             isAfter = true
         }
