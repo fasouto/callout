@@ -10,7 +10,7 @@ struct MarginNotes: View {
     var body: some View {
         MarginLayout(spacing: 6) {
             if session.marks.isEmpty {
-                MarginGuide()
+                MarginGuide(pdf: session.isPDF)
                     .layoutValue(key: AnchorKey.self, value: model.firstLine - MarginNote.firstLineCentre)
             } else {
                 ForEach(session.orderedMarks) { mark in
@@ -222,16 +222,23 @@ private struct MarginNote: View {
 
 /// Shown before the first mark: what the keys do.
 private struct MarginGuide: View {
+    let pdf: Bool
+
+    private var instruction: String {
+        if pdf { return "Select words, then press a key:" }
+        return Keymap.usesVimKeys
+            ? "Press v and move to select, then press a key. Press i to add words, or c to comment at the caret."
+            : "To add words, click where they go and type. To comment on words, select them and type. ⌥C with nothing selected pins a comment to the caret. To mark selected words another way, press:"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(Keymap.usesVimKeys
-                ? "Press v and move to select, then press a key. Press i to add words, or c to comment at the caret."
-                : "To add words, click where they go and type. To comment on words, select them and type. ⌥C with nothing selected pins a comment to the caret. To mark selected words another way, press:")
+            Text(instruction)
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
-                ForEach(MarkKind.bar(pdf: false), id: \.self) { kind in
+                ForEach(MarkKind.bar(pdf: pdf), id: \.self) { kind in
                     GridRow {
                         KeyCap(kind.keyLabel(vim: Keymap.usesVimKeys))
                         HStack(spacing: 7) {
