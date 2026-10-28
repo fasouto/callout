@@ -42,13 +42,9 @@ enum Keymap {
         vim ? letter : "⌥" + letter
     }
 
-    /// What a key pressed in the document is to a margin field on its way to
-    /// the keyboard: what it would be in the field, with the caret at its end.
     enum FieldInput: Equatable {
         case key(FieldKey)
-        /// The key types. Each view reads the text its own way.
         case typing
-        /// ⌘ or ⌃ and a key: the view's, as it always is.
         case shortcut
         /// An arrow, Tab or forward delete, which do nothing useful at the end
         /// of the field, and in the document would move the caret or strike text.

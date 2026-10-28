@@ -60,7 +60,6 @@ struct KeyboardFocusTests {
         editor.doCommand(by: selector)
     }
 
-    /// Presses keys in the document, each character as its own key.
     private func press(
         _ keys: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = [], on textView: AnnotationTextView
     ) throws {

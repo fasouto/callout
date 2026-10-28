@@ -31,7 +31,6 @@ final class AnnotationTextView: NSTextView {
     var onInsertModeChange: ((Bool) -> Void)?
     /// True while a margin field is on its way to the keyboard: keys belong to it.
     var isHandingKeysToField: () -> Bool = { false }
-    /// A key for that margin field.
     var onFieldKey: ((FieldKey) -> Void)?
 
     /// True while a vim movement is adjusting the selection in steps; the

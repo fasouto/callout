@@ -93,7 +93,6 @@ struct PDFReviewTests {
         harness.view.setCurrentSelection(page.selection(for: range), animate: false)
     }
 
-    /// Presses the mouse at one point of the first page, drags to another and lets go.
     private func drag(from start: CGPoint, to end: CGPoint, in harness: Harness) throws {
         let page = try #require(harness.session.pdf?.page(at: 0))
         let window = harness.window
@@ -397,8 +396,6 @@ struct PDFReviewTests {
         #expect(harness.session.marks.first?.note == "why?")
     }
 
-    /// Once the comment's field has had the keyboard, the page is the page again:
-    /// words typed on a new selection are a new comment, not more of the first.
     @Test func typingOnANewSelectionAfterTheFieldHadTheKeyboardStartsANewComment() async throws {
         let harness = try makeHarness()
         try select("Built browser automation", page: 0, in: harness)
@@ -413,7 +410,6 @@ struct PDFReviewTests {
         #expect(harness.session.marks.map(\.note) == ["w", "ok"])
     }
 
-    /// ⌥R's words, typed before the replacement's field has the keyboard, are the replacement.
     @Test func wordsTypedBeforeTheReplacementsFieldHasTheKeyboardAreTheReplacement() throws {
         let harness = try makeHarness()
         try select("with a proven track record", page: 0, in: harness)
@@ -447,7 +443,6 @@ struct PDFReviewTests {
             let box = try box(of: phrase)
             return CGPoint(x: box.minX + 1, y: box.midY)
         }
-        /// In the margin, level with the line.
         func pastTheEnd(of line: String) throws -> CGPoint {
             let box = try box(of: line)
             return CGPoint(x: box.maxX + 20, y: box.midY)

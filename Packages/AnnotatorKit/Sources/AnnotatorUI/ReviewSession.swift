@@ -50,7 +50,6 @@ final class ReviewSession {
             if let statusMessage, statusMessage != oldValue { announce(statusMessage) }
         }
     }
-    /// The margin field being written, and whether it has the keyboard yet.
     private var writing: Writing?
     /// The margin field that should have the keyboard, if any.
     var editing: EditTarget? { writing?.target }
@@ -392,17 +391,14 @@ final class ReviewSession {
         if writing?.target != target { writing = Writing(target: target, fieldHasKeyboard: false) }
     }
 
-    /// The field being written has the keyboard: keys reach it directly from now on.
     func fieldTookKeyboard(_ target: EditTarget) {
         guard writing?.target == target else { return }
         writing?.fieldHasKeyboard = true
     }
 
-    /// Does what a key does in the field being written, for a key pressed in
-    /// the document before the field has the keyboard. The field takes the
-    /// keyboard with its caret at the end, so text goes on the end and
-    /// Backspace takes off the last character.
-    func press(_ key: FieldKey) {
+    /// The field takes the keyboard with its caret at the end (`NoteTextField.becomeFirstResponder`),
+    /// so text goes on the end and Backspace takes off the last character.
+    func pressBeforeFieldHasKeyboard(_ key: FieldKey) {
         guard let target = editing, let mark = marks.first(where: { $0.id == target.markID }) else { return }
         let written = (target.field == .note ? mark.note : mark.text) ?? ""
         let edited: String
@@ -597,19 +593,15 @@ struct EditTarget: Equatable {
     var field: MarkField
 }
 
-/// The margin field being written, and whether it has the keyboard yet.
 private struct Writing {
     let target: EditTarget
     var fieldHasKeyboard: Bool
 }
 
-/// A key as a margin field takes it.
 enum FieldKey: Equatable {
     case text(String)
     case deleteBackward
-    /// Return.
     case commit
-    /// Esc.
     case cancel
 }
 

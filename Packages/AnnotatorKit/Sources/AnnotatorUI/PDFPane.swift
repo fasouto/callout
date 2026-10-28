@@ -19,7 +19,6 @@ final class AnnotationPDFView: PDFView {
     var onMouseUp: ((NSPoint) -> Void)?
     /// True while a margin field is on its way to the keyboard: keys belong to it.
     var isHandingKeysToField: () -> Bool = { false }
-    /// A key for that margin field.
     var onFieldKey: ((FieldKey) -> Void)?
     private var awaitsSecondG = false
 
@@ -106,7 +105,6 @@ final class AnnotationPDFView: PDFView {
         return nil
     }
 
-    /// Where the mouse went down, while it is down, and how many clicks it made.
     private var press: (page: PDFPage, point: CGPoint, clicks: Int)?
 
     override func mouseDown(with event: NSEvent) {
@@ -127,7 +125,6 @@ final class AnnotationPDFView: PDFView {
         set { super.currentSelection = newValue.flatMap(reachingTheLineLevelWithThePointer) }
     }
 
-    /// A dragged selection, ending on the line level with the pointer.
     private func reachingTheLineLevelWithThePointer(_ selection: PDFSelection) -> PDFSelection? {
         guard let press, let document, let event = NSApp.currentEvent, event.type == .leftMouseDragged else { return selection }
         let location = convert(event.locationInWindow, from: nil)
@@ -135,7 +132,6 @@ final class AnnotationPDFView: PDFView {
         let lines = page.selection(for: NSRange(location: 0, length: page.numberOfCharacters))?.selectionsByLine() ?? []
         guard let reach = Self.reach(of: convert(location, to: page), lines: lines.map { $0.bounds(for: page) }) else { return selection }
         let reached = document.selection(from: press.page, at: press.point, to: page, at: reach)
-        // A double click drags by words, a triple click by lines.
         switch press.clicks {
         case 2: press.page.selectionForWord(at: press.point).map { reached?.add($0) }
         case 3: reached?.extendForLineBoundaries()
@@ -148,8 +144,7 @@ final class AnnotationPDFView: PDFView {
     /// off the text to the nearest character, so a little past the end of a
     /// short line a drag reaches into a longer line above or below. The person
     /// means the line level with the pointer, the nearer one where columns sit
-    /// side by side. Past its end the drag reaches its last character, and
-    /// before its start its first.
+    /// side by side.
     private static func reach(of pointer: CGPoint, lines: [CGRect]) -> CGPoint? {
         let level = lines.filter { $0.minY <= pointer.y && pointer.y <= $0.maxY }
         let across = { (line: CGRect) in max(line.minX - pointer.x, 0, pointer.x - line.maxX) }
@@ -320,7 +315,7 @@ struct PDFPane: NSViewRepresentable {
             }
             view.onTypeOnSelection = { [weak self] text in self?.comment(typing: text) }
             view.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
-            view.onFieldKey = { [weak self] key in self?.session.press(key) }
+            view.onFieldKey = { [weak self] key in self?.session.pressBeforeFieldHasKeyboard(key) }
             view.onDeleteKey = { [weak self] in
                 guard let self else { return }
                 // ⌫ strikes out the selected text, or takes the strike back from text
