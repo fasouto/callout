@@ -112,12 +112,11 @@ struct DocumentPane: NSViewRepresentable {
             textView.setAccessibilityCustomRotors([NSAccessibilityCustomRotor(label: "Marks", itemSearchDelegate: self)])
             textView.onCommand = { [weak self] command in self?.run(command) }
             textView.onVisualModeChange = { [weak self] isOn in self?.session.isSelectingByKeyboard = isOn }
-            textView.onAddingWordsChange = { [weak self] isOn in self?.session.isAddingWords = isOn }
+            textView.onInsertModeChange = { [weak self] isOn in self?.session.isInserting = isOn }
             textView.onAddWords = { [weak self] text in self?.type(text) }
             textView.onComment = { [weak self] text in self?.comment(typing: text) }
             textView.isHandingKeysToField = { [weak self] in self?.session.isHandingKeyboardToField ?? false }
             textView.onFieldKey = { [weak self] key in self?.session.pressBeforeFieldHasKeyboard(key) }
-            textView.isInsideAddedWords = { [weak self] offset in self?.session.isInsideAddedWords(atView: offset) ?? false }
             textView.onDeleteCharacter = { [weak self] forward in self?.deleteCharacter(forward: forward) }
             textView.onDeleteKey = { [weak self] in self?.removeSelectedMark() }
             textView.onRemoveMark = { [weak self] in

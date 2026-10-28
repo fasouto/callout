@@ -140,13 +140,13 @@ extension OnTheMainThread {
             #expect(harness.textView.string == session.document.text)
         }
 
-        @Test func whileAddingWordsOptionLettersAreText() throws {
+        @Test func inVimsInsertModeOptionLettersAreText() throws {
             let harness = try makeHarness()
             let session = harness.session
-            harness.textView.usesVimKeys = false
+            harness.textView.usesVimKeys = true
             // Right after "Plan:" in the heading.
             harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
-            try mark("i", keyCode: 34, in: harness)
+            try press("i", keyCode: 34, in: harness)
             try mark("d", keyCode: 2, in: harness)
             try mark("x", keyCode: 7, in: harness)
 
@@ -191,7 +191,6 @@ extension OnTheMainThread {
             #expect(mark.kind == .replace)
             #expect(session.selectedMarkID == mark.id)
             #expect(session.editing == nil)
-            #expect(session.isAddingWords)
             let struck = (harness.textView.string as NSString).range(of: "leverage")
             #expect(harness.textView.selectedRange() == NSRange(location: NSMaxRange(struck), length: 0))
 
@@ -250,11 +249,11 @@ extension OnTheMainThread {
             let caret = (harness.textView.string as NSString).range(of: "robust").location
             harness.textView.setSelectedRange(NSRange(location: caret, length: 0))
 
-            try mark("i", keyCode: 34, in: harness)
+            harness.textView.insertText(" and", replacementRange: NSRange(location: NSNotFound, length: 0))
             settle(harness.window)
-            #expect(!harness.window.performKeyEquivalent(with: escape), "adding words")
-            harness.textView.keyDown(with: escape)
-            settle(harness.window)
+            #expect(harness.session.marks.map(\.kind) == [.insert])
+            #expect(harness.window.performKeyEquivalent(with: escape), "after adding words")
+            outcomes.removeAll()
 
             try mark("c", keyCode: 8, in: harness)
             settle(harness.window)
@@ -267,7 +266,7 @@ extension OnTheMainThread {
             #expect(outcomes == [.cancel])
         }
 
-        @Test func optionIPutsTheCaretAfterTheSelectionAddingWords() throws {
+        @Test func optionIPutsTheCaretAfterTheSelectionReadyForWords() throws {
             let harness = try makeHarness()
             let session = harness.session
             harness.textView.usesVimKeys = false
@@ -277,7 +276,6 @@ extension OnTheMainThread {
             #expect(session.marks.isEmpty)
             let word = (harness.textView.string as NSString).range(of: "websockets")
             #expect(harness.textView.selectedRange() == NSRange(location: NSMaxRange(word), length: 0))
-            #expect(session.isAddingWords)
 
             harness.textView.insertText(" or streaming", replacementRange: NSRange(location: NSNotFound, length: 0))
             #expect(session.marks.map(\.kind) == [.insert])
@@ -341,12 +339,14 @@ extension OnTheMainThread {
             let at = NSMaxRange((harness.textView.string as NSString).range(of: "very robust"))
 
             harness.textView.setSelectedRange(NSRange(location: at, length: 0))
+            try mark("c", keyCode: 8, in: harness)
             harness.textView.insertText("Says who?", replacementRange: NSRange(location: NSNotFound, length: 0))
             try press("\r", keyCode: KeyCode.return, in: harness)
             settle(harness.window)
             harness.textView.setSelectedRange(NSRange(location: at, length: 0))
             let first = try #require(session.marks.first)
             #expect(session.selectedMarkID == first.id)
+            try mark("c", keyCode: 8, in: harness)
             harness.textView.insertText("Measured how?", replacementRange: NSRange(location: NSNotFound, length: 0))
             try press("\r", keyCode: KeyCode.return, in: harness)
             settle(harness.window)
@@ -485,7 +485,6 @@ extension OnTheMainThread {
             let undo = undoable(session)
             harness.textView.usesVimKeys = false
             harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
-            try mark("i", keyCode: 34, in: harness)
             for character in ["!", "!", "!"] {
                 harness.textView.insertText(character, replacementRange: NSRange(location: NSNotFound, length: 0))
             }
@@ -495,16 +494,16 @@ extension OnTheMainThread {
             #expect(!undo.canUndo)
         }
 
-        @Test func wordsAddedAgainAfterStoppingAreTheirOwnUndoStep() throws {
+        @Test func wordsAddedAgainAfterInsertModeEndsAreTheirOwnUndoStep() throws {
             let harness = try makeHarness()
             let session = harness.session
             let undo = undoable(session)
-            harness.textView.usesVimKeys = false
+            harness.textView.usesVimKeys = true
             harness.textView.setSelectedRange(NSRange(location: 5, length: 0))
-            try mark("i", keyCode: 34, in: harness)
+            try press("i", keyCode: 34, in: harness)
             harness.textView.insertText("!!", replacementRange: NSRange(location: NSNotFound, length: 0))
             try press("\u{1B}", keyCode: KeyCode.escape, in: harness)
-            try mark("i", keyCode: 34, in: harness)
+            try press("i", keyCode: 34, in: harness)
             harness.textView.insertText("?", replacementRange: NSRange(location: NSNotFound, length: 0))
             #expect(session.marks.map(\.text) == ["!!?"])
 
@@ -623,7 +622,7 @@ extension OnTheMainThread {
             #expect(session.feedback().contains("exhaust the pool.\nOne sentence is enough.\n"))
         }
 
-        @Test func optionOGoesToTheOverallCommentExceptWhileAddingWords() throws {
+        @Test func optionOGoesToTheOverallCommentAtACaretToo() throws {
             let harness = try makeHarness()
             let session = harness.session
             harness.textView.usesVimKeys = false
@@ -636,11 +635,6 @@ extension OnTheMainThread {
             try mark("o", keyCode: 31, in: harness)
             #expect(session.overallFocusToken == token + 2)
             #expect(session.marks.isEmpty)
-
-            try mark("i", keyCode: 34, in: harness)
-            try mark("o", keyCode: 31, in: harness)
-            #expect(session.overallFocusToken == token + 2)
-            #expect(session.marks.map(\.text) == ["o"])
         }
 
         @Test func theAnswerThatAppliesLeads() throws {

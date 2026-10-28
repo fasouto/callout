@@ -52,38 +52,30 @@ extension OnTheMainThread {
         @Test func typingGoesWhereTheMomentSays() {
             for vim in [false, true] {
                 for selection in [false, true] {
-                    for adding in [false, true] {
-                        for inside in [false, true] {
-                            #expect(Keymap.typing(
-                                fieldOnItsWay: true, vim: vim, hasSelection: selection, addingWords: adding, insideAddedWords: inside
-                            ) == .field)
-                        }
+                    for inserting in [false, true] {
+                        #expect(Keymap.typing(fieldOnItsWay: true, vim: vim, hasSelection: selection, inserting: inserting) == .field)
                     }
                 }
             }
-            let rows: [(vim: Bool, selection: Bool, adding: Bool, inside: Bool, typing: Keymap.Typing)] = [
-                (false, false, false, false, .comment),
-                (false, false, false, true, .words),
-                (false, false, true, false, .words),
-                (false, false, true, true, .words),
-                (false, true, false, false, .comment),
-                (false, true, false, true, .comment),
-                (false, true, true, false, .comment),
-                (false, true, true, true, .comment),
-                (true, false, false, false, .nowhere),
-                (true, false, false, true, .nowhere),
-                (true, false, true, false, .words),
-                (true, false, true, true, .words),
-                (true, true, false, false, .nowhere),
-                (true, true, false, true, .nowhere),
-                (true, true, true, false, .nowhere),
-                (true, true, true, true, .nowhere),
+            let rows: [(vim: Bool, selection: Bool, inserting: Bool, typing: Keymap.Typing)] = [
+                (false, false, false, .words),
+                (false, true, false, .comment),
+                (true, false, false, .nowhere),
+                (true, false, true, .words),
+                (true, true, false, .nowhere),
+                (true, true, true, .nowhere),
             ]
             for row in rows {
-                let typing = Keymap.typing(
-                    fieldOnItsWay: false, vim: row.vim, hasSelection: row.selection, addingWords: row.adding, insideAddedWords: row.inside
-                )
+                let typing = Keymap.typing(fieldOnItsWay: false, vim: row.vim, hasSelection: row.selection, inserting: row.inserting)
                 #expect(typing == row.typing, "\(row)")
+            }
+        }
+
+        @Test func optionAndABoundLetterIsACommandButAnUnboundOneIsText() {
+            #expect(Keymap.command(for: "c", modifiers: .option, vim: false) == .mark(.comment))
+            #expect(Keymap.command(for: "s", modifiers: .option, vim: false) == .snippets)
+            for letter in ["e", "u", "n", "a"] {
+                #expect(Keymap.command(for: letter, modifiers: .option, vim: false) == nil)
             }
         }
 
@@ -288,37 +280,56 @@ extension OnTheMainThread {
             try type("u", in: harness)
             #expect(harness.session.marks.map(\.kind) == [.keep, .comment])
             harness.session.endEditing()
+            // At the caret it adds words, and nothing moves.
             harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
             try type("whj", in: harness)
-            let pinned = try #require(harness.session.marks.last)
-            #expect(pinned.kind == .comment)
-            #expect(pinned.anchor.span == TextSpan(3, 3))
-            #expect(pinned.note == "whj")
-            #expect(harness.textView.string == harness.session.document.text)
+            let added = try #require(harness.session.marks.last)
+            #expect(added.kind == .insert)
+            #expect(added.text == "whj")
+            #expect(added.anchor.span == TextSpan(3, 3))
+            #expect(harness.session.marks.count == 3)
         }
 
-        @Test func withoutVimKeysOptionIStartsAddingWords() throws {
+        @Test func withoutVimKeysTypingAtTheCaretAddsWordsWithNothingToPressFirst() throws {
+            let harness = try makeHarness(vim: false)
+            harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
+            try type("is", in: harness)
+            #expect(harness.session.marks.map(\.kind) == [.insert])
+            #expect(harness.session.marks.first?.text == "is")
+            #expect(harness.session.marks.first?.anchor.span == TextSpan(3, 3))
+            #expect(!harness.session.isInserting)
+        }
+
+        @Test func withoutVimKeysOptionIPutsTheCaretAfterTheSelection() throws {
             let harness = try makeHarness(vim: false)
             harness.textView.setSelectedRange(NSRange(location: 8, length: 8))
             try type("i", in: harness, flags: .option)
             #expect(harness.session.marks.isEmpty)
             #expect(harness.textView.selectedRange() == NSRange(location: 16, length: 0))
-            #expect(harness.session.isAddingWords)
             try type("now", in: harness)
             #expect(harness.session.marks.map(\.text) == ["now"])
-            try escape(in: harness)
-            #expect(!harness.session.isAddingWords)
+        }
 
+        @Test func withoutVimKeysOptionCAtABareCaretPinsACommentForTheKeyboard() throws {
+            let harness = try makeHarness(vim: false)
             harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
-            try type("is", in: harness)
-            #expect(harness.session.marks.last?.kind == .comment)
-            #expect(harness.session.marks.last?.note == "is")
-            harness.session.endEditing()
-            try type("i", in: harness, flags: .option)
-            try type("is", in: harness)
-            #expect(harness.session.marks.last?.kind == .insert)
-            #expect(harness.session.marks.last?.text == "is")
-            #expect(harness.session.marks.last?.anchor.span == TextSpan(3, 3))
+            try type("c", in: harness, flags: .option)
+            let pinned = try #require(harness.session.marks.first)
+            #expect(pinned.kind == .comment)
+            #expect(pinned.anchor.span == TextSpan(3, 3))
+            #expect(harness.session.editing == EditTarget(markID: pinned.id, field: .note))
+            try type("why", in: harness)
+            #expect(harness.session.marks.map(\.note) == ["why"])
+            #expect(harness.textView.string == harness.session.document.text)
+        }
+
+        @Test func withoutVimKeysOptionAndAnUnboundLetterTypesIntoAddedWords() throws {
+            let harness = try makeHarness(vim: false)
+            harness.textView.setSelectedRange(NSRange(location: 3, length: 0))
+            try type("e", in: harness, flags: .option)
+            let added = try #require(harness.session.marks.first)
+            #expect(added.kind == .insert)
+            #expect(added.text?.isEmpty == false)
         }
 
         // MARK: Insert mode
@@ -338,7 +349,7 @@ extension OnTheMainThread {
             let harness = try makeHarness()
             try type("ww", in: harness)
             try type("i", in: harness)
-            #expect(harness.session.isAddingWords)
+            #expect(harness.session.isInserting)
             // In insert mode every key is text, the movement letters included.
             try type("jk ", in: harness)
             #expect(harness.session.marks.map(\.kind) == [.insert])
@@ -346,7 +357,7 @@ extension OnTheMainThread {
             #expect(harness.textView.string.hasPrefix("We will jk leverage"))
 
             try escape(in: harness)
-            #expect(!harness.session.isAddingWords)
+            #expect(!harness.session.isInserting)
             // Back to moving: h is a movement again.
             let caret = harness.textView.selectedRange().location
             try type("h", in: harness)
@@ -357,7 +368,7 @@ extension OnTheMainThread {
         @Test func aAppendsAfterTheCharacterUnderTheCaret() throws {
             let harness = try makeHarness()
             try type("a", in: harness)
-            #expect(harness.session.isAddingWords)
+            #expect(harness.session.isInserting)
             try type("X", in: harness)
             #expect(harness.textView.string.hasPrefix("WXe will"))
         }
@@ -367,7 +378,7 @@ extension OnTheMainThread {
             try type("wwve", in: harness)
             try type("r", in: harness)
             #expect(harness.session.marks.map(\.kind) == [.replace])
-            #expect(harness.session.isAddingWords)
+            #expect(harness.session.isInserting)
             #expect(!harness.session.isSelectingByKeyboard)
             try type("use", in: harness)
             #expect(harness.session.marks.first?.text == "use")

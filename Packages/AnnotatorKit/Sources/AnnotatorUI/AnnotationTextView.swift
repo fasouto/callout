@@ -3,14 +3,15 @@ import AppKit
 
 /// The document view. It behaves like an editable text view, with a caret and
 /// keyboard selection, but never changes its text itself. What is typed is
-/// handed on, to become marks: typing comments, on the selection or pinned to
-/// the caret's point; after ⌥I it adds words; Backspace strikes text out.
+/// handed on, to become marks: typing at the caret adds words and Backspace
+/// strikes text out; typing on a selection comments; ⌥C at the caret pins a
+/// comment there.
 final class AnnotationTextView: NSTextView {
     var onCommand: ((Keymap.Command) -> Void)?
     /// Overrides the setting for this view. Nil follows Settings.
     var usesVimKeys: Bool?
     var onAddWords: ((String) -> Void)?
-    /// Text that starts a comment: on the selection, or pinned to the caret's point.
+    /// Text that starts a comment on the selection.
     var onComment: ((String) -> Void)?
     /// Backspace or forward delete at the caret, with nothing selected.
     var onDeleteCharacter: ((_ forward: Bool) -> Void)?
@@ -26,13 +27,11 @@ final class AnnotationTextView: NSTextView {
     var onSelectionSettled: (() -> Void)?
     /// With vim keys: called when visual mode starts or ends.
     var onVisualModeChange: ((Bool) -> Void)?
-    /// Called when adding words starts or ends.
-    var onAddingWordsChange: ((Bool) -> Void)?
+    /// With vim keys: called when insert mode starts or ends.
+    var onInsertModeChange: ((Bool) -> Void)?
     /// True while a margin field is on its way to the keyboard: keys belong to it.
     var isHandingKeysToField: () -> Bool = { false }
     var onFieldKey: ((FieldKey) -> Void)?
-    /// Whether a caret is in the middle of words a mark added.
-    var isInsideAddedWords: (Int) -> Bool = { _ in false }
     var pasteboard = NSPasteboard.general
 
     /// True while a vim movement is adjusting the selection in steps; the
@@ -44,9 +43,9 @@ final class AnnotationTextView: NSTextView {
             if (visualAnchor == nil) != (oldValue == nil) { onVisualModeChange?(visualAnchor != nil) }
         }
     }
-    /// Whether keys add words to the document: after ⌥I or ⌥R, or in vim's insert mode.
-    private(set) var isAddingWords = false {
-        didSet { if isAddingWords != oldValue { onAddingWordsChange?(isAddingWords) } }
+    /// With vim keys, whether keys add words to the document: insert mode.
+    private(set) var isInserting = false {
+        didSet { if isInserting != oldValue { onInsertModeChange?(isInserting) } }
     }
     /// The moving end of the selection: where the caret is.
     private var head = 0
@@ -56,16 +55,15 @@ final class AnnotationTextView: NSTextView {
 
     /// Where text typed now goes.
     private var typing: Keymap.Typing {
-        let selection = selectedRange()
-        return Keymap.typing(
-            fieldOnItsWay: isHandingKeysToField(), vim: vimKeys, hasSelection: selection.length > 0,
-            addingWords: isAddingWords, insideAddedWords: selection.length == 0 && isInsideAddedWords(selection.location)
+        Keymap.typing(
+            fieldOnItsWay: isHandingKeysToField(), vim: vimKeys, hasSelection: selectedRange().length > 0, inserting: isInserting
         )
     }
 
+    /// Without vim keys the caret always adds words, so there is nothing to switch.
     func beginAddingWords() {
         visualAnchor = nil
-        isAddingWords = true
+        if vimKeys { isInserting = true }
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
@@ -97,16 +95,17 @@ final class AnnotationTextView: NSTextView {
         let characters = event.charactersIgnoringModifiers ?? ""
         let hasSelection = selectedRange().length > 0
 
-        if isAddingWords, event.keyCode == KeyCode.escape {
-            isAddingWords = false
+        if isInserting, event.keyCode == KeyCode.escape {
+            isInserting = false
             return
         }
-        if vimKeys, !isAddingWords, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) {
+        if vimKeys, !isInserting, vimKeyDown(characters, keyCode: event.keyCode, modifiers: modifiers) {
             return
         }
 
-        // Where words are added, ⌥ and a letter types: macOS makes accents and symbols with it.
-        if typing != .words, let command = Keymap.command(for: characters, modifiers: modifiers, vim: vimKeys) {
+        // At the caret too, so a comment can be pinned there. Only in vim's insert
+        // mode does ⌥ type, because macOS makes accents and symbols with it.
+        if !isInserting, let command = Keymap.command(for: characters, modifiers: modifiers, vim: vimKeys) {
             onCommand?(command)
             visualAnchor = nil
             return
@@ -177,14 +176,8 @@ final class AnnotationTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         // The superclass tracks the drag and only returns once the mouse is up.
         visualAnchor = nil
-        if !vimKeys { isAddingWords = false }
         super.mouseDown(with: event)
         onSelectionSettled?()
-    }
-
-    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
-        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
-        if isAddingWords, !vimKeys, selectedRange().length > 0 { isAddingWords = false }
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
@@ -288,9 +281,9 @@ final class AnnotationTextView: NSTextView {
         case "N": onTabKey?(false)
         case "a" where visualAnchor == nil:
             move(to: min(text.length, head + 1))
-            isAddingWords = true
+            isInserting = true
         case "i" where visualAnchor == nil && selectedRange().length == 0:
-            isAddingWords = true
+            isInserting = true
         default: return false
         }
         return true

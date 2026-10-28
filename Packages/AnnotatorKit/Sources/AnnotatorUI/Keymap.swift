@@ -1,9 +1,9 @@
 import AnnotatorCore
 import AppKit
 
-/// What the keys do in a review. Text typed in the document is a comment, on a
-/// selection or at the caret, so the marks answer to Option and a letter. With
-/// vim keys on, the letters alone are commands too, as they are in vim.
+/// What the keys do in a review. Text typed at the caret adds words and on a
+/// selection comments, so the marks answer to Option and a letter, at the caret
+/// too. With vim keys on, the letters alone are commands too, as they are in vim.
 @MainActor
 enum Keymap {
     private static let vimKey = "vimNavigation"
@@ -41,23 +41,19 @@ enum Keymap {
     enum Typing: Equatable {
         /// A margin field on its way to the keyboard: the keys are its.
         case field
-        /// Words added to the document: after ⌥I or ⌥R, in vim's insert mode,
-        /// or in the middle of words added before.
+        /// Words added to the document: at the caret, or in vim's insert mode.
         case words
-        /// A new comment: on the selection, or pinned to the caret's point.
+        /// A new comment: on the selection.
         case comment
         /// Nowhere: the letters are movements and commands (vim's normal and visual modes).
         case nowhere
     }
 
     /// Where text typed now goes.
-    nonisolated static func typing(
-        fieldOnItsWay: Bool, vim: Bool, hasSelection: Bool, addingWords: Bool, insideAddedWords: Bool
-    ) -> Typing {
+    nonisolated static func typing(fieldOnItsWay: Bool, vim: Bool, hasSelection: Bool, inserting: Bool) -> Typing {
         if fieldOnItsWay { return .field }
-        if vim { return addingWords && !hasSelection ? .words : .nowhere }
-        if hasSelection { return .comment }
-        return addingWords || insideAddedWords ? .words : .comment
+        if vim { return inserting && !hasSelection ? .words : .nowhere }
+        return hasSelection ? .comment : .words
     }
 
     /// A command's key as shown to the user: the letter, after ⌥ unless vim keys are on.

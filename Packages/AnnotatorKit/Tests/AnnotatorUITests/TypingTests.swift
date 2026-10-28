@@ -61,14 +61,9 @@ extension OnTheMainThread {
             for _ in 0..<times { try key(KeyCode.delete, "\u{7F}", in: harness) }
         }
 
-        private func addWords(in harness: Harness) throws {
-            try key(34, "i", flags: .option, in: harness)
-        }
-
-        @Test func wordsAddedWithOptionIGoInWhereTheCaretIs() throws {
+        @Test func wordsTypedAtTheCaretGoInWhereItIs() throws {
             let harness = try makeHarness()
             caret(after: "robust", in: harness)
-            try addWords(in: harness)
             type(" and simple", in: harness)
 
             #expect(harness.session.marks.map(\.kind) == [.insert])
@@ -82,7 +77,6 @@ extension OnTheMainThread {
         @Test func typingContinuesTheSameInsertionAndCanGoBackIntoIt() throws {
             let harness = try makeHarness()
             caret(after: "robust", in: harness)
-            try addWords(in: harness)
             type(" and", in: harness)
             type(" simple", in: harness)
             #expect(harness.session.marks.count == 1)
@@ -99,7 +93,6 @@ extension OnTheMainThread {
         @Test func backspaceOverAddedWordsDeletesThem() throws {
             let harness = try makeHarness()
             caret(after: "robust", in: harness)
-            try addWords(in: harness)
             type(" annd", in: harness)
             try backspace(2, in: harness)
             type("d", in: harness)
@@ -137,7 +130,6 @@ extension OnTheMainThread {
             let harness = try makeHarness()
             caret(after: "leverage", in: harness)
             try backspace(8, in: harness)
-            try addWords(in: harness)
             type("use", in: harness)
             #expect(try harness.session.editedText().hasPrefix("We will use a very robust approach here."))
             #expect(harness.session.marks.count == 2)
@@ -170,13 +162,12 @@ extension OnTheMainThread {
             RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
             caret(after: "very ro", in: harness)
-            try addWords(in: harness)
             type("x", in: harness)
             #expect(session.marks.count == 1)
             #expect(session.statusMessage != nil)
         }
 
-        @Test func aCommentCanBePinnedInsideAStrike() throws {
+        @Test func aCommentCanBePinnedInsideAStrikeWithOptionC() throws {
             let harness = try makeHarness()
             let session = harness.session
             session.addMark(.delete, span: TextSpan(19, 31))
@@ -184,6 +175,7 @@ extension OnTheMainThread {
             RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
             caret(after: "very ro", in: harness)
+            try key(8, "c", flags: .option, in: harness)
             type("x", in: harness)
             #expect(session.marks.map(\.kind) == [.delete, .comment])
             #expect(session.marks.last?.anchor.span == TextSpan(26, 26))
@@ -193,7 +185,6 @@ extension OnTheMainThread {
         @Test func addedWordsTakeAccentsAndEmojiWhole() throws {
             let harness = try makeHarness()
             caret(after: "here", in: harness)
-            try addWords(in: harness)
             type(" mañana 🚀", in: harness)
             #expect(harness.session.marks.first?.text == " mañana 🚀")
             try backspace(1, in: harness)
@@ -205,7 +196,6 @@ extension OnTheMainThread {
         @Test func optionReturnAddsALineBreakWhileAddingWords() throws {
             let harness = try makeHarness()
             caret(after: "here.", in: harness)
-            try addWords(in: harness)
             try key(KeyCode.return, "\r", flags: .option, in: harness)
             type("One more line.", in: harness)
             #expect(harness.session.marks.first?.text == "\nOne more line.")

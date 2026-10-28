@@ -65,9 +65,9 @@ final class ReviewSession {
     private(set) var overallFocusToken = 0
     /// With vim keys: whether a selection is being extended by moving (visual mode).
     var isSelectingByKeyboard = false
-    /// Whether keys add words to the document: after ⌥I or ⌥R, or in vim's insert mode.
-    var isAddingWords = false {
-        didSet { if !isAddingWords { coalescedEdit = nil } }
+    /// With vim keys: whether keys add words to the document (insert mode).
+    var isInserting = false {
+        didSet { if !isInserting { coalescedEdit = nil } }
     }
     /// The reusable comments on offer, loaded when the picker is first asked for.
     @ObservationIgnored var loadSnippets: () -> [Snippet] = { [] }
@@ -625,7 +625,7 @@ enum FieldKey: Equatable {
 
 enum SelectionState: Equatable {
     case none
-    /// A caret in the document: a comment can be pinned there, or words added after ⌥I.
+    /// A caret in the document: words can be added there, or a comment pinned with ⌥C.
     case caret
     /// Selected document text: any mark applies.
     case range

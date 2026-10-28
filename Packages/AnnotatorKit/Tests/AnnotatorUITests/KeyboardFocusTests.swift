@@ -390,15 +390,30 @@ extension OnTheMainThread {
 
         // MARK: Typing at a caret
 
-        /// With nothing selected, typing starts a comment pinned to the caret's
-        /// point, keys pressed before its field has the keyboard included. Nothing
-        /// goes into the document.
-        @Test func typingAtABareCaretWritesACommentPinnedThere() async throws {
+        /// With nothing selected, typing adds words at the caret.
+        @Test func typingAtABareCaretAddsWords() async throws {
+            let harness = await makeHarness()
+            let session = harness.session
+            let textView = try document(harness)
+            caret(after: "robust", in: textView)
+
+            try press(" and", on: textView)
+            try press(" simple", on: textView)
+            #expect(session.marks.map(\.kind) == [.insert])
+            #expect(session.marks.first?.text == " and simple")
+            #expect(session.editing == nil)
+            #expect(harness.window.firstResponder === textView)
+        }
+
+        /// ⌥C pins a comment at a bare caret, keys pressed before its field has
+        /// the keyboard included. Nothing goes into the document.
+        @Test func optionCAtABareCaretWritesACommentPinnedThere() async throws {
             let harness = await makeHarness()
             let session = harness.session
             let textView = try document(harness)
             caret(after: "very robust", in: textView)
 
+            try press("c", keyCode: 8, modifiers: .option, on: textView)
             try press("this ", on: textView)
             #expect(session.marks.map(\.kind) == [.comment])
             #expect(session.marks.first?.anchor.span == TextSpan(30, 30))
@@ -435,15 +450,6 @@ extension OnTheMainThread {
             #expect(harness.window.firstResponder is AnnotationTextView)
         }
 
-        @Test func aSpaceAtABareCaretStartsNothing() async throws {
-            let harness = await makeHarness()
-            let textView = try document(harness)
-            caret(after: "robust", in: textView)
-            try press(" ", on: textView)
-            #expect(harness.session.marks.isEmpty)
-            #expect(harness.session.editing == nil)
-        }
-
         @Test func optionLettersAtABareCaretAreCommands() async throws {
             let harness = await makeHarness()
             let session = harness.session
@@ -461,46 +467,32 @@ extension OnTheMainThread {
             #expect(session.overallFocusToken == token + 1)
 
             try press("i", keyCode: 34, modifiers: .option, on: textView)
-            #expect(session.isAddingWords)
             #expect(session.marks.isEmpty)
+            #expect(textView.selectedRange() == NSRange(location: NSMaxRange((textView.string as NSString).range(of: "robust")), length: 0))
         }
 
-        /// Esc stops adding words and the review stays open. Esc at a caret that
-        /// is not adding words cancels the review.
-        @Test func escapeStopsAddingWordsWithoutCancelling() async throws {
+        /// Esc is the Cancel button's, also after words were added: there is no
+        /// adding-words mode to stop.
+        @Test func escapeAfterAddingWordsCancels() async throws {
             var outcomes: [ReviewOutcome] = []
             let harness = await makeHarness { outcomes.append($0) }
             let session = harness.session
             let textView = try document(harness)
             caret(after: "robust", in: textView)
 
-            try press("i", keyCode: 34, modifiers: .option, on: textView)
             try press(" and", on: textView)
             try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
-            #expect(!session.isAddingWords)
-            #expect(outcomes.isEmpty)
-            #expect(session.marks.map(\.text) == [" and"])
-
-            try press("x", on: textView)
-            #expect(session.marks.map(\.kind) == [.insert, .comment])
-            try press("\r", keyCode: KeyCode.return, on: textView)
-            await settle(harness)
-            #expect(harness.window.firstResponder === textView)
-
-            try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
             #expect(outcomes == [.cancel])
+            #expect(session.marks.map(\.text) == [" and"])
         }
 
-        /// In the middle of words added before, typing edits them. At their edge
-        /// it is a point of the document again, where typing comments.
-        @Test func typingInsideAddedWordsEditsThemButAtTheirEdgeComments() async throws {
+        /// Typing right after added words, at their edge or in the middle, edits them.
+        @Test func typingInsideOrRightAfterAddedWordsExtendsThem() async throws {
             let harness = await makeHarness()
             let session = harness.session
             let textView = try document(harness)
             caret(after: "robust", in: textView)
-            try press("i", keyCode: 34, modifiers: .option, on: textView)
             try press(" and simple", on: textView)
-            try press("\u{1B}", keyCode: KeyCode.escape, on: textView)
 
             caret(after: "robust an", in: textView)
             try press("x", on: textView)
@@ -508,12 +500,11 @@ extension OnTheMainThread {
 
             caret(after: "simple", in: textView)
             try press("y", on: textView)
-            #expect(session.marks.map(\.kind) == [.insert, .comment])
-            #expect(session.marks.last?.anchor.span == session.marks.first?.anchor.span)
-            #expect(session.marks.first?.text == " anxd simple")
+            #expect(session.marks.map(\.kind) == [.insert])
+            #expect(session.marks.first?.text == " anxd simpley")
         }
 
-        @Test func pasteAtABareCaretIsRefusedUntilAddingWords() async throws {
+        @Test func pasteAddsWordsAtABareCaretButNotOverASelection() async throws {
             let harness = await makeHarness()
             let session = harness.session
             let textView = try document(harness)
@@ -523,28 +514,24 @@ extension OnTheMainThread {
             pasteboard.setString(" gladly", forType: .string)
             textView.pasteboard = pasteboard
             let paste = NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-            caret(after: "leverage", in: textView)
 
+            textView.setSelectedRange((textView.string as NSString).range(of: "approach"))
             #expect(!textView.validateUserInterfaceItem(paste))
             textView.paste(nil)
             #expect(session.marks.isEmpty)
 
-            try press("i", keyCode: 34, modifiers: .option, on: textView)
+            caret(after: "leverage", in: textView)
             #expect(textView.validateUserInterfaceItem(paste))
             textView.paste(nil)
             #expect(session.marks.map(\.text) == [" gladly"])
         }
 
-        /// Without vim keys, selecting words stops adding words: typing on them comments.
-        @Test func aNewSelectionStopsAddingWords() async throws {
+        /// Selecting words turns typing into a comment on them; a caret adds words again.
+        @Test func typingOnASelectionCommentsAndAtTheCaretAddsWords() async throws {
             let harness = await makeHarness()
             let session = harness.session
             let textView = try document(harness)
-            caret(after: "robust", in: textView)
-            try press("i", keyCode: 34, modifiers: .option, on: textView)
-            #expect(session.isAddingWords)
             textView.setSelectedRange((textView.string as NSString).range(of: "approach"))
-            #expect(!session.isAddingWords)
             try press("v", on: textView)
             #expect(session.marks.map(\.kind) == [.comment])
             #expect(session.marks.first?.anchor.quote == "approach")

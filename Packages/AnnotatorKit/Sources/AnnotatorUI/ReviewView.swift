@@ -112,15 +112,14 @@ private struct ActionBar: View {
                 }
                 overallComment
                 HStack(spacing: 12) {
-                    if session.isSelectingByKeyboard || session.isAddingWords {
-                        Text(session.isAddingWords ? "Insert" : "Visual")
+                    if session.isSelectingByKeyboard || session.isInserting {
+                        Text(session.isInserting ? "Insert" : "Visual")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
-                            .help(!session.isAddingWords ? "Moving extends the selection. Press a mark key, or Esc to let go."
-                                : Keymap.usesVimKeys ? "Keys add words to the document. Esc goes back to moving."
-                                : "Keys add words to the document. Esc stops, and so does a click elsewhere.")
+                            .help(!session.isInserting ? "Moving extends the selection. Press a mark key, or Esc to let go."
+                                : "Keys add words to the document. Esc goes back to moving.")
                     }
                     if let message = session.statusMessage {
                         Text(message)
@@ -211,9 +210,9 @@ private struct ResponseButtons: View {
     }
 
     /// AppKit can offer Esc to this button before the text that has the keyboard,
-    /// where it stops adding words or finishes a note.
+    /// where it finishes a note.
     private var escapeCancels: Bool {
-        !session.isAddingWords && session.editing == nil && !Keymap.usesVimKeys
+        session.editing == nil && !Keymap.usesVimKeys
     }
 
     var body: some View {
