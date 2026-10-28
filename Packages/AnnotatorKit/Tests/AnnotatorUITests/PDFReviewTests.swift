@@ -344,6 +344,20 @@ struct PDFReviewTests {
         #expect(harness.session.editing?.field == .note)
     }
 
+    /// The page lets go of the selection when it redraws the new comment, before
+    /// the comment's field has the keyboard. Keys pressed in between still count.
+    @Test func keysPressedWhileTheCommentsFieldTakesTheKeyboardAreInTheComment() throws {
+        let harness = try makeHarness()
+        try select("Built browser automation", page: 0, in: harness)
+        try press("w", keyCode: 0, in: harness)
+        harness.window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        #expect(harness.window.firstResponder === harness.view, "the field has not taken the keyboard yet")
+        for key in "hy?" { try press(String(key), keyCode: 0, in: harness) }
+        #expect(harness.session.marks.map(\.kind) == [.comment])
+        #expect(harness.session.marks.first?.note == "why?")
+    }
+
     @Test func keysNeedASelection() throws {
         let harness = try makeHarness()
         harness.view.clearSelection()

@@ -205,6 +205,31 @@ struct KeyboardFocusTests {
         #expect(try session.editedText() == "We will leverage a very robust approach here.")
     }
 
+    /// The page redraws as soon as the comment starts, which lets go of the
+    /// selection, and the comment's field takes the keyboard only after that.
+    /// Keys pressed in between are part of the comment, not words added to the document.
+    @Test func keysPressedWhileTheCommentsFieldTakesTheKeyboardAreInTheComment() async throws {
+        let harness = await makeHarness()
+        let session = harness.session
+        let textView = try #require(harness.window.firstResponder as? AnnotationTextView)
+        textView.setSelectedRange((textView.string as NSString).range(of: "very robust"))
+
+        for (index, key) in "too vague".enumerated() {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: String(key), charactersIgnoringModifiers: String(key), isARepeat: false, keyCode: 0
+            ))
+            textView.keyDown(with: event)
+            if index == 0 {
+                spin(harness.window)
+                #expect(harness.window.firstResponder === textView, "the field has not taken the keyboard yet")
+            }
+        }
+        #expect(session.marks.map(\.kind) == [.comment])
+        #expect(session.marks.first?.note == "too vague")
+        #expect(try session.editedText() == "We will leverage a very robust approach here.")
+    }
+
     @Test func returnOnAMarkOpensItsNoteForTyping() async throws {
         let harness = await makeHarness()
         let session = harness.session
