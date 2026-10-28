@@ -67,6 +67,59 @@ struct SnippetTests {
         #expect(snippets.map(\.context).reduce(into: [SnippetContext]()) { if $0.last != $1 { $0.append($1) } } == SnippetContext.allCases)
     }
 
+    private func sayMoreCount(_ store: Store) throws -> Int {
+        try store.snippets().filter { $0.text == "Say more about this." }.count
+    }
+
+    private func storeAtV2(_ path: String) throws -> DatabaseQueue {
+        let database = try DatabaseQueue(path: path)
+        try Store.migrator.migrate(database, upTo: "v2: history and snippets")
+        return database
+    }
+
+    private func temporaryPath() -> String {
+        NSTemporaryDirectory() + UUID().uuidString + ".sqlite"
+    }
+
+    @Test func aNewDatabaseHasSayMoreOnceAtTheEndOfPlans() throws {
+        let store = try Store()
+        let plans = try store.snippets().filter { $0.context == .plans }
+        #expect(plans.last?.text == "Say more about this.")
+        #expect(try sayMoreCount(store) == 1)
+    }
+
+    @Test func aDatabaseFromBeforeGetsSayMoreOnceAtTheEndOfPlans() throws {
+        let path = temporaryPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let old = try storeAtV2(path)
+        let before = try old.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM snippet WHERE text = 'Say more about this.'") }
+        #expect(before == 0)
+        try old.write { try $0.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('plans', 'Mine.', 4)") }
+        try old.close()
+
+        let store = try Store(path: path)
+        let plans = try store.snippets().filter { $0.context == .plans }.map(\.text)
+        #expect(plans.last == "Say more about this.")
+        #expect(plans.suffix(2) == ["Mine.", "Say more about this."])
+        #expect(try sayMoreCount(store) == 1)
+
+        let again = try Store(path: path)
+        #expect(try sayMoreCount(again) == 1)
+        #expect(try again.snippets().count == store.snippets().count)
+    }
+
+    @Test func aDatabaseThatHasTheTextAlreadyGetsNoDuplicate() throws {
+        let path = temporaryPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let old = try storeAtV2(path)
+        try old.write { try $0.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('documents', 'Say more about this.', 9)") }
+        try old.close()
+
+        let store = try Store(path: path)
+        #expect(try sayMoreCount(store) == 1)
+        #expect(try store.snippets().first { $0.text == "Say more about this." }?.context == .documents)
+    }
+
     @Test func snippetsCanBeAddedChangedAndRemoved() throws {
         let store = try Store()
         let added = try store.addSnippet("Name the trade-off.", context: .plans)
@@ -206,6 +259,15 @@ struct HistoryTests {
         #expect(repeated.first?.kind == .comment)
         #expect(repeated.first?.note == "Too complex, simplify.")
         #expect(repeated.first?.count == 3)
+    }
+
+    @Test func anExpandMarkFromBeforeStillLoadsAndFormats() throws {
+        let store = try Store()
+        let text = "We add a cache here."
+        let request = try save(store, title: "Plan", text: text, marks: [mark(.expand, "We add a cache", in: text)])
+        let detail = try #require(try store.review(request.id))
+        #expect(detail.marks.map(\.kind) == [.expand])
+        #expect(detail.feedback?.contains("### 1. Expand\n> We add a cache") == true)
     }
 
     @Test func aMarkRemembersTheSnippetItCameFrom() throws {

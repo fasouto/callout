@@ -26,7 +26,7 @@ public final class Store: Sendable {
         NSHomeDirectory() + "/Library/Application Support/Annotator/annotator.sqlite"
     }
 
-    private static var migrator: DatabaseMigrator {
+    static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1: plan versions") { db in
             try db.create(table: "plan_version") { table in
@@ -94,13 +94,21 @@ public final class Store: Sendable {
                 table.column("position", .integer).notNull()
             }
             for (context, texts) in Snippet.starters {
-                for (position, text) in texts.enumerated() {
+                for (position, text) in texts.enumerated() where text != Snippet.sayMore {
                     try db.execute(
                         sql: "INSERT INTO snippet (context, text, position) VALUES (?, ?, ?)",
                         arguments: [context.rawValue, text, position]
                     )
                 }
             }
+        }
+        migrator.registerMigration("v3: say more as a saved comment") { db in
+            // Expand is no longer made, so what it asked for is a comment to pick.
+            guard try !Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM snippet WHERE text = ?)", arguments: [Snippet.sayMore])! else { return }
+            try db.execute(
+                sql: "INSERT INTO snippet (context, text, position) SELECT 'plans', ?, COALESCE(MAX(position), -1) + 1 FROM snippet WHERE context = 'plans'",
+                arguments: [Snippet.sayMore]
+            )
         }
         return migrator
     }
