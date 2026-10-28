@@ -7,7 +7,8 @@ import Testing
 @testable import AnnotatorUI
 
 /// Writes a small PDF with real, selectable text: one array of lines per page.
-func makePDF(pages: [[String]]) throws -> String {
+/// Under the heading, the lines are `leading` points apart.
+func makePDF(pages: [[String]], leading: CGFloat = 24) throws -> String {
     let path = NSTemporaryDirectory() + "annotator-\(UUID().uuidString.prefix(8)).pdf"
     var box = CGRect(x: 0, y: 0, width: 595, height: 842)
     let context = try #require(CGContext(URL(fileURLWithPath: path) as CFURL, mediaBox: &box, nil))
@@ -19,7 +20,7 @@ func makePDF(pages: [[String]]) throws -> String {
             let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
             context.textPosition = CGPoint(x: 64, y: y)
             CTLineDraw(line, context)
-            y -= index == 0 ? 40 : 24
+            y -= index == 0 ? 40 : leading
         }
         context.endPDFPage()
     }
@@ -51,9 +52,9 @@ struct PDFReviewTests {
         let view: AnnotationPDFView
     }
 
-    private func makeHarness() throws -> Harness {
+    private func makeHarness(pages: [[String]] = Self.pages, leading: CGFloat = 24) throws -> Harness {
         _ = NSApplication.shared
-        let path = try makePDF(pages: Self.pages)
+        let path = try makePDF(pages: pages, leading: leading)
         let request = ReviewRequest(
             content: .file(path: path), origin: .agentRequest,
             metadata: ReviewMetadata(title: "cv.pdf"), reply: .stdout, modes: [.feedback]
@@ -90,6 +91,41 @@ struct PDFReviewTests {
         let range = ((page.string ?? "") as NSString).range(of: phrase)
         #expect(range.location != NSNotFound, "\(phrase) is on the page")
         harness.view.setCurrentSelection(page.selection(for: range), animate: false)
+    }
+
+    /// Presses the mouse at one point of the first page, drags to another and lets go.
+    private func drag(from start: CGPoint, to end: CGPoint, in harness: Harness) throws {
+        let page = try #require(harness.session.pdf?.page(at: 0))
+        let window = harness.window
+        let from = harness.view.convert(harness.view.convert(start, from: page), to: nil)
+        let to = harness.view.convert(harness.view.convert(end, from: page), to: nil)
+        func mouse(_ type: NSEvent.EventType, at point: NSPoint) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1
+            ))
+        }
+        let down = try mouse(.leftMouseDown, at: from)
+        let moves = try (1...8).map { step in
+            let t = CGFloat(step) / 8
+            return try mouse(.leftMouseDragged, at: NSPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t))
+        }
+        let up = try mouse(.leftMouseUp, at: to)
+        let pressed = try #require(window.contentView?.superview?.hitTest(from))
+        // Posting an event stops the run loop that is running. Posted from the test,
+        // that is the loop the test runner waits in, and the process then exits
+        // with status 0 before the remaining tests run.
+        let loop = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(loop, CFRunLoopMode.defaultMode.rawValue) {
+            for event in moves + [up] { NSApp.postEvent(event, atStart: false) }
+            // PDFKit's mouseDown takes the drags from the queue and puts the release back.
+            pressed.mouseDown(with: down)
+            while let event = NSApp.nextEvent(matching: .any, until: .distantPast, inMode: .default, dequeue: true) {
+                if event.type == .leftMouseUp { pressed.mouseUp(with: event) }
+            }
+            CFRunLoopStop(loop)
+        }
+        CFRunLoopRunInMode(.defaultMode, 10, false)
     }
 
     /// Presses ⌥ and a mark's letter.
@@ -388,6 +424,46 @@ struct PDFReviewTests {
         for key in "who ships" { try press(String(key), keyCode: 0, in: harness) }
         #expect(harness.session.marks.map(\.kind) == [.replace])
         #expect(harness.session.marks.first?.text == "who ships")
+    }
+
+    /// A drag that ends a little past the end of a line, level with it, selects to
+    /// the end of that line, though the longer line above or below is nearer the pointer.
+    @Test func draggingPastTheEndOfALineSelectsToTheEndOfThatLine() throws {
+        let harness = try makeHarness(pages: [[
+            "Ada Lovelace",
+            "Built browser automation for insurance price comparison.",
+            "Mentored a team of five engineers through two launches and a migration.",
+            "Responsible for the database.",
+        ]], leading: 18)
+        let session = harness.session
+        let page = try #require(session.pdf?.page(at: 0))
+        let text = (page.string ?? "") as NSString
+        func box(of phrase: String) throws -> CGRect {
+            let range = text.range(of: phrase)
+            try #require(range.location != NSNotFound, "\(phrase) is on the page")
+            return try #require(page.selection(for: range)?.bounds(for: page))
+        }
+        func start(of phrase: String) throws -> CGPoint {
+            let box = try box(of: phrase)
+            return CGPoint(x: box.minX + 1, y: box.midY)
+        }
+        /// In the margin, level with the line.
+        func pastTheEnd(of line: String) throws -> CGPoint {
+            let box = try box(of: line)
+            return CGPoint(x: box.maxX + 20, y: box.midY)
+        }
+
+        try drag(from: try start(of: "insurance"), to: try pastTheEnd(of: "Built browser automation for insurance price comparison."), in: harness)
+        #expect(harness.view.currentSelection?.string == "insurance price comparison.", "not the longer line below")
+        try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
+
+        try drag(from: try start(of: "the database"), to: try pastTheEnd(of: "Responsible for the database."), in: harness)
+        #expect(harness.view.currentSelection?.string == "the database.", "not the longer line above")
+        try mark("d", keyCode: 2, in: harness)
+        session.endEditing()
+
+        #expect(session.marks.map(\.anchor.quote) == ["insurance price comparison.", "the database."])
     }
 
     @Test func keysNeedASelection() throws {
