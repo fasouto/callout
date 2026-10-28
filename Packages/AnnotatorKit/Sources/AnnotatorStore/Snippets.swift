@@ -27,7 +27,8 @@ public struct Snippet: Identifiable, Equatable, Sendable {
     public var text: String
     public var position: Int
 
-    /// What Expand used to ask for, as a comment.
+    /// What Expand used to ask for, as a comment. A migration adds it to plans,
+    /// in new databases too.
     static let sayMore = "Say more about this."
 
     /// What a new database starts with. All of it can be changed in Settings.
@@ -37,7 +38,6 @@ public struct Snippet: Identifiable, Equatable, Sendable {
             "Reuse existing code instead of writing new code.",
             "No tests for this.",
             "Out of scope: leave it out.",
-            sayMore,
         ]),
         (.documents, [
             "Too generic: say something specific.",

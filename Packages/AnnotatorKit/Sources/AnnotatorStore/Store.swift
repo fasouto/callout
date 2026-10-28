@@ -94,7 +94,7 @@ public final class Store: Sendable {
                 table.column("position", .integer).notNull()
             }
             for (context, texts) in Snippet.starters {
-                for (position, text) in texts.enumerated() where text != Snippet.sayMore {
+                for (position, text) in texts.enumerated() {
                     try db.execute(
                         sql: "INSERT INTO snippet (context, text, position) VALUES (?, ?, ?)",
                         arguments: [context.rawValue, text, position]
