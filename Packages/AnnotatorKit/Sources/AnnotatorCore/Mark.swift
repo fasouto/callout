@@ -25,9 +25,10 @@ public enum MarkKind: String, Codable, Sendable, CaseIterable {
 public struct Anchor: Codable, Hashable, Sendable {
     /// 1-based page number for PDFs, nil for text content.
     public var page: Int?
-    /// Offsets into the source text, or into the page's text for PDFs. Empty for inserts.
+    /// Offsets into the source text, or into the page's text for PDFs. Empty for
+    /// inserts and for comments pinned to a point.
     public var span: TextSpan
-    /// The exact text covered by `span`. Empty for inserts.
+    /// The exact text covered by `span`. Empty when the span is.
     public var quote: String
     public var prefix: String
     public var suffix: String
@@ -41,6 +42,9 @@ public struct Anchor: Codable, Hashable, Sendable {
     }
 
     public static let contextLength = 32
+
+    /// A point between two characters rather than words.
+    public var isPoint: Bool { span.isEmpty }
 
     /// Builds an anchor for `span` in `text`, capturing the quote and its surroundings.
     public static func make(in text: String, span: TextSpan, page: Int? = nil) -> Anchor? {
@@ -83,6 +87,9 @@ public struct Mark: Codable, Hashable, Sendable, Identifiable {
         self.text = text
         self.note = note
     }
+
+    /// A comment on no words, pinned to a point of the text: what typing at a bare caret makes.
+    public var isPointComment: Bool { kind == .comment && anchor.isPoint }
 }
 
 /// What the marks refer to, as text the formatter can search.

@@ -126,6 +126,19 @@ struct HistoryTests {
         #expect(detail.feedback?.contains("### 1. Replace\n> leverage\nWith: use") == true)
     }
 
+    @Test func aCommentOnNoWordsIsKeptWithItsEmptyQuote() throws {
+        let store = try Store()
+        let text = "We will leverage a very robust approach here."
+        let point = NSMaxRange((text as NSString).range(of: "robust"))
+        let comment = Mark(kind: .comment, anchor: Anchor.make(in: text, span: TextSpan(point, point))!, note: "Says who?")
+        let request = try save(store, title: "Plan", text: text, marks: [comment])
+
+        let detail = try #require(try store.review(request.id))
+        #expect(detail.marks == [comment])
+        #expect(detail.marks.first?.anchor.quote == "")
+        #expect(detail.feedback?.contains("### 1. Comment after\n> We will leverage a very robust\nSays who?") == true)
+    }
+
     @Test func historyIsNewestFirstAndSearchable() throws {
         let store = try Store()
         let now = Date()

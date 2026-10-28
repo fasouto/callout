@@ -154,6 +154,47 @@ struct FeedbackFormatterTests {
         #expect(output == "## Feedback\n\n### 1. Insert\nAdd: Hello\n")
     }
 
+    @Test func aCommentAtAPointQuotesTheTextItFollows() {
+        let source = "Worked at CERN.\nBuilt things.\n"
+        let marks = [Mark(kind: .comment, anchor: point(after: "CERN", in: source), note: "Why leave?")]
+        let expected = """
+        ## Feedback on cv
+
+        ### 1. Comment after
+        > Worked at CERN
+        Why leave?
+
+        """
+        #expect(format("cv", .text(source), marks) == expected)
+    }
+
+    @Test func aCommentAtALineStartQuotesTheTextItGoesBefore() {
+        let source = "Worked at CERN.\nBuilt things.\n"
+        let marks = [Mark(kind: .comment, anchor: point(after: "CERN.\n", in: source), note: "Which things?")]
+        #expect(format("cv", .text(source), marks).contains("### 1. Comment before\n> Built things.\nWhich things?\n"))
+    }
+
+    @Test func commentsAtOnePointAreSeparateItems() {
+        let source = "Worked at CERN.\nBuilt things.\n"
+        let marks = [
+            Mark(kind: .comment, anchor: point(after: "CERN", in: source), note: "Why leave?"),
+            Mark(kind: .comment, anchor: point(after: "CERN", in: source), note: "Which years?"),
+        ]
+        let output = format("cv", .text(source), marks)
+        #expect(output.contains("### 1. Comment after\n> Worked at CERN\nWhy leave?\n\n### 2. Comment after\n> Worked at CERN\nWhich years?\n"))
+    }
+
+    @Test func aCommentInAnEmptyDocumentHasNoBareQuote() {
+        let marks = [Mark(kind: .comment, anchor: point(after: "", in: ""), note: "Say something.")]
+        #expect(format("", .text(""), marks) == "## Feedback\n\n### 1. Comment\nSay something.\n")
+    }
+
+    @Test func aCommentOnAPDFPageStillQuotesItsWords() {
+        let page = "Worked at CERN on databases."
+        let output = format("cv.pdf", .pdf(pages: ["First.", page]), [mark(.comment, "on databases", in: page, page: 2, note: "Which ones?")])
+        #expect(output.contains("### 1. Comment (page 2)\n> on databases\nWhich ones?\n"))
+    }
+
     @Test func longInsertContextIsCutAtAWord() {
         let source = String(repeating: "word ", count: 40) + "end"
         let output = format("", .text(source), [insert("!", after: "end", in: source)])

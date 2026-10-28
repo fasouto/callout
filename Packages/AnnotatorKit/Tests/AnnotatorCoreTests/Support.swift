@@ -22,6 +22,13 @@ func mark(
     return Mark(kind: kind, anchor: anchor, text: replacement, note: note)
 }
 
+/// The point right after the nth occurrence of `preceding`, or the start of
+/// the text when `preceding` is empty.
+func point(after preceding: String, in text: String, occurrence: Int = 1, page: Int? = nil) -> Anchor {
+    let offset = preceding.isEmpty ? 0 : span(of: preceding, in: text, occurrence: occurrence).end
+    return Anchor.make(in: text, span: TextSpan(offset, offset), page: page)!
+}
+
 /// An insert mark placed right after the nth occurrence of `preceding`,
 /// or at the start of the text when `preceding` is empty.
 func insert(
@@ -31,7 +38,5 @@ func insert(
     occurrence: Int = 1,
     page: Int? = nil
 ) -> Mark {
-    let offset = preceding.isEmpty ? 0 : span(of: preceding, in: text, occurrence: occurrence).end
-    let anchor = Anchor.make(in: text, span: TextSpan(offset, offset), page: page)!
-    return Mark(kind: .insert, anchor: anchor, text: new)
+    Mark(kind: .insert, anchor: point(after: preceding, in: text, occurrence: occurrence, page: page), text: new)
 }

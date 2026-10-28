@@ -71,6 +71,12 @@ public enum FeedbackFormatter {
             lines.append("### \(number). Delete\(page)")
             lines += quoteLines(for: mark, in: document)
             lines += noteLines("Reason", mark.note)
+        case .comment where mark.anchor.isPoint:
+            // On no words: found as an insertion is, by the text beside it.
+            let place = insertionContext(for: mark, in: document)
+            lines.append("### \(number). Comment\(place.map { " \($0.relation)" } ?? "")\(page)")
+            if let place { lines += quoted(place.text) }
+            lines += noteLines(nil, mark.note)
         case .comment:
             lines.append("### \(number). Comment\(page)")
             lines += quoteLines(for: mark, in: document)
@@ -160,7 +166,8 @@ public enum FeedbackFormatter {
 
     private static let contextLimit = 80
 
-    /// The text an insertion goes after, or before when it starts a line.
+    /// The text a point (an insertion, or a comment on no words) is after, or
+    /// before when it starts a line.
     private static func insertionContext(for mark: Mark, in document: ReviewDocument) -> (relation: String, text: String)? {
         var before = mark.anchor.prefix
         var after = mark.anchor.suffix
