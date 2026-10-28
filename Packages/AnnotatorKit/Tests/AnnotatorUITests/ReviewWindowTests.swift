@@ -42,7 +42,7 @@ extension OnTheMainThread {
             let textView: AnnotationTextView
         }
 
-        private func makeHarness() throws -> Harness {
+        private func makeHarness(finish: @escaping (ReviewOutcome) -> Void = { _ in }) throws -> Harness {
             _ = NSApplication.shared
             let request = ReviewRequest(
                 content: .text(Self.source, format: .markdown),
@@ -57,7 +57,7 @@ extension OnTheMainThread {
                 styleMask: [.titled, .resizable], backing: .buffered, defer: false
             )
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: ReviewView(session: session) { _ in })
+            window.contentView = NSHostingView(rootView: ReviewView(session: session, finish: finish))
             settle(window)
             let textView = try #require(findTextView(in: window.contentView))
             return Harness(session: session, window: window, textView: textView)
@@ -237,6 +237,34 @@ extension OnTheMainThread {
             session.update(try #require(session.marks.first).id, note: "Why?")
             session.endEditing()
             #expect(session.marks.first?.note == "Why?")
+        }
+
+        @Test func escapeIsTheCancelButtonsOnlyWhileNothingIsBeingWritten() throws {
+            var outcomes: [ReviewOutcome] = []
+            let harness = try makeHarness { outcomes.append($0) }
+            harness.textView.usesVimKeys = false
+            let escape = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: KeyCode.escape
+            ))
+            let caret = (harness.textView.string as NSString).range(of: "robust").location
+            harness.textView.setSelectedRange(NSRange(location: caret, length: 0))
+
+            try mark("i", keyCode: 34, in: harness)
+            settle(harness.window)
+            #expect(!harness.window.performKeyEquivalent(with: escape), "adding words")
+            harness.textView.keyDown(with: escape)
+            settle(harness.window)
+
+            try mark("c", keyCode: 8, in: harness)
+            settle(harness.window)
+            #expect(!harness.window.performKeyEquivalent(with: escape), "writing a note")
+            harness.session.endEditing()
+            settle(harness.window)
+
+            #expect(outcomes.isEmpty)
+            #expect(harness.window.performKeyEquivalent(with: escape))
+            #expect(outcomes == [.cancel])
         }
 
         @Test func optionIPutsTheCaretAfterTheSelectionAddingWords() throws {

@@ -210,12 +210,18 @@ private struct ResponseButtons: View {
         session.hasFeedback || !(session.allows.approve || session.allows.applyEdits)
     }
 
+    /// AppKit can offer Esc to this button before the text that has the keyboard,
+    /// where it stops adding words or finishes a note.
+    private var escapeCancels: Bool {
+        !session.isAddingWords && session.editing == nil && !Keymap.usesVimKeys
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Button { finish(.cancel) } label: {
                 Text("Cancel").frame(minWidth: 64)
             }
-            .keyboardShortcut(.cancelAction)
+            .keyboardShortcut(escapeCancels ? .cancelAction : nil)
             .buttonStyle(.bordered)
             .fixedSize()
 
