@@ -66,10 +66,10 @@ extension OnTheMainThread {
             let anchor = Anchor.make(in: session.source, span: TextSpan(8, 16))
             let mark = try #require(session.addComment(from: snippet, anchor: anchor))
             #expect(mark.kind == .comment)
-            #expect(mark.note == "Too complex, simplify.")
+            #expect(mark.note == "Do it.")
             #expect(mark.anchor.quote == "leverage")
             #expect(session.snippetUses == [mark.id: snippet.id])
-            #expect(session.feedback().contains("### 1. Comment\n> leverage\nToo complex, simplify.\n"))
+            #expect(session.feedback().contains("### 1. Comment\n> leverage\nDo it.\n"))
         }
 
         // MARK: History

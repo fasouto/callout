@@ -110,6 +110,15 @@ public final class Store: Sendable {
                 arguments: [Snippet.sayMore]
             )
         }
+        migrator.registerMigration("v4: the comments written most, first in plans") { db in
+            let missing = try Snippet.mostWritten.filter { text in
+                try !Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM snippet WHERE context = 'plans' AND text = ?)", arguments: [text])!
+            }
+            try db.execute(sql: "UPDATE snippet SET position = position + ? WHERE context = 'plans'", arguments: [missing.count])
+            for (position, text) in missing.enumerated() {
+                try db.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('plans', ?, ?)", arguments: [text, position])
+            }
+        }
         return migrator
     }
 

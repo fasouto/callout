@@ -61,7 +61,7 @@ struct SnippetTests {
     @Test func aNewDatabaseStartsWithSnippetsInEveryContext() throws {
         let snippets = try Store().snippets()
         #expect(Set(snippets.map(\.context)) == Set(SnippetContext.allCases))
-        #expect(snippets.first?.text == "Too complex, simplify.")
+        #expect(snippets.first?.text == "Do it.")
         #expect(snippets.first?.context == .plans)
         // Grouped by context, in the contexts' own order.
         #expect(snippets.map(\.context).reduce(into: [SnippetContext]()) { if $0.last != $1 { $0.append($1) } } == SnippetContext.allCases)
@@ -71,9 +71,9 @@ struct SnippetTests {
         try store.snippets().filter { $0.text == "Say more about this." }.count
     }
 
-    private func storeAtV2(_ path: String) throws -> DatabaseQueue {
+    private func database(at path: String, upTo migration: String = "v2: history and snippets") throws -> DatabaseQueue {
         let database = try DatabaseQueue(path: path)
-        try Store.migrator.migrate(database, upTo: "v2: history and snippets")
+        try Store.migrator.migrate(database, upTo: migration)
         return database
     }
 
@@ -91,7 +91,7 @@ struct SnippetTests {
     @Test func aDatabaseFromBeforeGetsSayMoreOnceAtTheEndOfPlans() throws {
         let path = temporaryPath()
         defer { try? FileManager.default.removeItem(atPath: path) }
-        let old = try storeAtV2(path)
+        let old = try database(at: path)
         let before = try old.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM snippet WHERE text = 'Say more about this.'") }
         #expect(before == 0)
         try old.write { try $0.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('plans', 'Mine.', 4)") }
@@ -111,13 +111,58 @@ struct SnippetTests {
     @Test func aDatabaseThatHasTheTextAlreadyGetsNoDuplicate() throws {
         let path = temporaryPath()
         defer { try? FileManager.default.removeItem(atPath: path) }
-        let old = try storeAtV2(path)
+        let old = try database(at: path)
         try old.write { try $0.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('documents', 'Say more about this.', 9)") }
         try old.close()
 
         let store = try Store(path: path)
         #expect(try sayMoreCount(store) == 1)
         #expect(try store.snippets().first { $0.text == "Say more about this." }?.context == .documents)
+    }
+
+    private let mostWritten = [
+        "Do it.",
+        "Why? Explain the reason.",
+        "I don't understand this. Explain it simply.",
+        "Are you sure? Check it.",
+        "Give me options and your pick.",
+    ]
+
+    @Test func aNewDatabaseStartsPlansWithTheCommentsWrittenMost() throws {
+        let plans = try Store().snippets().filter { $0.context == .plans }.map(\.text)
+        #expect(Array(plans.prefix(5)) == mostWritten)
+        #expect(plans.dropFirst(5).first == "Too complex, simplify.")
+    }
+
+    @Test func aDatabaseFromBeforeGetsThemOnceAtTheStartOfPlans() throws {
+        let path = temporaryPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let old = try database(at: path, upTo: "v3: say more as a saved comment")
+        let before = try old.read { try String.fetchAll($0, sql: "SELECT text FROM snippet WHERE context = 'plans' ORDER BY position") }
+        #expect(before.allSatisfy { !mostWritten.contains($0) })
+        try old.close()
+
+        let store = try Store(path: path)
+        let plans = try store.snippets().filter { $0.context == .plans }.map(\.text)
+        #expect(plans == mostWritten + before)
+        // GitLab keeps its own copy of the question.
+        #expect(try store.snippets().filter { $0.text == "Why? Explain the reason." }.map(\.context) == [.plans, .gitlab])
+
+        let again = try Store(path: path)
+        #expect(try again.snippets().filter { $0.context == .plans }.map(\.text) == plans)
+    }
+
+    @Test func aCommentAlreadyInPlansStaysWhereItIs() throws {
+        let path = temporaryPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let old = try database(at: path, upTo: "v3: say more as a saved comment")
+        try old.write { try $0.execute(sql: "INSERT INTO snippet (context, text, position) VALUES ('plans', 'Do it.', 20)") }
+        try old.close()
+
+        let plans = try Store(path: path).snippets().filter { $0.context == .plans }.map(\.text)
+        #expect(Array(plans.prefix(4)) == Array(mostWritten.dropFirst()))
+        #expect(plans.last == "Do it.")
+        #expect(plans.filter { $0 == "Do it." }.count == 1)
     }
 
     @Test func snippetsCanBeAddedChangedAndRemoved() throws {

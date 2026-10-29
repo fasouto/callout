@@ -31,7 +31,18 @@ public struct Snippet: Identifiable, Equatable, Sendable {
     /// in new databases too.
     static let sayMore = "Say more about this."
 
-    /// What a new database starts with. All of it can be changed in Settings.
+    /// What Claude's replies were most often told in the history, most first.
+    /// A migration puts them first in plans, in new databases too.
+    static let mostWritten = [
+        "Do it.",
+        "Why? Explain the reason.",
+        "I don't understand this. Explain it simply.",
+        "Are you sure? Check it.",
+        "Give me options and your pick.",
+    ]
+
+    /// What the snippet table was first filled with; comments added since come
+    /// with migrations of their own. All of it can be changed in Settings.
     static let starters: [(SnippetContext, [String])] = [
         (.plans, [
             "Too complex, simplify.",
