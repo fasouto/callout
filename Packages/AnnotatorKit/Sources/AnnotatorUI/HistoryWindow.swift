@@ -184,7 +184,7 @@ final class HistoryThumbnails {
         if let text = detail.contentText {
             let document = MarkdownRenderer.render(text, format: .markdown)
             let layout = DisplayLayout(document: document, marks: detail.marks, removals: [])
-            let styled = TextStyler.attributedString(layout: layout, marks: detail.marks, selectedMarkID: nil, added: [], pins: .wash)
+            let styled = TextStyler.attributedString(layout: layout, marks: detail.marks, selectedMarkID: nil, added: [], ornaments: .inText)
             return NSImage(size: size, flipped: true) { rect in
                 // Paper, whatever the appearance.
                 NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {

@@ -90,6 +90,21 @@ extension OnTheMainThread {
             #expect(thumbnails[0] != thumbnails[1])
         }
 
+        @Test func thePageDrawsAPenStrokeAndAThumbnailTheSystemsStrike() throws {
+            let text = "We will leverage a very robust approach here."
+            let found = (text as NSString).range(of: "very robust")
+            let strike = Mark(kind: .delete, anchor: try #require(Anchor.make(in: text, span: TextSpan(found.location, NSMaxRange(found)))))
+            let layout = DisplayLayout(document: MarkdownRenderer.render(text, format: .markdown), marks: [strike], removals: [])
+            let page = TextStyler.attributedString(layout: layout, marks: [strike], selectedMarkID: nil)
+            let thumbnail = TextStyler.attributedString(layout: layout, marks: [strike], selectedMarkID: nil, ornaments: .inText)
+            let struck = (page.string as NSString).range(of: "very robust")
+
+            #expect(page.attribute(.strikethroughColor, at: struck.location, effectiveRange: nil) as? NSColor == .clear)
+            #expect(BlockDecorator.strikes(in: page) == [BlockFragment.Strike(range: struck, color: Theme.pen)])
+            #expect(thumbnail.attribute(.strikethroughColor, at: struck.location, effectiveRange: nil) as? NSColor == Theme.pen)
+            #expect(BlockDecorator.strikes(in: thumbnail).isEmpty)
+        }
+
         @Test func aFinishedReviewGoesIntoTheHistory() throws {
             _ = NSApplication.shared
             let store = try Store()

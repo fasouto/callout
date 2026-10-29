@@ -8,6 +8,8 @@ extension NSAttributedString.Key {
     static let annotatorBlock = NSAttributedString.Key("annotatorBlock")
     /// A `Pin` drawn between two characters.
     static let annotatorPin = NSAttributedString.Key("annotatorPin")
+    /// The colour of a pen stroke drawn through the text.
+    static let annotatorStrike = NSAttributedString.Key("annotatorStrike")
 }
 
 /// A comment pinned to a point between two characters. It is set on the
@@ -33,12 +35,14 @@ enum BlockDecoration: Hashable {
     case tableRow(header: Bool, last: Bool, indent: CGFloat, width: CGFloat?)
 }
 
-/// How a comment on no words shows on a page.
-enum PinStyle {
-    /// A `Pin` for the page's layout to draw as a bar between two characters.
-    case bar
-    /// A wash on one character, for a picture drawn without the page's layout.
-    case wash
+/// What draws the marks that attributes alone can't show: pins and pen strokes.
+enum Ornaments {
+    /// The page's layout: a pin is a bar between two characters, and a strike a
+    /// stroke thicker than any strikethrough.
+    case drawnByLayout
+    /// The text alone, for a picture drawn without the page's layout: a pin is a
+    /// wash on one character, and a strike the system's strikethrough.
+    case inText
 }
 
 /// Builds what the text view shows from the rendered document and the marks.
@@ -52,10 +56,10 @@ enum TextStyler {
     ///   - measure: how wide the page is.
     static func attributedString(
         layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, added: [TextSpan] = [], measure: CGFloat = Theme.measure,
-        pins: PinStyle = .bar
+        ornaments: Ornaments = .drawnByLayout
     ) -> NSAttributedString {
         let base = basePage(of: layout.document, added: added, measure: measure).text
-        return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length, pins: pins)
+        return marked(base, layout: layout, marks: marks, selectedMarkID: selectedMarkID, displayed: 0..<base.length, ornaments: ornaments)
     }
 
     /// The document as set in type, without marks: one character for each of
@@ -136,7 +140,7 @@ enum TextStyler {
     /// and the ghosts that sit anywhere from its start to its end, both included.
     static func marked(
         _ base: NSAttributedString, layout: DisplayLayout, marks: [Mark], selectedMarkID: UUID?, displayed: Range<Int>,
-        pins: PinStyle = .bar
+        ornaments: Ornaments = .drawnByLayout
     ) -> NSAttributedString {
         let document = layout.document
         let start = displayed.lowerBound
@@ -147,7 +151,7 @@ enum TextStyler {
             let selected = mark.id == selectedMarkID
             if mark.isPointComment {
                 if let point = document.displayedOffset(forSource: mark.anchor.span.start) {
-                    pin(at: point, selected: selected, style: pins, in: result, base: base, displayed: displayed)
+                    pin(at: point, selected: selected, ornaments: ornaments, in: result, base: base, displayed: displayed)
                 }
                 continue
             }
@@ -155,7 +159,7 @@ enum TextStyler {
             for range in ranges {
                 let part = range.clamped(to: displayed)
                 guard !part.isEmpty else { continue }
-                result.addAttributes(attributes(for: mark, selected: selected), range: NSRange(location: part.lowerBound - start, length: part.count))
+                result.addAttributes(attributes(for: mark, selected: selected, ornaments: ornaments), range: NSRange(location: part.lowerBound - start, length: part.count))
             }
             // A little air between struck text and the words that replace it.
             if mark.kind == .replace, mark.text?.isEmpty == false, let end = ranges.last?.upperBound, end > 0, displayed.contains(end - 1) {
@@ -187,35 +191,42 @@ enum TextStyler {
 
     /// A comment on no words, pinned to `point`, a displayed offset.
     private static func pin(
-        at point: Int, selected: Bool, style: PinStyle, in result: NSMutableAttributedString, base: NSAttributedString, displayed: Range<Int>
+        at point: Int, selected: Bool, ornaments: Ornaments, in result: NSMutableAttributedString, base: NSAttributedString, displayed: Range<Int>
     ) {
         let characters = base.string as NSString
         guard characters.length > 0 else { return }
         var isAfter = point >= characters.length
         // A wash on a line break would run to the end of the line.
-        if style == .wash, !isAfter, point > 0, characters.character(at: point) == 0x0A || characters.character(at: point) == 0x2028 {
+        if ornaments == .inText, !isAfter, point > 0, characters.character(at: point) == 0x0A || characters.character(at: point) == 0x2028 {
             isAfter = true
         }
         let index = isAfter ? min(point, characters.length) - 1 : point
         guard displayed.contains(index) else { return }
         let character = NSIntersectionRange(characters.rangeOfComposedCharacterSequence(at: index), NSRange(displayed))
         let range = NSRange(location: character.location - displayed.lowerBound, length: character.length)
-        switch style {
-        case .bar:
+        switch ornaments {
+        case .drawnByLayout:
             let shared = result.attribute(.annotatorPin, at: range.location, effectiveRange: nil) as? Pin
             result.addAttribute(.annotatorPin, value: Pin(isAfter: isAfter, selected: selected || shared?.selected == true), range: range)
-        case .wash:
+        case .inText:
             result.addAttribute(.backgroundColor, value: Theme.highlightWash(selected: selected), range: range)
         }
     }
 
-    private static func attributes(for mark: Mark, selected: Bool) -> [NSAttributedString.Key: Any] {
+    private static func attributes(for mark: Mark, selected: Bool, ornaments: Ornaments) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [.annotatorMark: mark.id.uuidString]
         switch mark.kind {
         case .delete, .replace:
             // The pen stroke carries the meaning; the words recede.
             attributes[.strikethroughStyle] = NSUnderlineStyle.thick.rawValue
-            attributes[.strikethroughColor] = Theme.pen
+            switch ornaments {
+            case .drawnByLayout:
+                // The text still says it is struck, but the layout draws the stroke.
+                attributes[.strikethroughColor] = NSColor.clear
+                attributes[.annotatorStrike] = Theme.pen
+            case .inText:
+                attributes[.strikethroughColor] = Theme.pen
+            }
             attributes[.foregroundColor] = NSColor.secondaryLabelColor
             if selected { attributes[.backgroundColor] = Theme.pen.withAlphaComponent(0.14) }
         case .comment, .expand, .summarize:

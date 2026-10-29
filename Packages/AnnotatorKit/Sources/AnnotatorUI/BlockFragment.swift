@@ -2,7 +2,8 @@ import AppKit
 
 /// Hands out layout fragments that draw what is not set in type: a paragraph's
 /// decoration (the panel behind code and tables, the bar beside a quotation,
-/// the rule of a break) and the pins of comments on no words.
+/// the rule of a break), the pins of comments on no words, and the pen's
+/// strokes through struck text.
 final class BlockDecorator: NSObject, NSTextLayoutManagerDelegate {
     func textLayoutManager(
         _ textLayoutManager: NSTextLayoutManager,
@@ -13,8 +14,11 @@ final class BlockDecorator: NSObject, NSTextLayoutManagerDelegate {
             let text = paragraph.attributedString
             let decoration = text.attribute(.annotatorBlock, at: 0, effectiveRange: nil) as? BlockDecoration
             let pins = Self.pins(in: text)
-            if decoration != nil || !pins.isEmpty {
-                return BlockFragment(decoration: decoration, pins: pins, textElement: textElement, range: textElement.elementRange)
+            let strikes = Self.strikes(in: text)
+            if decoration != nil || !pins.isEmpty || !strikes.isEmpty {
+                return BlockFragment(
+                    decoration: decoration, pins: pins, strikes: strikes, textElement: textElement, range: textElement.elementRange
+                )
             }
         }
         return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
@@ -36,6 +40,14 @@ final class BlockDecorator: NSObject, NSTextLayoutManagerDelegate {
         }
         return pins
     }
+
+    static func strikes(in text: NSAttributedString) -> [BlockFragment.Strike] {
+        var strikes: [BlockFragment.Strike] = []
+        text.enumerateAttribute(.annotatorStrike, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            if let color = value as? NSColor { strikes.append(.init(range: range, color: color)) }
+        }
+        return strikes
+    }
 }
 
 final class BlockFragment: NSTextLayoutFragment {
@@ -46,12 +58,20 @@ final class BlockFragment: NSTextLayoutFragment {
         var selected: Bool
     }
 
+    /// Struck text: a range of the paragraph and the colour of its stroke.
+    struct Strike: Equatable {
+        var range: NSRange
+        var color: NSColor
+    }
+
     private let decoration: BlockDecoration?
     private let pins: [PinnedPoint]
+    private let strikes: [Strike]
 
-    init(decoration: BlockDecoration?, pins: [PinnedPoint], textElement: NSTextElement, range: NSTextRange?) {
+    init(decoration: BlockDecoration?, pins: [PinnedPoint], strikes: [Strike], textElement: NSTextElement, range: NSTextRange?) {
         self.decoration = decoration
         self.pins = pins
+        self.strikes = strikes
         super.init(textElement: textElement, range: range)
     }
 
@@ -109,6 +129,28 @@ final class BlockFragment: NSTextLayoutFragment {
             ?? textLineFragments.last { NSMaxRange($0.characterRange) == offset }
     }
 
+    /// A strike's strokes, one per line it is on, in the fragment's own
+    /// coordinates: through the middle of the lowercase letters.
+    private func strokes(of strike: Strike) -> [(start: CGPoint, end: CGPoint, width: CGFloat)] {
+        textLineFragments.compactMap { line in
+            let text = line.attributedString
+            var range = NSIntersectionRange(strike.range, line.characterRange)
+            // A struck paragraph's line break has no width to strike.
+            while range.length > 0, [0x0A, 0x2028].contains((text.string as NSString).character(at: NSMaxRange(range) - 1)) {
+                range.length -= 1
+            }
+            guard range.length > 0 else { return nil }
+            let font = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont ?? Theme.serif(Theme.bodySize)
+            let bounds = line.typographicBounds
+            let y = bounds.minY + line.glyphOrigin.y - font.xHeight / 2
+            return (
+                CGPoint(x: bounds.minX + line.locationForCharacter(at: range.location).x, y: y),
+                CGPoint(x: bounds.minX + line.locationForCharacter(at: NSMaxRange(range)).x, y: y),
+                Theme.penWidth(forTextOf: font.pointSize)
+            )
+        }
+    }
+
     /// How far a pin's head and its wash reach around its bar.
     private static let pinReach: CGFloat = 4
 
@@ -118,6 +160,10 @@ final class BlockFragment: NSTextLayoutFragment {
         for pin in pins {
             if let bar = bar(at: pin.offset) { bounds = bounds.union(bar.insetBy(dx: -Self.pinReach, dy: -Self.pinReach)) }
         }
+        for stroke in strikes.flatMap(strokes(of:)) {
+            let reach = stroke.width
+            bounds = bounds.union(CGRect(x: stroke.start.x - reach, y: stroke.start.y - reach, width: stroke.end.x - stroke.start.x + 2 * reach, height: 2 * reach))
+        }
         return bounds
     }
 
@@ -126,7 +172,23 @@ final class BlockFragment: NSTextLayoutFragment {
         let bars = pins.compactMap { pin in bar(at: pin.offset).map { (rect: $0.offsetBy(dx: point.x, dy: point.y), selected: pin.selected) } }
         drawWashes(behind: bars.filter(\.selected).map(\.rect), context: context)
         super.draw(at: point, in: context)
+        drawStrikes(at: point, context: context)
         drawPins(bars, context: context)
+    }
+
+    private func drawStrikes(at point: CGPoint, context: CGContext) {
+        context.saveGState()
+        context.setLineCap(.round)
+        for strike in strikes {
+            context.setStrokeColor(strike.color.cgColor)
+            for stroke in strokes(of: strike) {
+                context.setLineWidth(stroke.width)
+                context.move(to: CGPoint(x: stroke.start.x + point.x, y: stroke.start.y + point.y))
+                context.addLine(to: CGPoint(x: stroke.end.x + point.x, y: stroke.end.y + point.y))
+                context.strokePath()
+            }
+        }
+        context.restoreGState()
     }
 
     private func drawWashes(behind bars: [CGRect], context: CGContext) {

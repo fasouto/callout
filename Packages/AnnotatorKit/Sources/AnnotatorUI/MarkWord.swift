@@ -25,7 +25,13 @@ struct MarkWord: View {
         let text = Self.keyed(kind.label, key: kind.key).font(.system(size: size))
         switch kind {
         case .delete:
-            text.strikethrough(color: Color(nsColor: Theme.pen))
+            // A stroke as the page draws it, thicker than a strikethrough can be.
+            text.overlay {
+                Capsule()
+                    .fill(Color(nsColor: Theme.pen))
+                    .frame(height: Theme.penWidth(forTextOf: size))
+                    .offset(y: Self.strikeDrop(size))
+            }
         case .replace, .insert:
             text.italic().foregroundStyle(Color(nsColor: Theme.ink))
         case .comment, .expand, .summarize:
@@ -35,6 +41,12 @@ struct MarkWord: View {
         case .keep:
             text.underline(color: Color(nsColor: Theme.keep))
         }
+    }
+
+    /// How far below the middle of the line the middle of the lowercase letters is.
+    private static func strikeDrop(_ size: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size)
+        return (font.ascender + font.descender) / 2 - font.xHeight / 2
     }
 
     /// The word for saved comments, with its key in bold like the marks'.

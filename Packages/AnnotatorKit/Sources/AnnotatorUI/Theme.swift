@@ -45,6 +45,10 @@ enum Theme {
     // MARK: Ink
 
     static var pen: NSColor { .systemRed }
+    /// How thick the pen's stroke is through text of a given size.
+    static func penWidth(forTextOf size: CGFloat) -> CGFloat {
+        min(2.5, max(2, size * 0.12))
+    }
     static var ink: NSColor { .systemBlue }
     static var highlighter: NSColor { .systemYellow }
     static var keep: NSColor { .systemGreen }
