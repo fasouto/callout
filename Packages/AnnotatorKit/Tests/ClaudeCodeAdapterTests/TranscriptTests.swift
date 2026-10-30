@@ -18,8 +18,15 @@ enum Line {
         ]]])
     }
 
-    static func command(_ name: String) -> String {
-        prompt("<command-message>\(name)</command-message>\n<command-name>/\(name)</command-name>\n<command-args></command-args>")
+    static func command(_ name: String, arguments: String = "") -> String {
+        prompt("<command-message>\(name)</command-message>\n<command-name>/\(name)</command-name>\n<command-args>\(arguments)</command-args>")
+    }
+
+    /// What Claude Code writes when a background task finishes.
+    static func notification() -> String {
+        json(["type": "user", "isSidechain": false, "origin": ["kind": "task-notification"], "message": ["role": "user", "content": [
+            ["type": "text", "text": "<task-notification>\n<status>completed</status>\n</task-notification>"],
+        ]]])
     }
 
     static func meta(_ text: String) -> String {
@@ -40,9 +47,16 @@ enum Line {
         ]]])
     }
 
-    static func toolResult() -> String {
+    static func toolResult(_ text: String = "file.txt") -> String {
         json(["type": "user", "isSidechain": false, "message": ["role": "user", "content": [
-            ["type": "tool_result", "tool_use_id": "toolu_1", "content": "file.txt"],
+            ["type": "tool_result", "tool_use_id": "toolu_1", "content": text],
+        ]]])
+    }
+
+    /// A tool result whose content is a list of text blocks.
+    static func toolResultBlocks(_ text: String) -> String {
+        json(["type": "user", "isSidechain": false, "message": ["role": "user", "content": [
+            ["type": "tool_result", "tool_use_id": "toolu_1", "content": [["type": "text", "text": text]]],
         ]]])
     }
 
@@ -51,10 +65,14 @@ enum Line {
     }
 }
 
-@Suite("Transcript: last reply")
-struct LastReplyTests {
+@Suite("Transcript: replies")
+struct RepliesTests {
+    private func replies(_ lines: String...) -> [Reply] {
+        Transcript.replies(in: lines.joined(separator: "\n"))
+    }
+
     private func reply(_ lines: String...) -> String? {
-        Transcript.lastReply(in: lines.joined(separator: "\n"))
+        Transcript.replies(in: lines.joined(separator: "\n")).last?.text
     }
 
     @Test func theReplyBeforeTheCommandIsTheOneToReview() {
@@ -136,7 +154,7 @@ struct LastReplyTests {
             Line.assistant("First draft."),
             Line.command("annotate-last"),
             Line.toolUse(),
-            Line.toolResult(),
+            Line.toolResult("## Feedback on Claude's reply\n\n### General\nShorter."),
             Line.assistant("Second draft, with your corrections."),
             Line.command("annotate-last")
         ) == "Second draft, with your corrections.")
@@ -159,13 +177,152 @@ struct LastReplyTests {
         #expect(reply() == nil)
     }
 
+    // MARK: Counting back
+
+    @Test func repliesComeInOrderAndEarlierOnesAreReachable() {
+        let found = replies(
+            Line.prompt("First question"),
+            Line.assistant("First answer."),
+            Line.prompt("Second question"),
+            Line.assistant("Second answer."),
+            Line.prompt("Third question"),
+            Line.assistant("Third answer."),
+            Line.command("annotate-last", arguments: "2")
+        )
+        #expect(found.map(\.text) == ["First answer.", "Second answer.", "Third answer."])
+    }
+
+    @Test func anAnnotateLastTurnThatOnlyStartedABackgroundReviewIsNotCounted() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.command("annotate-last"),
+            Line.toolUse(),
+            Line.toolResult("Command running in background with ID: abc"),
+            Line.assistant("My last reply is open in Annotator."),
+            Line.command("annotate-last", arguments: "2")
+        ).map(\.text) == ["The draft."])
+    }
+
+    @Test(arguments: [ReviewOutcome.cancelled, ReviewOutcome.closed, ReviewOutcome.unreachable])
+    func aNotificationTurnAfterAReviewWithoutFeedbackIsNotCounted(output: String) {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.command("annotate-last"),
+            Line.assistant("My last reply is open in Annotator."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResult(output),
+            Line.assistant("You cancelled the review."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["The draft."])
+    }
+
+    @Test func aReviewsOutputInTextBlocksIsRecognisedToo() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResultBlocks(ReviewOutcome.cancelled),
+            Line.assistant("You cancelled the review."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["The draft."])
+    }
+
+    @Test func aNotificationTurnAfterFeedbackCameBackIsCounted() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.command("annotate-last"),
+            Line.assistant("My last reply is open in Annotator."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResult("## Feedback on Claude's reply\n\n### General\nShorter."),
+            Line.assistant("Here is the shorter draft."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["The draft.", "Here is the shorter draft."])
+    }
+
+    @Test func aNotificationTurnForAnUnrelatedTaskIsCounted() {
+        #expect(replies(
+            Line.prompt("Run the build"),
+            Line.assistant("Started it."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResult("Build succeeded"),
+            Line.assistant("The build passed."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["Started it.", "The build passed."])
+    }
+
+    @Test func aNotificationIsRecognisedByItsTextAlone() {
+        let bare = #"{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}"#
+        #expect(replies(
+            Line.prompt("Run the build"),
+            Line.assistant("Started it."),
+            bare,
+            Line.assistant("The build passed."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["Started it.", "The build passed."])
+    }
+
+    // MARK: Questions
+
+    @Test func aPromptIsTheQuestionItsReplyAnswers() {
+        #expect(replies(
+            Line.prompt("\n  Why is the   build slow?\nAlso the tests."),
+            Line.assistant("Because of the cache."),
+            Line.command("annotate-last")
+        ).map(\.question) == ["Why is the build slow?"])
+    }
+
+    @Test func aLongPromptIsCutAtAWord() throws {
+        let long = "Please explain how the review window decides which of the many marks a person made should be kept"
+        let question = try #require(replies(Line.prompt(long), Line.assistant("A."), Line.command("annotate-last")).first?.question)
+        #expect(question == "Please explain how the review window decides which of the…")
+        #expect(question.count <= 60)
+    }
+
+    @Test func imageTokensAreLeftOutOfTheQuestion() {
+        #expect(replies(
+            Line.promptWithImage("[Image #2] what is wrong with this?"),
+            Line.assistant("The margin."),
+            Line.command("annotate-last")
+        ).map(\.question) == ["what is wrong with this?"])
+    }
+
+    @Test func aCommandsQuestionIsItsNameAndArguments() {
+        #expect(replies(
+            Line.command("review-document", arguments: "cv.md"),
+            Line.assistant("Opened."),
+            Line.command("explain"),
+            Line.assistant("Here."),
+            Line.command("annotate-last")
+        ).map(\.question) == ["/review-document cv.md", "/explain"])
+    }
+
+    @Test func aNotificationHasNoQuestion() {
+        #expect(replies(
+            Line.prompt("Run the build"),
+            Line.assistant("Started it."),
+            Line.notification(),
+            Line.assistant("The build passed."),
+            Line.command("annotate-last")
+        ).map(\.question) == ["Run the build", nil])
+    }
+
     /// Opt-in check against a transcript written by the installed Claude Code:
     /// set ANNOTATOR_REAL_TRANSCRIPT to its path.
     @Test func readsATranscriptFromTheInstalledClaudeCode() throws {
         guard let path = ProcessInfo.processInfo.environment["ANNOTATOR_REAL_TRANSCRIPT"] else { return }
-        let reply = try #require(Transcript.lastReply(inTranscriptAt: path))
-        #expect(!reply.isEmpty)
-        print("last reply: \(reply.count) characters, starting: \(reply.prefix(160).debugDescription)")
+        let replies = Transcript.replies(inTranscriptAt: path)
+        #expect(!replies.isEmpty)
+        for (index, reply) in replies.enumerated().reversed() {
+            let first = reply.text.prefix(80).replacing("\n", with: " ")
+            print("\(replies.count - index) back: \(reply.question.map { "“\($0)”" } ?? "(a background task)") -> \(first)")
+        }
     }
 
     @Test func damagedLinesAreSkipped() {

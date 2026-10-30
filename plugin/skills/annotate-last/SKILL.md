@@ -2,6 +2,7 @@
 name: annotate-last
 description: Open Claude's last reply in the Annotator app so the user can mark it up, then act on their feedback.
 disable-model-invocation: true
+argument-hint: "[replies back]"
 allowed-tools: Bash(annotator *)
 ---
 
@@ -12,8 +13,10 @@ The user wants to go through your previous reply by hand. It will open in the An
 Run this with the Bash tool, with `run_in_background: true` and `timeout: 7200000`:
 
 ```
-annotator last-reply --session ${CLAUDE_SESSION_ID}
+annotator last-reply $ARGUMENTS --session ${CLAUDE_SESSION_ID}
 ```
+
+What the user typed after the command is passed on as it is. A number reviews an earlier reply (2 is the one before your last, 3 the one before that), and nothing reviews your last reply. Your own notes about running a review do not count in that number. When it is an earlier reply, the feedback heading names the message that reply answered ("## Feedback on Claude's reply to “…”"), so apply the feedback to that reply, not to your last one.
 
 A review takes as long as the user needs, which can be longer than a foreground command may run, so it has to run in the background. Then end your turn with one short line saying the reply is open in Annotator. Do not poll or wait in a loop: you are notified when the command finishes.
 
@@ -29,6 +32,7 @@ When the command finishes, read its output.
 
   Then reply with what you did about every item. Write out a revised version of the reply only when the feedback corrects its text; when the user was answering the reply, do the work it asks for instead of rewriting the reply. Do not defend the original wording, and do not change anything the feedback did not ask to change.
 - **It says a sandbox blocks the socket** (exit status 77). The app is running, but this command was not allowed to talk to it, so nothing was opened. Run the same command once more with the sandbox disabled for it, again in the background with the same timeout; the user may be asked to allow that. If that is refused or not possible, tell the user in two lines: the review could not open because the sandbox blocks Annotator's socket, and the setting the message names lifts it for good. Do not try anything else.
+- **It says there is no such reply, or that the argument is not a number.** Say so in one line. Do not retry.
 - **It says the review was cancelled, or that Annotator could not be reached.** Say so in one line and carry on. Do not retry.
 
 If the background command was stopped before it finished (for example at its time limit), the review may still have been completed. Run `annotator result --session ${CLAUDE_SESSION_ID}` once to collect it.

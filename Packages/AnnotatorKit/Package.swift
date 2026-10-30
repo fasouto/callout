@@ -70,7 +70,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AnnotatorIPCTests",
-            dependencies: ["AnnotatorIPC", "AnnotatorCLIKit"]
+            dependencies: ["AnnotatorIPC", "AnnotatorCLIKit", "ClaudeCodeAdapter"]
         ),
         .testTarget(
             name: "AnnotatorUITests",

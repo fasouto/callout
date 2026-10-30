@@ -119,7 +119,7 @@ struct ReviewExchange {
         guard let client = AppConnection.open(environment) else {
             // Kept out is not the same as nobody home: the caller can do something about it.
             if AppConnection.isBlocked(environment) { return AppConnection.sayBlocked(environment) }
-            return finishWithout(request, "Annotator could not be reached, so no review was done.")
+            return finishWithout(request, ReviewOutcome.unreachable)
         }
         defer { client.close() }
 
@@ -143,7 +143,7 @@ struct ReviewExchange {
             }
         } catch {
             // The app quit or crashed mid-review. The caller carries on as if there had been none.
-            return finishWithout(request, "Annotator closed before the review was finished, so no feedback was given.")
+            return finishWithout(request, ReviewOutcome.closed)
         }
     }
 
@@ -158,9 +158,11 @@ struct ReviewExchange {
     }
 }
 
-/// `annotator last-reply`: opens Claude's last reply in this session for review.
+/// `annotator last-reply [n]`: opens Claude's last reply in this session for review,
+/// or the one n - 1 replies before it.
 struct LastReplyCommand {
     private let environment: CLIEnvironment
+    private var back: Int?
     private var session: String?
     private var transcript: String?
     private var json = false
@@ -176,7 +178,11 @@ struct LastReplyCommand {
             case "--json":
                 json = true
             default:
-                throw UsageError("Unknown option \(argument).")
+                if argument.hasPrefix("--") { throw UsageError("Unknown option \(argument).") }
+                guard back == nil, let number = Int(argument), number >= 1 else {
+                    throw UsageError("\"\(argument)\" is not a number of replies back: 1 is the last reply, 2 the one before it.")
+                }
+                back = number
             }
         }
     }
@@ -191,14 +197,23 @@ struct LastReplyCommand {
             environment.out("The transcript of this session was not found, so there is no reply to review.")
             return ExitCode.success
         }
-        guard let reply = Transcript.lastReply(inTranscriptAt: path) else {
+        let replies = Transcript.replies(inTranscriptAt: path)
+        guard !replies.isEmpty else {
             environment.out("No earlier reply was found in this session, so there is nothing to review.")
             return ExitCode.success
         }
+        let back = back ?? 1
+        guard back <= replies.count else {
+            environment.out("This session has \(replies.count == 1 ? "1 reply" : "\(replies.count) replies") to review, so there is no reply \(back) back.")
+            return ExitCode.success
+        }
+        let reply = replies[replies.count - back]
+        // The feedback heading is built from the title, which is how Claude learns which reply it is about.
+        let title = reply.question.map { "Claude's reply to “\($0)”" } ?? (back == 1 ? "Claude's reply" : "Claude's earlier reply")
         let request = ReviewRequest(
-            content: .text(reply, format: .markdown),
+            content: .text(reply.text, format: .markdown),
             origin: .lastReply,
-            metadata: ReviewMetadata(projectPath: environment.currentDirectory, sessionId: session, title: "Claude's reply"),
+            metadata: ReviewMetadata(projectPath: environment.currentDirectory, sessionId: session, title: title),
             reply: .stdout,
             modes: [.feedback]
         )

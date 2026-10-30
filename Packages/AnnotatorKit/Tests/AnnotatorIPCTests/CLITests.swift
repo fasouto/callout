@@ -1,4 +1,5 @@
 import AnnotatorCore
+import ClaudeCodeAdapter
 import Foundation
 import Testing
 @testable import AnnotatorCLIKit
@@ -583,8 +584,95 @@ struct LastReplyCommandTests {
         #expect(request.origin == .lastReply)
         #expect(request.modes == [.feedback])
         #expect(request.metadata.sessionId == "s-1")
-        #expect(request.metadata.title == "Claude's reply")
+        #expect(request.metadata.title == "Claude's reply to “Write a haiku”")
         #expect(app.out.get() == ["## Feedback on Claude's reply\n"])
+    }
+
+    /// A home folder whose session has three replies, then the command.
+    private func homeWithThreeReplies() throws -> String {
+        let home = NSTemporaryDirectory() + "annotator-home-\(UUID().uuidString.prefix(8))"
+        let folder = "\(home)/.claude/projects/-work-app"
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        var lines: [String] = []
+        for (question, answer) in [("One?", "First."), ("Two?", "Second."), ("Three?", "Third.")] {
+            lines.append(line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": question]]))
+            lines.append(line(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [["type": "text", "text": answer]]]]))
+        }
+        lines.append(line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": "<command-name>/annotate-last</command-name><command-args>2</command-args>"]]))
+        try Data(lines.joined(separator: "\n").utf8).write(to: URL(fileURLWithPath: "\(folder)/s-3.jsonl"))
+        return home
+    }
+
+    @Test func aNumberSendsAnEarlierReply() throws {
+        let app = Run()
+        try app.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        let home = try homeWithThreeReplies()
+
+        #expect(run(app, ["last-reply", "2", "--session", "s-3"], home: home) == 0)
+        let request = try #require(app.reviewRequest)
+        #expect(request.content == .text("Second.", format: .markdown))
+        #expect(request.metadata.title == "Claude's reply to “Two?”")
+
+        app.received.set([])
+        #expect(run(app, ["last-reply", "--session", "s-3", "3"], home: home) == 0)
+        #expect(app.reviewRequest?.content == .text("First.", format: .markdown))
+    }
+
+    @Test func aNumberPastTheStartIsSaidAndNothingIsOpened() throws {
+        let app = Run()
+        try app.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        let home = try homeWithThreeReplies()
+
+        #expect(run(app, ["last-reply", "4", "--session", "s-3"], home: home) == 0)
+        #expect(app.out.get() == ["This session has 3 replies to review, so there is no reply 4 back."])
+        #expect(app.received.get().isEmpty)
+    }
+
+    @Test(arguments: ["0", "two", "-1", "1.5"])
+    func aNumberThatIsNotAReplyCountIsAUsageError(argument: String) throws {
+        let app = Run()
+        let home = try homeWithThreeReplies()
+
+        #expect(run(app, ["last-reply", argument, "--session", "s-3"], home: home) == 64)
+        #expect(app.err.get().first?.hasPrefix("annotator: \"\(argument)\" is not a number of replies back: 1 is the last reply, 2 the one before it.") == true)
+        #expect(run(app, ["last-reply", "1", "2", "--session", "s-3"], home: home) == 64)
+    }
+
+    @Test func theMessagesTheToolPrintsAreTheOnesTheTranscriptReaderIgnores() throws {
+        var printed: [String] = []
+
+        let cancelled = Run()
+        try cancelled.startApp(answering { ReviewResult(id: $0.id, decision: .cancel) })
+        #expect(cancelled.annotator("review", "-", stdin: "x") == 0)
+        printed += cancelled.out.get()
+
+        let unreachable = Run()
+        #expect(unreachable.annotator("review", "-", stdin: "x") == 0)
+        printed += unreachable.out.get()
+
+        let crashed = Run()
+        try crashed.startApp { message, connection in
+            guard case .review(let request) = message else { return }
+            connection.send(.accepted(id: request.id))
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { connection.close() }
+        }
+        #expect(crashed.annotator("review", "-", stdin: "x") == 0)
+        printed += crashed.out.get()
+        #expect(printed.count == 3)
+
+        for output in printed {
+            let transcript = [
+                line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": "Write a haiku"]]),
+                line(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [["type": "text", "text": "An old silent pond"]]]]),
+                line(["type": "user", "isSidechain": false, "origin": ["kind": "task-notification"], "message": ["role": "user", "content": "<task-notification>done</task-notification>"]]),
+                line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": [["type": "tool_result", "tool_use_id": "t", "content": output]]]]),
+                line(["type": "assistant", "isSidechain": false, "message": ["role": "assistant", "content": [["type": "text", "text": "You cancelled the review."]]]]),
+                line(["type": "user", "isSidechain": false, "message": ["role": "user", "content": "<command-name>/annotate-last</command-name>"]]),
+            ].joined(separator: "\n")
+            let path = NSTemporaryDirectory() + "annotator-tie-\(UUID().uuidString.prefix(8)).jsonl"
+            try Data(transcript.utf8).write(to: URL(fileURLWithPath: path))
+            #expect(Transcript.replies(inTranscriptAt: path).map(\.text) == ["An old silent pond"], "\(output)")
+        }
     }
 
     @Test func sessionComesFromClaudeCodesEnvironment() throws {

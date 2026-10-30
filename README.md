@@ -168,7 +168,7 @@ When Claude revises a plan, the review shows what changed since the version you 
 
 ![A revised plan with its changes pointed out](docs/plan-changes.png)
 
-**Replies.** Type `/annotate-last` to go through Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude acts on your marks: it rewrites the reply where you corrected its wording, and where a comment is an instruction or a question it carries it out or answers it. Only you can start it: Claude never opens a review of its own reply by itself.
+**Replies.** Type `/annotate-last` to go through Claude's last reply. It opens in Annotator; after *Send Feedback*, Claude acts on your marks: it rewrites the reply where you corrected its wording, and where a comment is an instruction or a question it carries it out or answers it. Type `/annotate-last 2` for the reply before the last, `3` for the one before that. Claude's own notes about running a review are not counted. Only you can start it: Claude never opens a review of its own reply by itself.
 
 **Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Annotator, as a PDF when it generated one. Your feedback goes back to Claude, which applies it to the source and regenerates the document. You can also just say "let me review it".
 

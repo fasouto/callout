@@ -46,62 +46,134 @@ public enum Transcript {
         (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? .distantPast
     }
 
-    // MARK: - Reading the last reply
+    // MARK: - Reading the replies
 
-    public static func lastReply(inTranscriptAt path: String, command: String = "annotate-last") -> String? {
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        return lastReply(in: text, command: command)
+    /// Claude's finished replies before the command that asked for this review,
+    /// oldest first, without the replies that only talk about running a review.
+    public static func replies(inTranscriptAt path: String, command: String = "annotate-last") -> [Reply] {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+        return replies(in: text, command: command)
     }
 
-    /// Claude's last finished reply: the text it ended a turn with, before the
-    /// command that asked for this review.
-    static func lastReply(in transcript: String, command: String = "annotate-last") -> String? {
-        let entries = transcript.split(whereSeparator: \.isNewline).flatMap { parse(line: String($0)) }
+    /// A turn is chatter when the user would never think of it as one of Claude's
+    /// replies: the line that says a review was opened in the background, or the
+    /// one that says a review came back with nothing in it.
+    static func replies(in transcript: String, command: String = "annotate-last") -> [Reply] {
+        let turns = turns(in: transcript)
 
         // Everything from the command on belongs to the turn that is running now.
-        var boundary = entries.count
-        if let invoked = entries.lastIndex(where: { if case .command(let name) = $0 { return name.contains(command) } else { return false } }) {
-            boundary = invoked
-        } else if let prompt = entries.lastIndex(of: .prompt) {
-            boundary = prompt
+        let boundary = turns.lastIndex { $0.opener.isCommand(command) }
+            ?? turns.lastIndex { $0.opener.isPrompt }
+            ?? turns.count
+
+        return turns[..<boundary].compactMap { turn in
+            // A turn with no text, such as an unanswered prompt or /model, is not a reply.
+            guard !turn.isChatter(command: command), let text = turn.reply else { return nil }
+            return Reply(question: turn.opener.question, text: text)
+        }
+    }
+
+    /// What started a turn.
+    enum Opener: Equatable {
+        /// Something the user typed.
+        case prompt(String)
+        /// A slash command the user ran.
+        case command(name: String, arguments: String)
+        /// A background task finished and told Claude.
+        case notification
+
+        var isPrompt: Bool {
+            if case .prompt = self { return true } else { return false }
         }
 
-        // Walk back to the turn before it, past prompts that got no reply.
-        var turn: [Entry] = []
-        for entry in entries[..<boundary].reversed() {
-            if entry == .prompt {
-                if turn.contains(where: \.isText) { break }
-                turn.removeAll()
-            } else {
-                turn.insert(entry, at: 0)
+        func isCommand(_ wanted: String) -> Bool {
+            if case .command(let name, _) = self { return name.contains(wanted) } else { return false }
+        }
+
+        /// What the user said that a reply answers, short enough for a title.
+        var question: String? {
+            switch self {
+            case .prompt(let text):
+                let lines = text.split(whereSeparator: \.isNewline).map {
+                    String($0).replacing(/\[Image #\d+\]/, with: "").collapsingWhitespace
+                }
+                return lines.first { !$0.isEmpty }.map(\.cutForTitle)
+            case .command(let name, let arguments):
+                return "/\(name) \(arguments)".collapsingWhitespace.cutForTitle
+            case .notification:
+                return nil
+            }
+        }
+    }
+
+    /// What Claude and the tools wrote after an opener.
+    enum Entry: Equatable {
+        case text(String)
+        case toolUse
+        case toolResult(String)
+    }
+
+    /// An opener and everything written until the next one.
+    struct Turn: Equatable {
+        var opener: Opener
+        var entries: [Entry] = []
+
+        /// The text after the last tool call; a turn that ended on a tool call
+        /// is taken whole. Nil when Claude wrote no text.
+        var reply: String? {
+            let final = entries.split(separator: .toolUse, omittingEmptySubsequences: false).last.map(Array.init) ?? []
+            let chosen = final.contains(where: \.isText) ? final : entries
+            let texts = chosen.compactMap { entry -> String? in
+                if case .text(let text) = entry { return text } else { return nil }
+            }
+            return texts.isEmpty ? nil : texts.joined(separator: "\n\n")
+        }
+
+        private var toolResults: [String] {
+            entries.compactMap { entry in
+                if case .toolResult(let text) = entry { return text } else { return nil }
             }
         }
 
-        // The reply is what came after the last tool call; a turn that ended on
-        // a tool call is taken whole.
-        let final = turn.split(separator: .toolUse, omittingEmptySubsequences: false).last.map(Array.init) ?? []
-        let chosen = final.contains(where: \.isText) ? final : turn
-        let texts = chosen.compactMap { entry -> String? in
-            if case .text(let text) = entry { return text } else { return nil }
-        }
-        return texts.isEmpty ? nil : texts.joined(separator: "\n\n")
-    }
-
-    private enum Entry: Equatable {
-        /// Something the user typed.
-        case prompt
-        /// A slash command the user ran.
-        case command(String)
-        /// Text Claude wrote.
-        case text(String)
-        case toolUse
-
-        var isText: Bool {
-            if case .text = self { return true } else { return false }
+        /// A review the command started in the background leaves its turn with one
+        /// line, unless a tool result in it carries the feedback (an older, foreground
+        /// run), which makes the turn a real answer. A turn that a finished task
+        /// opened is noise only when its results say the review had no feedback.
+        func isChatter(command: String) -> Bool {
+            switch opener {
+            case .prompt:
+                return false
+            case .command:
+                guard opener.isCommand(command) else { return false }
+                return !toolResults.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("## Feedback") }
+            case .notification:
+                return toolResults.contains { result in ReviewOutcome.withoutFeedback.contains { result.contains($0) } }
+            }
         }
     }
 
-    private static func parse(line: String) -> [Entry] {
+    static func turns(in transcript: String) -> [Turn] {
+        var turns: [Turn] = []
+        for line in transcript.split(whereSeparator: \.isNewline) {
+            for event in parse(line: String(line)) {
+                switch event {
+                case .opener(let opener):
+                    turns.append(Turn(opener: opener))
+                case .entry(let entry):
+                    // Before the first opener there is no turn to belong to.
+                    if !turns.isEmpty { turns[turns.count - 1].entries.append(entry) }
+                }
+            }
+        }
+        return turns
+    }
+
+    private enum Event {
+        case opener(Opener)
+        case entry(Entry)
+    }
+
+    private static func parse(line: String) -> [Event] {
         guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
               object["isSidechain"] as? Bool != true,
               let message = object["message"] as? [String: Any] else { return [] }
@@ -114,32 +186,82 @@ public enum Transcript {
                 switch block["type"] as? String {
                 case "text":
                     let text = (block["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    return text.isEmpty ? nil : .text(text)
+                    return text.isEmpty ? nil : .entry(.text(text))
                 case "tool_use":
-                    return .toolUse
+                    return .entry(.toolUse)
                 default:
                     return nil
                 }
             }
         case "user":
+            let blocks = content as? [[String: Any]] ?? []
+            let text = content as? String ?? blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+            let origin = (object["origin"] as? [String: Any])?["kind"] as? String
+
+            // A notification may be marked as injected context, and is still the start of a turn.
+            if origin == "task-notification" || text.hasPrefix("<task-notification>") { return [.opener(.notification)] }
             // Injected context and compaction summaries are not the user speaking.
             if object["isMeta"] as? Bool == true || object["isCompactSummary"] as? Bool == true { return [] }
-            if let text = content as? String { return userEntry(text) }
-            let blocks = content as? [[String: Any]] ?? []
-            if blocks.contains(where: { $0["type"] as? String == "tool_result" }) { return [] }
-            let text = blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
-            return blocks.isEmpty ? [] : userEntry(text)
+
+            let results = blocks.filter { $0["type"] as? String == "tool_result" }
+            if !results.isEmpty { return results.map { .entry(.toolResult(resultText($0["content"]))) } }
+            if content is String || !blocks.isEmpty { return userOpener(text).map { [.opener($0)] } ?? [] }
+            return []
         default:
             return []
         }
     }
 
-    private static func userEntry(_ text: String) -> [Entry] {
+    /// A tool result's content is a string, or text blocks.
+    private static func resultText(_ content: Any?) -> String {
+        if let text = content as? String { return text }
+        let blocks = content as? [[String: Any]] ?? []
+        return blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+    }
+
+    private static func userOpener(_ text: String) -> Opener? {
         if let name = text.firstMatch(of: /<command-name>\s*\/?([^<]*?)\s*<\/command-name>/) {
-            return [.command(String(name.1))]
+            let arguments = text.firstMatch(of: /<command-args>(.*?)<\/command-args>/.dotMatchesNewlines())
+            return .command(name: String(name.1), arguments: arguments.map { String($0.1).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "")
         }
         // Output of a local command, echoed into the conversation.
-        if text.hasPrefix("<local-command-") || text.hasPrefix("<command-") { return [] }
-        return [.prompt]
+        if text.hasPrefix("<local-command-") || text.hasPrefix("<command-") { return nil }
+        return .prompt(text)
+    }
+}
+
+extension Transcript.Entry {
+    fileprivate var isText: Bool {
+        if case .text = self { return true } else { return false }
+    }
+}
+
+/// One of Claude's finished replies.
+public struct Reply: Equatable, Sendable {
+    /// What the user said that this reply answers, short enough for a title; nil when a background task started the turn.
+    public var question: String?
+    public var text: String
+
+    public init(question: String?, text: String) {
+        self.question = question
+        self.text = text
+    }
+}
+
+private extension String {
+    var collapsingWhitespace: String {
+        split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// At most 60 characters, cut at a word.
+    var cutForTitle: String {
+        let limit = 60
+        guard count > limit else { return self }
+        let room = prefix(limit - 1)
+        // Cut mid-word only when there is no word break to cut at.
+        if !self[room.endIndex].isWhitespace, let space = room.lastIndex(of: " ") {
+            return String(room[..<space]) + "…"
+        }
+        return String(room) + "…"
     }
 }

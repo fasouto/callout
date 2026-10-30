@@ -1,5 +1,6 @@
 import AnnotatorCore
 import AnnotatorIPC
+import ClaudeCodeAdapter
 import Foundation
 
 /// Everything the tool touches from outside, so tests can stand in for it.
@@ -69,7 +70,9 @@ public enum AnnotatorCLI {
     Usage:
       annotator review [file | -] [options]   Open a review and wait for the response
       annotator result [id] [--session <id>]  Print a finished review again
-      annotator last-reply [--session <id>]   Review Claude's last reply in a Claude Code session
+      annotator last-reply [n] [--session <id>]
+                                          Review Claude's last reply in a Claude Code session,
+                                          or the one n - 1 replies before it (2 is the one before the last)
       annotator hook                          Claude Code plan hook (reads the hook JSON on standard input)
       annotator install [--settings <file>]   Add the plan hook to ~/.claude/settings.json
       annotator uninstall [--settings <file>] Remove it again
@@ -221,7 +224,7 @@ enum Output {
         }
         switch result.decision {
         case .cancel:
-            return "The review was cancelled. No feedback was given."
+            return ReviewOutcome.cancelled
         case .approve:
             return "Approved. No changes requested."
         case .feedback:
