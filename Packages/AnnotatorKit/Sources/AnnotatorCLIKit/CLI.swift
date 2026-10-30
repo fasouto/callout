@@ -71,8 +71,8 @@ public enum AnnotatorCLI {
       annotator review [file | -] [options]   Open a review and wait for the response
       annotator result [id] [--session <id>]  Print a finished review again
       annotator last-reply [n] [--session <id>]
-                                          Review Claude's last reply in a Claude Code session,
-                                          or the one n - 1 replies before it (2 is the one before the last)
+                                              Review Claude's last reply in a Claude Code session,
+                                              or the nth back (2 is the one before the last)
       annotator hook                          Claude Code plan hook (reads the hook JSON on standard input)
       annotator install [--settings <file>]   Add the plan hook to ~/.claude/settings.json
       annotator uninstall [--settings <file>] Remove it again

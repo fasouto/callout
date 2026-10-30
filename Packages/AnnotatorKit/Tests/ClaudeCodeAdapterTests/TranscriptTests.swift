@@ -154,7 +154,7 @@ struct RepliesTests {
             Line.assistant("First draft."),
             Line.command("annotate-last"),
             Line.toolUse(),
-            Line.toolResult("## Feedback on Claude's reply\n\n### General\nShorter."),
+            Line.toolResult("annotator: review 6F1A2B3C is open in Annotator\n## Feedback on Claude's reply\n\n### General\nShorter."),
             Line.assistant("Second draft, with your corrections."),
             Line.command("annotate-last")
         ) == "Second draft, with your corrections.")

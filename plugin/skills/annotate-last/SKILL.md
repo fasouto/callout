@@ -1,6 +1,6 @@
 ---
 name: annotate-last
-description: Open Claude's last reply in the Annotator app so the user can mark it up, then act on their feedback.
+description: Open Claude's last reply, or with a number an earlier one, in the Annotator app so the user can mark it up, then act on their feedback.
 disable-model-invocation: true
 argument-hint: "[replies back]"
 allowed-tools: Bash(annotator *)

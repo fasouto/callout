@@ -55,9 +55,6 @@ public enum Transcript {
         return replies(in: text, command: command)
     }
 
-    /// A turn is chatter when the user would never think of it as one of Claude's
-    /// replies: the line that says a review was opened in the background, or the
-    /// one that says a review came back with nothing in it.
     static func replies(in transcript: String, command: String = "annotate-last") -> [Reply] {
         let turns = turns(in: transcript)
 
@@ -145,7 +142,8 @@ public enum Transcript {
                 return false
             case .command:
                 guard opener.isCommand(command) else { return false }
-                return !toolResults.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("## Feedback") }
+                // The tool says the review is open before the feedback, on another stream.
+                return !toolResults.contains { $0.split(whereSeparator: \.isNewline).contains { $0.hasPrefix("## Feedback") } }
             case .notification:
                 return toolResults.contains { result in ReviewOutcome.withoutFeedback.contains { result.contains($0) } }
             }

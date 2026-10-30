@@ -159,7 +159,7 @@ struct ReviewExchange {
 }
 
 /// `annotator last-reply [n]`: opens Claude's last reply in this session for review,
-/// or the one n - 1 replies before it.
+/// or the nth back.
 struct LastReplyCommand {
     private let environment: CLIEnvironment
     private var back: Int?
