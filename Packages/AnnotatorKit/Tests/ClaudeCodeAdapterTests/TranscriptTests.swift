@@ -29,6 +29,13 @@ enum Line {
         ]]])
     }
 
+    /// What Claude Code writes when an agent working for Claude reports back.
+    static func agentReport() -> String {
+        json(["type": "user", "isSidechain": false, "isMeta": true, "origin": ["kind": "peer"], "message": ["role": "user", "content": [
+            ["type": "text", "text": "Another Claude session sent a message: <agent-message from=\"a1\">Done.</agent-message>"],
+        ]]])
+    }
+
     static func meta(_ text: String) -> String {
         json(["type": "user", "isSidechain": false, "isMeta": true, "message": ["role": "user", "content": [["type": "text", "text": text]]]])
     }
@@ -213,10 +220,34 @@ struct RepliesTests {
             Line.assistant("My last reply is open in Annotator."),
             Line.notification(),
             Line.toolUse(),
-            Line.toolResult(output),
+            Line.toolResult("annotator: review 6F1A2B3C is open in Annotator\n\(output)\n"),
             Line.assistant("You cancelled the review."),
             Line.command("annotate-last")
         ).map(\.text) == ["The draft."])
+    }
+
+    @Test func aReviewsOutputReadWithLineNumbersIsRecognised() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResult("     1\tannotator: review 6F1A2B3C is open in Annotator\n     2\t\(ReviewOutcome.cancelled)\n"),
+            Line.assistant("You cancelled the review."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["The draft."])
+    }
+
+    @Test func outputThatOnlyQuotesThePhraseIsOtherWork() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.notification(),
+            Line.toolUse(),
+            Line.toolResult("+    public static let cancelled = \"\(ReviewOutcome.cancelled)\""),
+            Line.assistant("The helper finished the change."),
+            Line.command("annotate-last")
+        ).map(\.text) == ["The draft.", "The helper finished the change."])
     }
 
     @Test func aReviewsOutputInTextBlocksIsRecognisedToo() {
@@ -243,6 +274,23 @@ struct RepliesTests {
             Line.assistant("Here is the shorter draft."),
             Line.command("annotate-last")
         ).map(\.text) == ["The draft.", "Here is the shorter draft."])
+    }
+
+    @Test func anAgentsReportStartsATurnOfItsOwn() {
+        #expect(replies(
+            Line.prompt("Add the setting"),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("A helper is writing it."),
+            Line.agentReport(),
+            Line.toolUse(),
+            Line.toolResult(),
+            Line.assistant("The setting is in, and the tests pass."),
+            Line.command("annotate-last")
+        ) == [
+            Reply(question: "Add the setting", text: "A helper is writing it."),
+            Reply(question: nil, text: "The setting is in, and the tests pass."),
+        ])
     }
 
     @Test func aNotificationTurnForAnUnrelatedTaskIsCounted() {

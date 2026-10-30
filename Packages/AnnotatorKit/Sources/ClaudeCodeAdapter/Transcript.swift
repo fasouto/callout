@@ -76,7 +76,7 @@ public enum Transcript {
         case prompt(String)
         /// A slash command the user ran.
         case command(name: String, arguments: String)
-        /// A background task finished and told Claude.
+        /// A background task finished, or an agent working for Claude reported back.
         case notification
 
         var isPrompt: Bool {
@@ -145,7 +145,11 @@ public enum Transcript {
                 // The tool says the review is open before the feedback, on another stream.
                 return !toolResults.contains { $0.split(whereSeparator: \.isNewline).contains { $0.hasPrefix("## Feedback") } }
             case .notification:
-                return toolResults.contains { result in ReviewOutcome.withoutFeedback.contains { result.contains($0) } }
+                // A whole line, as the tool printed it or a file viewer numbered it: a diff
+                // or a source file that only quotes the phrase is other work.
+                return toolResults.contains { result in
+                    result.split(whereSeparator: \.isNewline).contains { ReviewOutcome.withoutFeedback.contains($0.withoutLineNumber) }
+                }
             }
         }
     }
@@ -196,8 +200,8 @@ public enum Transcript {
             let text = content as? String ?? blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
             let origin = (object["origin"] as? [String: Any])?["kind"] as? String
 
-            // A notification may be marked as injected context, and is still the start of a turn.
-            if origin == "task-notification" || text.hasPrefix("<task-notification>") { return [.opener(.notification)] }
+            // An agent's report is marked as injected context, and is still the start of a turn.
+            if origin == "task-notification" || origin == "peer" || text.hasPrefix("<task-notification>") { return [.opener(.notification)] }
             // Injected context and compaction summaries are not the user speaking.
             if object["isMeta"] as? Bool == true || object["isCompactSummary"] as? Bool == true { return [] }
 
@@ -243,6 +247,18 @@ public struct Reply: Equatable, Sendable {
     public init(question: String?, text: String) {
         self.question = question
         self.text = text
+    }
+}
+
+private extension Substring {
+    /// The line without the number a file viewer puts before it, and trimmed.
+    var withoutLineNumber: String {
+        var rest = drop { $0.isWhitespace }
+        let digits = rest.prefix { $0.isNumber }
+        if !digits.isEmpty, let mark = rest.dropFirst(digits.count).first, mark == "\t" || mark == "→" {
+            rest = rest.dropFirst(digits.count + 1)
+        }
+        return rest.trimmingCharacters(in: .whitespaces)
     }
 }
 
