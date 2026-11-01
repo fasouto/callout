@@ -11,16 +11,16 @@ cd "$(dirname "$0")/.."
 . scripts/signing.sh
 
 xcodegen generate >/dev/null
-xcodebuild -project Annotator.xcodeproj -scheme Annotator -configuration Debug \
+xcodebuild -project Callout.xcodeproj -scheme Callout -configuration Debug \
   -derivedDataPath build/DerivedData \
   CODE_SIGN_IDENTITY="$identity" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$team" build \
   | grep -E '^\*\* BUILD|error:' || true
 
-app="$PWD/build/DerivedData/Build/Products/Debug/Annotator.app"
+app="$PWD/build/DerivedData/Build/Products/Debug/Callout.app"
 [ -d "$app" ] || { echo "The build did not produce $app" >&2; exit 1; }
 
 # One copy serves every request, so a running one has to go first.
-pkill -f "Annotator.app/Contents/MacOS/Annotator" 2>/dev/null && sleep 0.5 || true
+pkill -f "Callout.app/Contents/MacOS/Callout" 2>/dev/null && sleep 0.5 || true
 
 if [ -n "$1" ]; then
   file=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -31,4 +31,4 @@ fi
 if [ "$identity" = - ]; then
   echo "Signed ad hoc: allow Accessibility again for this build if the shortcut asks."
 fi
-echo "Annotator is running: look for its icon in the menu bar, a rounded square with lines in it."
+echo "Callout is running: look for its icon in the menu bar, a rounded square with lines in it."

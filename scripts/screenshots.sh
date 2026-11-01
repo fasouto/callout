@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 out=$(mktemp -d)
 # Quiet unless a test fails: then the screenshots are not to be trusted.
-(cd Packages/AnnotatorKit && ANNOTATOR_SNAPSHOT_DIR="$out" swift test >"$out/tests.log" 2>&1) || {
+(cd Packages/CalloutKit && CALLOUT_SNAPSHOT_DIR="$out" swift test >"$out/tests.log" 2>&1) || {
   tail -20 "$out/tests.log" >&2
   exit 1
 }

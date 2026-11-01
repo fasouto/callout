@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// way. It has no interface of its own.
 ///
 /// An app extension runs sandboxed, so it cannot talk to the app's socket. It
-/// passes the file's path through an `annotator://` link instead, and the app,
+/// passes the file's path through a `callout://` link instead, and the app,
 /// which is not sandboxed, opens the file itself.
 final class ShareViewController: NSViewController {
     override func loadView() {
@@ -35,7 +35,7 @@ final class ShareViewController: NSViewController {
 
     private static func open(_ path: String) {
         var link = URLComponents()
-        link.scheme = "annotator"
+        link.scheme = "callout"
         link.host = "open"
         link.queryItems = [URLQueryItem(name: "path", value: path)]
         if let url = link.url { NSWorkspace.shared.open(url) }

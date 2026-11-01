@@ -1,14 +1,14 @@
 {
-  "name": "annotator",
-  "description": "The Claude Code plugin for the Annotator macOS app.",
+  "name": "callout",
+  "description": "The Claude Code plugin for the Callout macOS app.",
   "owner": {
     "name": "Fabio Souto"
   },
   "plugins": [
     {
-      "name": "annotator",
+      "name": "callout",
       "source": "./plugin",
-      "description": "Review Claude's plans, replies and documents in the Annotator macOS app and send structured feedback back."
+      "description": "Review Claude's plans, replies and documents in the Callout macOS app and send structured feedback back."
     }
   ]
 }

@@ -1,3 +1,3 @@
-import AnnotatorUI
+import CalloutUI
 
-AnnotatorApplication.run()
+CalloutApplication.run()

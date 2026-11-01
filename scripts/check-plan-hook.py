@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checks how the installed Claude Code treats a plan hook's decisions.
 
-Annotator's plan hook answers the PermissionRequest for ExitPlanMode. Whether
+Callout's plan hook answers the PermissionRequest for ExitPlanMode. Whether
 "allow" really skips Claude Code's own plan dialog has changed between
 versions (anthropics/claude-code issues 15755 and 97656), so this script finds
 out for the version on this machine.
@@ -58,7 +58,7 @@ def main():
         sys.exit("claude was not found on PATH.")
     version = subprocess.run([claude, "--version"], capture_output=True, text=True).stdout.strip()
 
-    root = tempfile.mkdtemp(prefix="annotator-hook-check-")
+    root = tempfile.mkdtemp(prefix="callout-hook-check-")
     project = os.path.join(root, "project")
     os.mkdir(project)
     hook = os.path.join(root, "hook.sh")
@@ -74,7 +74,7 @@ def main():
     environment = {k: v for k, v in os.environ.items() if k != "CLAUDECODE" and not k.startswith("CLAUDE_")}
     environment["TERM"] = "xterm-256color"
     # Only this script's hook may answer the plan: your own settings are left out,
-    # so an installed Annotator plugin does not open the test plan for review too.
+    # so an installed Callout plugin does not open the test plan for review too.
     arguments = [
         claude, "--permission-mode", "plan", "--setting-sources", "project",
         "--settings", settings, "--model", "haiku",

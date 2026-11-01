@@ -1,0 +1,45 @@
+#!/bin/sh
+# Runs the callout tool that ships inside Callout.app.
+# The plugin contains no logic of its own: every trigger goes through that tool.
+
+find_tool() {
+  if [ -n "$CALLOUT_CLI" ] && [ -x "$CALLOUT_CLI" ]; then
+    printf '%s\n' "$CALLOUT_CLI"
+    return
+  fi
+  for app in "/Applications/Callout.app" "$HOME/Applications/Callout.app"; do
+    if [ -x "$app/Contents/Helpers/callout" ]; then
+      printf '%s\n' "$app/Contents/Helpers/callout"
+      return
+    fi
+  done
+  # A copy the user put on PATH. This script is itself on Claude Code's PATH,
+  # so skip its own folder, and look only once in case another copy of this
+  # script is found: two of them would otherwise hand over to each other forever.
+  [ -n "$CALLOUT_SHIM" ] && return
+  self=$(cd "$(dirname "$0")" && pwd)
+  old_ifs=$IFS
+  IFS=:
+  for dir in $PATH; do
+    if [ "$dir" != "$self" ] && [ -x "$dir/callout" ]; then
+      IFS=$old_ifs
+      printf '%s\n' "$dir/callout"
+      return
+    fi
+  done
+  IFS=$old_ifs
+}
+
+tool=$(find_tool)
+
+if [ -z "$tool" ]; then
+  echo "callout: Callout.app was not found. Put it in /Applications, or set CALLOUT_CLI to the callout tool." >&2
+  # The hook must stay silent on standard output, so Claude Code shows its own
+  # plan dialog. Everything else says in one line that no review happened.
+  if [ "$1" != "hook" ]; then
+    echo "Callout is not installed, so no review was done."
+  fi
+  exit 0
+fi
+
+CALLOUT_SHIM=1 exec "$tool" "$@"

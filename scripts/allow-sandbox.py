@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Lets Claude Code's sandboxed shell commands reach the Annotator app.
+"""Lets Claude Code's sandboxed shell commands reach the Callout app.
 
-    scripts/allow-sandbox.py            allow Annotator's socket
+    scripts/allow-sandbox.py            allow Callout's socket
     scripts/allow-sandbox.py --remove   take the entry out again
 
 With the sandbox on, shell commands may not use Unix sockets, and the socket is
-how `annotator` talks to the app: /annotate-last and document reviews then end
+how `callout` talks to the app: /callout and document reviews then end
 with exit status 77. This adds the socket to sandbox.network.allowUnixSockets
 in your own Claude Code settings, which cover every project on this Mac. It
 needs doing once per Mac, and only if you use the sandbox. The file as it was
@@ -18,7 +18,7 @@ import sys
 import time
 
 settings = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "settings.json")
-socket = os.path.expanduser("~/Library/Application Support/Annotator/annotator.sock")
+socket = os.path.expanduser("~/Library/Application Support/Callout/callout.sock")
 remove = "--remove" in sys.argv[1:]
 
 try:
@@ -38,7 +38,7 @@ if (socket in allowed) != remove:
     sys.exit(0)
 
 if os.path.exists(settings):
-    backup = f"{settings}.before-annotator-{time.strftime('%Y%m%d-%H%M%S')}"
+    backup = f"{settings}.before-callout-{time.strftime('%Y%m%d-%H%M%S')}"
     shutil.copy2(settings, backup)
 else:
     backup = None
@@ -60,7 +60,7 @@ with open(settings, "w") as file:
     json.dump(content, file, indent=2, ensure_ascii=False)
     file.write("\n")
 
-print(("Took Annotator's socket out of " if remove else "Allowed Annotator's socket in ") + settings)
+print(("Took Callout's socket out of " if remove else "Allowed Callout's socket in ") + settings)
 if backup:
     print(f"The file as it was: {backup}")
 print("Claude Code sessions started from now on use it.")

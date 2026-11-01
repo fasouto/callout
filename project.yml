@@ -1,4 +1,4 @@
-name: Annotator
+name: Callout
 
 options:
   # The fabiosouto.me domain, reversed.
@@ -17,11 +17,11 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
 
 packages:
-  AnnotatorKit:
-    path: Packages/AnnotatorKit
+  CalloutKit:
+    path: Packages/CalloutKit
 
 targets:
-  Annotator:
+  Callout:
     type: application
     platform: macOS
     sources:
@@ -29,32 +29,32 @@ targets:
         excludes:
           - Info.plist
     dependencies:
-      - package: AnnotatorKit
-        product: AnnotatorUI
+      - package: CalloutKit
+        product: CalloutUI
       # The Share menu entry, embedded in Contents/PlugIns.
-      - target: AnnotatorShare
-      # The command-line tool ships inside the bundle, at Contents/Helpers/annotator;
+      - target: CalloutShare
+      # The command-line tool ships inside the bundle, at Contents/Helpers/callout;
       # the script below puts it there.
-      - target: AnnotatorCLI
+      - target: CalloutCLI
         embed: false
     postBuildScripts:
-      # A copy phase would look for a product named after the target, AnnotatorCLI,
+      # A copy phase would look for a product named after the target, CalloutCLI,
       # and quietly copy nothing. The tool is signed like the app, before the app.
       - name: Embed the command-line tool
         basedOnDependencyAnalysis: true
         inputFiles:
-          - $(BUILT_PRODUCTS_DIR)/annotator
+          - $(BUILT_PRODUCTS_DIR)/callout
         outputFiles:
-          - $(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Helpers/annotator
+          - $(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Helpers/callout
         script: |
           helpers="$TARGET_BUILD_DIR/$WRAPPER_NAME/Contents/Helpers"
           mkdir -p "$helpers"
-          cp -f "$BUILT_PRODUCTS_DIR/annotator" "$helpers/annotator"
-          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime --timestamp=none "$helpers/annotator"
+          cp -f "$BUILT_PRODUCTS_DIR/callout" "$helpers/callout"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime --timestamp=none "$helpers/callout"
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Annotator
+        CFBundleDisplayName: Callout
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
@@ -62,45 +62,45 @@ targets:
         LSUIElement: true
         NSHumanReadableCopyright: Free software under the GNU General Public License, version 3.
         LSApplicationCategoryType: public.app-category.productivity
-        # "Annotate with Annotator" in other apps' Services menus.
+        # "Annotate with Callout" in other apps' Services menus.
         NSServices:
           - NSMenuItem:
-              default: Annotate with Annotator
+              default: Annotate with Callout
             NSMessage: annotateSelection
-            NSPortName: Annotator
+            NSPortName: Callout
             NSSendTypes:
               - NSStringPboardType
               - public.utf8-plain-text
-        # The Share extension hands files over with annotator://open?path=…
+        # The Share extension hands files over with callout://open?path=…
         CFBundleURLTypes:
-          - CFBundleURLName: me.fabiosouto.Annotator
+          - CFBundleURLName: me.fabiosouto.Callout
             CFBundleURLSchemes:
-              - annotator
+              - callout
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator
-        PRODUCT_NAME: Annotator
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Callout
+        PRODUCT_NAME: Callout
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
-  # Named AnnotatorCLI because a target called "annotator" would collide with
-  # "Annotator" on a case-insensitive disk. The product is still `annotator`.
-  AnnotatorCLI:
+  # Named CalloutCLI because a target called "callout" would collide with
+  # "Callout" on a case-insensitive disk. The product is still `callout`.
+  CalloutCLI:
     type: tool
     platform: macOS
     sources:
       - path: CLI
     dependencies:
-      - package: AnnotatorKit
-        product: AnnotatorCLIKit
+      - package: CalloutKit
+        product: CalloutCLIKit
     settings:
       base:
-        PRODUCT_NAME: annotator
-        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator.cli
+        PRODUCT_NAME: callout
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Callout.cli
         SKIP_INSTALL: YES
 
   # The Share menu entry in Finder and Preview. An extension must be sandboxed
   # even though the app is not; it only passes the file's path on to the app.
-  AnnotatorShare:
+  CalloutShare:
     type: app-extension
     platform: macOS
     sources:
@@ -111,7 +111,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Annotator
+        CFBundleDisplayName: Callout
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -121,11 +121,11 @@ targets:
             NSExtensionActivationRule:
               NSExtensionActivationSupportsFileWithMaxCount: 1
     entitlements:
-      path: ShareExtension/AnnotatorShare.entitlements
+      path: ShareExtension/CalloutShare.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-only: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Annotator.Share
-        PRODUCT_NAME: AnnotatorShare
+        PRODUCT_BUNDLE_IDENTIFIER: me.fabiosouto.Callout.Share
+        PRODUCT_NAME: CalloutShare

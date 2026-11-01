@@ -1,4 +1,4 @@
-import AnnotatorCLIKit
+import CalloutCLIKit
 import Foundation
 
-exit(AnnotatorCLI.run(.process()))
+exit(CalloutCLI.run(.process()))

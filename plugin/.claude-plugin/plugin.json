@@ -1,8 +1,8 @@
 {
-  "name": "annotator",
-  "displayName": "Annotator",
+  "name": "callout",
+  "displayName": "Callout",
   "version": "0.1.2",
-  "description": "Review Claude's plans, replies and documents in the Annotator macOS app and send structured feedback back.",
+  "description": "Review Claude's plans, replies and documents in the Callout macOS app and send structured feedback back.",
   "author": {
     "name": "Fabio Souto"
   },

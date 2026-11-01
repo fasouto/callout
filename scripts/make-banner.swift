@@ -31,7 +31,7 @@ NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
     icon.draw(in: NSRect(x: 96, y: (size.height - 280) / 2, width: 280, height: 280))
 
     let left: CGFloat = 420
-    NSAttributedString(string: "Annotator", attributes: [
+    NSAttributedString(string: "Callout", attributes: [
         .font: serif(80, weight: .bold), .foregroundColor: NSColor(white: 0.11, alpha: 1), .kern: -0.5,
     ]).draw(at: NSPoint(x: left, y: 196))
     NSAttributedString(string: "Mark up what Claude writes, the way a teacher marks an essay.", attributes: [
