@@ -10,7 +10,7 @@ extension OnTheMainThread {
     @MainActor
     @Suite("Review window")
     struct ReviewWindowTests {
-        private static let source = """
+        static let source = """
         # Plan: add rate limiting
 
         The API has **no limits** today, so a single client can exhaust the pool.
