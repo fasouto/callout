@@ -71,7 +71,8 @@ export const register: Register = on => {
       argumentHint: '[replies back]',
     })
     toolName = (await $.tool.register(TOOL)).tool
-    await poll($)
+    // Not awaited here: delivering submits a prompt, which waits for the session this hook is starting.
+    startTick($)
     return started
   })
 
