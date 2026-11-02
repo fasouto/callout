@@ -14,11 +14,11 @@ out=$(mktemp -d)
   exit 1
 }
 
-# The frames list holds each picture once, with how long it shows. fps=20 spreads that out.
+# The frames list holds each picture once, with how long it shows. fps=30 spreads that out.
 frames="-loglevel error -y -f concat -safe 0 -i $out/frames/frames.txt"
-ffmpeg $frames -vf "fps=20,scale=1280:-2:flags=lanczos,format=yuv420p" \
+ffmpeg $frames -vf "fps=30,scale=1280:-2:flags=lanczos,format=yuv420p" \
   -c:v libx264 -preset veryslow -crf 22 -movflags +faststart docs/demo.mp4
 # A GIF came out half the size of an animated WebP of the same frames.
-ffmpeg $frames -vf "fps=15,scale=1280:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+ffmpeg $frames -vf "fps=25,scale=1280:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
   -loop 0 docs/demo.gif
 echo "Redrew docs/demo.mp4 and docs/demo.gif. The frames are in $out/frames"

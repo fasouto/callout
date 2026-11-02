@@ -19,4 +19,10 @@ extension NSView {
 /// attached, so SwiftUI's layers come out as sharp as the text.
 final class SnapshotWindow: NSWindow {
     override var backingScaleFactor: CGFloat { 2 }
+
+    /// Draws as the window being used, with the system's blue selection, though
+    /// an off-screen window is never key.
+    var drawsAsKey = false
+    override var isKeyWindow: Bool { drawsAsKey || super.isKeyWindow }
+    override var isMainWindow: Bool { drawsAsKey || super.isMainWindow }
 }

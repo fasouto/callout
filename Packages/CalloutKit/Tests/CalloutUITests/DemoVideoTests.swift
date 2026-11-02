@@ -1,6 +1,7 @@
 import CalloutCore
 import AppKit
 import SwiftUI
+import ObjectiveC
 import Testing
 @testable import CalloutUI
 
@@ -9,11 +10,12 @@ import Testing
 private struct Step {
     enum Action {
         case rest
-        case select(String)
+        case drag(String)
         case press(letter: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags)
         case typeInField(String)
         case typeOnSelection(String)
         case finishWriting
+        case pointAtSendFeedback
     }
 
     let action: Action
@@ -39,27 +41,56 @@ private let demoFolder = ProcessInfo.processInfo.environment["CALLOUT_DEMO_DIR"]
 private let captionSeconds = 1.3
 
 private let storyboard: [Step] = [
-    Step(.rest, hold: 1.5),
+    Step(.rest, hold: 1.2),
 
-    Step(.select("leverage"), hold: 0.7),
+    Step(.drag("leverage"), hold: 0.7),
     Step(.press(letter: "r", keyCode: 15, modifiers: .option), caption: Caption(keys: "⌥R", label: "Replace"), hold: 0.5),
     Step(.typeInField("use"), hold: 0.6),
     Step(.finishWriting, hold: 0.8),
 
-    Step(.select("very robust "), hold: 0.7),
+    Step(.drag("very robust "), hold: 0.7),
     Step(.press(letter: "d", keyCode: 2, modifiers: .option), caption: Caption(keys: "⌥D", label: "Delete"), hold: 1.2),
 
-    Step(.select("token bucket"), hold: 0.7),
+    Step(.drag("token bucket"), hold: 0.7),
     Step(.typeOnSelection("Why not a sliding window?"), caption: Caption(keys: "Type", label: "Comment"), hold: 0.6),
     Step(.finishWriting, hold: 0.8),
 
-    Step(.select("Return 429 with a Retry-After header"), hold: 0.7),
+    Step(.drag("Return 429 with a Retry-After header"), hold: 0.7),
     Step(.press(letter: "k", keyCode: 40, modifiers: .option), caption: Caption(keys: "⌥K", label: "Keep"), hold: 1.2),
 
     Step(.press(letter: "o", keyCode: 31, modifiers: .command), caption: Caption(keys: "⌘O", label: "Overall comment"), hold: 0.6),
     Step(.typeInField("Too complex, simplify."), hold: 0.6),
-    Step(.finishWriting, hold: 2.2),
+    Step(.finishWriting, hold: 0.4),
+    Step(.pointAtSendFeedback, hold: 2.2),
 ]
+
+private let fps = 30.0
+
+/// Shorter than the app's own test plan, so the page fits a narrow window without scrolling.
+private let demoPlan = """
+# Plan: add rate limiting
+
+The API has **no limits** today, so a single client can exhaust the pool.
+
+1. Add a `RateLimiter` middleware
+   - token bucket, *per API key*
+2. Return `429` with a `Retry-After` header
+
+> Note: this does not cover websockets.
+
+We will leverage a very robust approach here.
+"""
+
+private let windowSize = NSSize(width: 820, height: 400)
+
+private enum Shape { case arrow, iBeam }
+
+private struct Pointer {
+    /// In window coordinates, points, y up.
+    var position: NSPoint
+    var shape: Shape
+    var visible = true
+}
 
 extension OnTheMainThread {
     /// Replays `storyboard` on the real review window and writes the frames for
@@ -74,17 +105,20 @@ extension OnTheMainThread {
 
             _ = NSApplication.shared
             let request = ReviewRequest(
-                content: .text(ReviewWindowTests.source, format: .markdown), origin: .planHook,
+                content: .text(demoPlan, format: .markdown), origin: .planHook,
                 metadata: ReviewMetadata(title: "Plan"), reply: .stdout, modes: [.feedback, .applyEdits]
             )
             let session = ReviewSession(request: request)
             let window = SnapshotWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700), styleMask: [.titled, .resizable],
+                contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height), styleMask: [.titled, .resizable],
                 backing: .buffered, defer: false
             )
             window.isReleasedWhenClosed = false
+            window.drawsAsKey = true
+            Self.reportApplicationAsActive()
             window.appearance = NSAppearance(named: .aqua)
             window.contentView = NSHostingView(rootView: ReviewView(session: session, finish: { _ in }))
+            NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
             await settle(window)
             let textView = try #require(Self.findTextView(in: window.contentView))
             textView.usesVimKeys = false
@@ -92,16 +126,24 @@ extension OnTheMainThread {
             await settle(window)
 
             var recorder = Recorder(directory: directory)
+            recorder.pointer = Pointer(position: NSPoint(x: windowSize.width - 120, y: windowSize.height * 0.55), shape: .arrow)
+            let sendFeedback = try #require(Self.sendFeedbackFrame(in: window))
             for step in storyboard {
                 if let caption = step.caption { recorder.show(caption) }
                 switch step.action {
                 case .rest:
                     break
-                case .select(let phrase):
-                    textView.setSelectedRange((textView.string as NSString).range(of: phrase))
+                case .drag(let phrase):
+                    await settle(window)
+                    try drag(over: (textView.string as NSString).range(of: phrase), textView: textView, window: window, recorder: &recorder)
+                case .pointAtSendFeedback:
+                    await settle(window)
+                    try glide(to: NSPoint(x: sendFeedback.midX, y: sendFeedback.midY), textView: textView, window: window, recorder: &recorder)
                 case .press(let letter, let keyCode, let modifiers):
+                    recorder.pointer?.visible = false
                     try Self.keyDown(letter, keyCode: keyCode, modifiers: modifiers, window: window, textView: textView)
                 case .typeInField(let text):
+                    recorder.pointer?.visible = false
                     await settle(window)
                     for character in text {
                         try Self.insert(String(character), in: window)
@@ -109,6 +151,7 @@ extension OnTheMainThread {
                         try recorder.frame(of: window, seconds: step.perCharacter)
                     }
                 case .typeOnSelection(let text):
+                    recorder.pointer?.visible = false
                     var rest = Substring(text)
                     try Self.keyDown(String(rest.removeFirst()), keyCode: 0, modifiers: [], window: window, textView: textView)
                     await settle(window)
@@ -127,6 +170,64 @@ extension OnTheMainThread {
             try recorder.finish()
             #expect(session.marks.map(\.kind) == [.replace, .delete, .comment, .keep])
             #expect(session.generalComment == "Too complex, simplify.")
+        }
+
+        /// Glides to the first character, presses, and drags to the last while the selection
+        /// grows with the pointer along the characters' real positions.
+        private func drag(over range: NSRange, textView: AnnotationTextView, window: NSWindow, recorder: inout Recorder) throws {
+            func rect(_ index: Int) -> NSRect {
+                window.convertFromScreen(textView.firstRect(forCharacterRange: NSRange(location: index, length: 1), actualRange: nil))
+            }
+            let start = rect(range.location)
+            try glide(to: NSPoint(x: start.minX, y: start.midY), textView: textView, window: window, recorder: &recorder)
+            window.makeFirstResponder(textView)
+            textView.setSelectedRange(NSRange(location: range.location, length: 0))
+
+            let frames = max(8, Int(min(1.0, 0.3 + Double(range.length) * 0.03) * fps))
+            for k in 1...frames {
+                let reached = max(1, Int((Double(range.length) * Self.ease(Double(k) / Double(frames))).rounded(.up)))
+                textView.setSelectedRange(NSRange(location: range.location, length: reached))
+                RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+                let end = rect(range.location + reached - 1)
+                recorder.pointer?.position = NSPoint(x: end.maxX, y: end.midY)
+                try recorder.frame(of: window, seconds: 1 / fps)
+            }
+        }
+
+        private func glide(to target: NSPoint, textView: NSView, window: NSWindow, recorder: inout Recorder) throws {
+            guard var pointer = recorder.pointer, let shot = window.contentView?.snapshotBitmap() else { return }
+            let from = pointer.position
+            let text = textView.convert(textView.bounds, to: nil)
+            let distance = hypot(target.x - from.x, target.y - from.y)
+            let frames = Int((0.3 + min(0.2, distance / 2500)) * fps)
+            pointer.visible = true
+            for k in 1...frames {
+                let t = Self.ease(Double(k) / Double(frames))
+                pointer.position = NSPoint(x: from.x + (target.x - from.x) * t, y: from.y + (target.y - from.y) * t)
+                pointer.shape = text.contains(pointer.position) ? .iBeam : .arrow
+                recorder.pointer = pointer
+                try recorder.frame(shot, seconds: 1 / fps)
+            }
+        }
+
+        private static func ease(_ t: Double) -> Double { t * t * (3 - 2 * t) }
+
+        /// Where the Send Feedback button shows. SwiftUI's buttons are not views, but each answer
+        /// has a view behind it that catches its Return chord, and Send Feedback is the last.
+        private static func sendFeedbackFrame(in window: NSWindow) -> NSRect? {
+            func chordViews(_ view: NSView) -> [NSView] {
+                (String(describing: type(of: view)).hasSuffix("KeyView") ? [view] : []) + view.subviews.flatMap(chordViews)
+            }
+            guard let content = window.contentView, let view = chordViews(content).last else { return nil }
+            return view.convert(view.bounds, to: nil)
+        }
+
+        /// AppKit draws a selection in the key colour only for an active application, and a
+        /// test process never is. Only this test process asks.
+        private static func reportApplicationAsActive() {
+            guard let method = class_getInstanceMethod(NSApplication.self, #selector(getter: NSApplication.isActive)) else { return }
+            let always: @convention(block) (AnyObject) -> Bool = { _ in true }
+            method_setImplementation(method, imp_implementationWithBlock(always))
         }
 
         private func settle(_ window: NSWindow) async {
@@ -170,13 +271,14 @@ extension OnTheMainThread {
 @MainActor
 private struct Recorder {
     let directory: URL
+    var pointer: Pointer?
     private var listing = "ffconcat version 1.0\n"
     private var count = 0
+    private var held: (file: String, picture: Data, seconds: Double)?
     private var captionLeft = 0.0
     private var caption: Caption?
-    private var lastFile = ""
 
-    private static let margin = (side: 110, top: 90, bottom: 190)
+    private static let margin = (side: 64, top: 56, bottom: 150)
 
     init(directory: URL) { self.directory = directory }
 
@@ -188,30 +290,48 @@ private struct Recorder {
     /// The window as it is now, shown for `seconds`: with the caption while it lasts, then without.
     mutating func frame(of window: NSWindow, seconds: Double) throws {
         guard let shot = window.contentView?.snapshotBitmap() else { return }
+        try frame(shot, seconds: seconds)
+    }
+
+    mutating func frame(_ shot: NSBitmapImageRep, seconds: Double) throws {
         var remaining = seconds
-        if let caption, captionLeft > 0 {
+        if let caption, captionLeft > 0.001 {
             let shown = min(remaining, captionLeft)
-            try write(Self.compose(shot, caption: caption), seconds: shown)
+            try write(Self.compose(shot, pointer: pointer, caption: caption), seconds: shown)
             captionLeft -= shown
             remaining -= shown
         }
-        if remaining > 0.0001 { try write(Self.compose(shot, caption: nil), seconds: remaining) }
+        if remaining > 0.001 { try write(Self.compose(shot, pointer: pointer, caption: nil), seconds: remaining) }
     }
 
+    /// A picture the same as the one before only extends how long that one shows.
     private mutating func write(_ bitmap: NSBitmapImageRep, seconds: Double) throws {
+        let picture = try #require(bitmap.representation(using: .png, properties: [:]))
+        if var current = held, current.picture == picture {
+            current.seconds += seconds
+            held = current
+            return
+        }
+        try flush()
         count += 1
-        lastFile = String(format: "frame-%04d.png", count)
-        try #require(bitmap.representation(using: .png, properties: [:])).write(to: directory.appendingPathComponent(lastFile))
-        listing += "file '\(lastFile)'\nduration \(String(format: "%.3f", seconds))\n"
+        let file = String(format: "frame-%04d.png", count)
+        try picture.write(to: directory.appendingPathComponent(file))
+        held = (file, picture, seconds)
+    }
+
+    private mutating func flush() throws {
+        guard let held else { return }
+        listing += "file '\(held.file)'\nduration \(String(format: "%.3f", held.seconds))\n"
     }
 
     /// ffmpeg ignores the last duration unless the file is named once more.
     mutating func finish() throws {
-        listing += "file '\(lastFile)'\n"
+        try flush()
+        listing += "file '\(held?.file ?? "")'\n"
         try listing.write(to: directory.appendingPathComponent("frames.txt"), atomically: true, encoding: .utf8)
     }
 
-    private static func compose(_ shot: NSBitmapImageRep, caption: Caption?) -> NSBitmapImageRep {
+    private static func compose(_ shot: NSBitmapImageRep, pointer: Pointer?, caption: Caption?) -> NSBitmapImageRep {
         let width = shot.pixelsWide + 2 * margin.side
         let height = shot.pixelsHigh + margin.top + margin.bottom
         let canvas = NSBitmapImageRep(
@@ -246,8 +366,22 @@ private struct Recorder {
         corners.lineWidth = 2
         corners.stroke()
 
+        if let pointer, pointer.visible { draw(pointer, over: frame) }
         if let caption { draw(caption, centeredIn: NSRect(x: 0, y: 0, width: width, height: margin.bottom)) }
         return canvas
+    }
+
+    /// The system's own cursor, at its size in points on a two-pixel-a-point picture.
+    private static func draw(_ pointer: Pointer, over frame: NSRect) {
+        let cursor = pointer.shape == .arrow ? NSCursor.arrow : NSCursor.iBeam
+        let image = cursor.image
+        let scale = 2.0
+        let hotSpot = cursor.hotSpot
+        let tip = NSPoint(x: frame.minX + pointer.position.x * scale, y: frame.minY + pointer.position.y * scale)
+        image.draw(in: NSRect(
+            x: tip.x - hotSpot.x * scale, y: tip.y + hotSpot.y * scale - image.size.height * scale,
+            width: image.size.width * scale, height: image.size.height * scale
+        ))
     }
 
     private static func draw(_ caption: Caption, centeredIn area: NSRect) {
