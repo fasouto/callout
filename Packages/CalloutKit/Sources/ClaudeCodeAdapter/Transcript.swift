@@ -48,8 +48,7 @@ public enum Transcript {
 
     // MARK: - Reading the replies
 
-    /// Claude's finished replies before the command that asked for this review (all of
-    /// them when there is no command), oldest first, without the replies that only talk about running a review.
+    /// Claude's finished replies, oldest first, without the replies that only talk about running a review.
     public static func replies(inTranscriptAt path: String, command: String = "callout") -> [Reply] {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
         return replies(in: text, command: command)
@@ -58,11 +57,9 @@ public enum Transcript {
     static func replies(in transcript: String, command: String = "callout") -> [Reply] {
         let turns = turns(in: transcript)
 
-        // A command's own turn is the one running now, and everything from it on is left out.
-        // Without a command, nothing is running, so every turn counts.
-        let boundary = turns.lastIndex { $0.opener.isCommand(command) } ?? turns.count
-
-        return turns[..<boundary].compactMap { turn in
+        // The tool runs once Claude has finished (the mod answers /callout between turns), so
+        // every turn counts; an earlier /callout's own turn is dropped below as chatter.
+        return turns.compactMap { turn in
             // A turn with no text, such as an unanswered prompt or /model, is not a reply.
             guard !turn.isChatter(command: command), let text = turn.reply else { return nil }
             return Reply(question: turn.opener.question, text: text)

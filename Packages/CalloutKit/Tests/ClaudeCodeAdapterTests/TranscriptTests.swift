@@ -184,6 +184,16 @@ struct RepliesTests {
         #expect(found.last?.question == "And the cost?")
     }
 
+    @Test func repliesAfterAnEarlierCalloutStillCount() {
+        #expect(replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("The draft."),
+            Line.command("callout"),
+            Line.prompt("Make it shorter"),
+            Line.assistant("The shorter draft.")
+        ).map(\.text) == ["The draft.", "The shorter draft."])
+    }
+
     @Test func aPluginMessageOpensATurnWithoutAQuestion() {
         let found = replies(
             Line.prompt("Draft a message"),
