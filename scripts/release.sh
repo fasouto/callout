@@ -51,15 +51,22 @@ notarize() {
   fi
 }
 
+app="$PWD/build/ReleaseDerivedData/Build/Products/Release/Callout.app"
+# A failed build must not leave the previous one behind to be shipped.
+rm -rf "$app"
+
 xcodegen generate >/dev/null
+# The generic destination builds for Apple silicon and Intel alike.
 # OTHER_CODE_SIGN_FLAGS reaches Xcode's own signing and the helper's build phase.
+# Without CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO, Xcode adds get-task-allow even
+# in Release, and notarization rejects it.
 xcodebuild -project Callout.xcodeproj -scheme Callout -configuration Release \
+  -destination generic/platform=macOS \
   -derivedDataPath build/ReleaseDerivedData \
   CODE_SIGN_IDENTITY="$identity" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$team" \
-  OTHER_CODE_SIGN_FLAGS=--timestamp build \
+  OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO build \
   | grep -E '^\*\* BUILD|error:' || true
 
-app="$PWD/build/ReleaseDerivedData/Build/Products/Release/Callout.app"
 [ -d "$app" ] || { echo "The build did not produce $app" >&2; exit 1; }
 
 codesign --verify --deep --strict "$app"
@@ -69,6 +76,8 @@ for part in "$app" "$app/Contents/Helpers/callout" "$app"/Contents/PlugIns/*.app
     || { echo "$part is not signed with the hardened runtime." >&2; exit 1; }
   echo "$info" | grep -q '^Timestamp=' \
     || { echo "$part has no secure timestamp." >&2; exit 1; }
+  ! codesign -d --entitlements - "$part" 2>/dev/null | grep -q get-task-allow \
+    || { echo "$part carries get-task-allow, which notarization rejects." >&2; exit 1; }
 done
 
 out="$PWD/build/release"
