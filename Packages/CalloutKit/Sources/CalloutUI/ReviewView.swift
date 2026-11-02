@@ -236,20 +236,17 @@ private struct ResponseButtons: View {
             .fixedSize()
 
             if session.allows.approve {
-                response("Approve", leads: !feedbackLeads, minWidth: 92) { finish(.approve) }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                response("Approve", leads: !feedbackLeads, minWidth: 92, key: [.command, .shift]) { finish(.approve) }
                     .help("Approve it as it is (⌘⇧↩)")
             } else if session.allows.applyEdits {
-                response(session.editsAction, leads: !session.hasFeedback, minWidth: 104) { finish(.applyEdits) }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                response(session.editsAction, leads: !session.hasFeedback, minWidth: 104, key: [.command, .shift]) { finish(.applyEdits) }
                     .disabled(!session.hasEdits)
                     .help(session.answersToClipboard
                         ? "Copy the text with your edits applied, to paste anywhere (⌘⇧↩)"
                         : "Return the text with your edits applied (⌘⇧↩)")
             }
             if session.allows.feedback {
-                response(session.feedbackAction, leads: feedbackLeads, minWidth: 128) { finish(.feedback) }
-                    .keyboardShortcut(.return, modifiers: .command)
+                response(session.feedbackAction, leads: feedbackLeads, minWidth: 128, key: .command) { finish(.feedback) }
                     .disabled(!session.hasFeedback)
                     .help(!session.hasFeedback ? "Mark something or write an overall comment first"
                         : session.answersToClipboard ? "Copy your marks as feedback, to paste anywhere (⌘↩)"
@@ -259,14 +256,46 @@ private struct ResponseButtons: View {
         .controlSize(.large)
     }
 
+    /// - Parameter key: the modifiers that press it with Return.
     @ViewBuilder
-    private func response(_ title: String, leads: Bool, minWidth: CGFloat, action: @escaping () -> Void) -> some View {
+    private func response(
+        _ title: String, leads: Bool, minWidth: CGFloat, key: NSEvent.ModifierFlags, action: @escaping () -> Void
+    ) -> some View {
         let label = Text(title).fontWeight(leads ? .semibold : .regular).frame(minWidth: minWidth)
         // Always whole: the space before them gives way, never their words.
-        if leads {
-            Button(action: action) { label }.buttonStyle(.borderedProminent).fixedSize()
-        } else {
-            Button(action: action) { label }.buttonStyle(.bordered).fixedSize()
+        Group {
+            if leads {
+                Button(action: action) { label }.buttonStyle(.borderedProminent).fixedSize()
+            } else {
+                Button(action: action) { label }.buttonStyle(.bordered).fixedSize()
+            }
+        }
+        .background(ReturnChord(modifiers: key, action: action))
+    }
+}
+
+/// Return with exactly these modifiers presses the button, as
+/// `.keyboardShortcut` does not: SwiftUI ignores Shift with Return, so on two
+/// buttons ⌘↩ and ⌘⇧↩ each pressed whichever was on, or either one.
+private struct ReturnChord: NSViewRepresentable {
+    let modifiers: NSEvent.ModifierFlags
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> KeyView { KeyView() }
+
+    func updateNSView(_ view: KeyView, context: Context) {
+        view.chord = context.environment.isEnabled ? self : nil
+    }
+
+    final class KeyView: NSView {
+        /// Nil while the button is off.
+        var chord: ReturnChord?
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            guard let chord, event.type == .keyDown, event.charactersIgnoringModifiers == "\r",
+                  event.modifierFlags.intersection([.command, .shift, .option, .control]) == chord.modifiers else { return false }
+            chord.action()
+            return true
         }
     }
 }
