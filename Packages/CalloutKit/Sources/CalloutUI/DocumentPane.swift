@@ -243,7 +243,7 @@ struct DocumentPane: NSViewRepresentable {
             }
 
             textView.setFrameSize(NSSize(width: measure, height: max(textView.frame.height, 10)))
-            let textHeight = ensuring.map { textView.layoutHeight(ensuring: $0) } ?? layOutFromTheTop()
+            let textHeight = ensuring.map { textView.layoutHeight(afterReplacing: $0) } ?? layOutFromTheTop()
             textView.frame = NSRect(x: left, y: Theme.pageTop, width: measure, height: textHeight)
 
             updateAnchors()

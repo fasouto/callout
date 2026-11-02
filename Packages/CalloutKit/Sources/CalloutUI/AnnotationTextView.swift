@@ -232,6 +232,27 @@ final class AnnotationTextView: NSTextView {
         return ceil(layoutManager.usageBoundsForTextContainer.maxY)
     }
 
+    /// The text's height once `ranges`, just replaced, are laid out again.
+    ///
+    /// TextKit makes the paragraph after each of them anew too. AppKit moves the
+    /// caret to its start, the end of the replaced text, and in a key window lays
+    /// it out at once, before the text above it, where TextKit can only guess its
+    /// place. Laying out the replaced text leaves it there: the text would come out
+    /// short, with a last paragraph cut off. So each range and the paragraph after
+    /// it are laid out afresh.
+    func layoutHeight(afterReplacing ranges: [NSRange]) -> CGFloat {
+        guard let layoutManager = textLayoutManager, let content = layoutManager.textContentManager else { return 0 }
+        let length = textStorage?.length ?? 0
+        let through = ranges.map { NSRange(location: $0.location, length: min(NSMaxRange($0) + 1, length) - $0.location) }
+        for range in through {
+            guard let start = content.location(content.documentRange.location, offsetBy: range.location),
+                  let end = content.location(start, offsetBy: range.length),
+                  let textRange = NSTextRange(location: start, end: end) else { continue }
+            layoutManager.invalidateLayout(for: textRange)
+        }
+        return layoutHeight(ensuring: through)
+    }
+
     // MARK: - Vim keys
 
     /// Handles a key the vim way. Returns false for keys vim mode leaves alone.
