@@ -21,7 +21,7 @@ struct HookCommand {
             guard case .accepted = try client.receive(timeout: AppConnection.acceptTimeout) else { return ExitCode.success }
             while true {
                 if case .result(let result) = try client.receive(timeout: nil) {
-                    if let output = PlanHook.output(for: result) { environment.out(output) }
+                    if let output = PlanHook.output(for: result, input: input) { environment.out(output) }
                     return ExitCode.success
                 }
             }

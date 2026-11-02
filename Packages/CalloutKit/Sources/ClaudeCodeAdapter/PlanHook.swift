@@ -22,10 +22,21 @@ public struct HookInput: Decodable, Equatable, Sendable {
     public var toolName: String?
     public var toolInput: ToolInput?
 
+    /// The tool's input as received, every field kept, so a decision can hand it back untouched.
     public struct ToolInput: Decodable, Equatable, Sendable {
+        public var fields: [String: JSONValue]
+
+        public init(fields: [String: JSONValue]) {
+            self.fields = fields
+        }
+
+        public init(from decoder: Decoder) throws {
+            fields = try [String: JSONValue](from: decoder)
+        }
+
         /// Claude Code injects the plan's markdown and its file path for `ExitPlanMode`.
-        public var plan: String?
-        public var planFilePath: String?
+        public var plan: String? { fields["plan"]?.string }
+        public var planFilePath: String? { fields["planFilePath"]?.string }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -40,6 +51,66 @@ public struct HookInput: Decodable, Equatable, Sendable {
 
     public static func decode(_ data: Data) -> HookInput? {
         try? JSONDecoder().decode(HookInput.self, from: data)
+    }
+}
+
+/// Any JSON value, for data that must pass through without being modelled.
+public enum JSONValue: Codable, Equatable, Sendable {
+    case null
+    case bool(Bool)
+    case int(Int)
+    case double(Double)
+    case string(String)
+    case array([JSONValue])
+    case object([String: JSONValue])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .int(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: JSONValue].self))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null: try container.encodeNil()
+        case .bool(let value): try container.encode(value)
+        case .int(let value): try container.encode(value)
+        case .double(let value): try container.encode(value)
+        case .string(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+
+    var string: String? {
+        if case .string(let value) = self { return value } else { return nil }
+    }
+
+    /// The value as `JSONSerialization` takes it.
+    var foundation: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let value): return value
+        case .int(let value): return value
+        case .double(let value): return value
+        case .string(let value): return value
+        case .array(let value): return value.map(\.foundation)
+        case .object(let value): return value.mapValues(\.foundation)
+        }
     }
 }
 
@@ -70,14 +141,18 @@ public enum PlanHook {
 
     /// What the hook prints for a result. Nil means print nothing, which leaves
     /// Claude Code's own dialog in charge.
-    public static func output(for result: ReviewResult) -> String? {
+    /// An allow must carry the tool's input back as `updatedInput`, or Claude Code ignores it.
+    public static func output(for result: ReviewResult, input: HookInput) -> String? {
         let decision: [String: Any]
         switch result.decision {
         case .cancel:
             return nil
         case .approve:
+            var updatedInput = (input.toolInput?.fields ?? [:]).mapValues(\.foundation)
+            if let plan = input.toolInput?.plan { updatedInput["plan"] = plan }
             decision = [
                 "behavior": "allow",
+                "updatedInput": updatedInput,
                 "updatedPermissions": [
                     ["type": "setMode", "mode": modeAfterApproval, "destination": "session"],
                 ],

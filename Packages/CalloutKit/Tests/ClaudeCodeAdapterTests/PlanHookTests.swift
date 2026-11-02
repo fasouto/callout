@@ -57,19 +57,40 @@ struct PlanHookTests {
         return try #require(specific["decision"] as? [String: Any])
     }
 
+    private func hookInput(_ plan: String? = "# Refactor auth\n\n1. Extract the token store\n") throws -> HookInput {
+        try #require(HookInput.decode(planHookInput(plan: plan)))
+    }
+
     @Test func approvalAllowsAndSwitchesToAcceptEdits() throws {
-        let output = PlanHook.output(for: ReviewResult(id: UUID(), decision: .approve))
+        let output = PlanHook.output(for: ReviewResult(id: UUID(), decision: .approve), input: try hookInput())
         let decision = try decision(output)
         #expect(decision["behavior"] as? String == "allow")
+        let updatedInput = try #require(decision["updatedInput"] as? [String: Any])
+        #expect(updatedInput["plan"] as? String == "# Refactor auth\n\n1. Extract the token store\n")
+        #expect(updatedInput["planFilePath"] as? String == "/Users/me/.claude/plans/refactor-auth.md")
         let updates = try #require(decision["updatedPermissions"] as? [[String: String]])
         #expect(updates == [["type": "setMode", "mode": "acceptEdits", "destination": "session"]])
         // One line, so nothing else on standard output can be mistaken for it.
         #expect(output?.contains("\n") == false)
     }
 
+    @Test func approvalHandsBackEveryFieldOfTheToolInput() throws {
+        let raw = Data("""
+        {"hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode","tool_input":{"plan":"# P","planFilePath":"/p.md","allowedPrompts":[{"tool":"Bash","prompt":"run tests"}],"count":3,"ratio":0.5,"flag":true,"none":null}}
+        """.utf8)
+        let input = try #require(HookInput.decode(raw))
+        let output = try #require(PlanHook.output(for: ReviewResult(id: UUID(), decision: .approve), input: input))
+        let updated = try #require(decision(output)["updatedInput"] as? NSDictionary)
+        let expected: NSDictionary = [
+            "plan": "# P", "planFilePath": "/p.md", "count": 3, "ratio": 0.5, "flag": true, "none": NSNull(),
+            "allowedPrompts": [["tool": "Bash", "prompt": "run tests"]],
+        ]
+        #expect(updated == expected)
+    }
+
     @Test func feedbackDeniesWithTheFeedbackAsTheMessage() throws {
         let feedback = "## Feedback on Refactor auth\n\n### 1. Delete\n> Extract the token store\nReason: out of scope\n"
-        let decision = try decision(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback, feedback: feedback)))
+        let decision = try decision(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback, feedback: feedback), input: try hookInput()))
         #expect(decision["behavior"] as? String == "deny")
         let message = try #require(decision["message"] as? String)
         #expect(message.hasPrefix("The user reviewed this plan in Callout and wants changes."))
@@ -77,10 +98,11 @@ struct PlanHookTests {
         #expect(decision["updatedPermissions"] == nil)
     }
 
-    @Test func cancelAndEmptyFeedbackPrintNothing() {
-        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .cancel)) == nil)
-        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback, feedback: " \n")) == nil)
-        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback)) == nil)
+    @Test func cancelAndEmptyFeedbackPrintNothing() throws {
+        let input = try hookInput()
+        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .cancel), input: input) == nil)
+        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback, feedback: " \n"), input: input) == nil)
+        #expect(PlanHook.output(for: ReviewResult(id: UUID(), decision: .feedback), input: input) == nil)
     }
 
     @Test func sessionComesFromTheEnvironment() {
