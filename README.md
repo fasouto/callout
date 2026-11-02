@@ -131,7 +131,7 @@ The other exit statuses are for what the caller got wrong: 64 for a command line
 
 In the app bundle the tool is at `Callout.app/Contents/Helpers/callout`.
 
-**With Claude Code's sandbox on,** shell commands may not use Unix sockets, so `/callout` and document reviews cannot reach the app: the tool says so and exits with 77. (Plan reviews are not affected: hooks run outside the sandbox.) To let the tool through while it stays sandboxed, run `scripts/allow-sandbox.py` once per Mac. It adds the tool's socket to your own Claude Code settings, which cover every project, and keeps the file as it was beside it; `--remove` takes the entry out again. This is what it writes to `~/.claude/settings.json`, with your home folder in the path:
+**With Claude Code's sandbox on,** shell commands may not use Unix sockets, so a `callout review` or `callout last-reply` run from a sandboxed shell cannot reach the app: the tool says so and exits with 77, and `/callout` or `review_document` show its message. (Plan reviews are not affected: hooks run outside the sandbox.) To let the tool through while it stays sandboxed, run `scripts/allow-sandbox.py` once per Mac. It adds the tool's socket to your own Claude Code settings, which cover every project, and keeps the file as it was beside it; `--remove` takes the entry out again. This is what it writes to `~/.claude/settings.json`, with your home folder in the path:
 
 ```json
 {
@@ -168,9 +168,11 @@ When Claude revises a plan, the review shows what changed since the version you 
 
 ![A revised plan with its changes pointed out](docs/plan-changes.png)
 
-**Replies.** Type `/callout` to go through Claude's last reply. It opens in Callout; after *Send Feedback*, Claude acts on your marks: it rewrites the reply where you corrected its wording, and where a comment is an instruction or a question it carries it out or answers it. Type `/callout 2` for the reply before the last, `3` for the one before that. Claude's own notes about running a review are not counted. Only you can start it: Claude never opens a review of its own reply by itself.
+**Replies.** Type `/callout` to go through Claude's last reply. It opens in Callout at once, with no turn of Claude's; after *Send Feedback*, your marks come back to the conversation as a message from the plugin, and Claude acts on them: it rewrites the reply where you corrected its wording, and where a comment is an instruction or a question it carries it out or answers it. Type `/callout 2` for the reply before the last, `3` for the one before that. Claude's own notes about running a review are not counted. Only you can start it: Claude never opens a review of its own reply by itself. A review stays open as long as you need, through a plugin reload and through a restart of Claude Code that resumes the same session (`claude --resume`); the feedback reaches the session that opened it once that session is idle.
 
-**Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Callout, as a PDF when it generated one. Your feedback goes back to Claude, which applies it to the source and regenerates the document. You can also just say "let me review it".
+**Documents.** When Claude has written something you will send to someone else (a CV, a cover letter, a proposal, a post), it opens the document in Callout through the plugin's `review_document` tool, as a PDF when it generated one. The tool returns as soon as the document is open and Claude ends its turn; your feedback, or the text you edited in place, comes back as a message, and Claude applies it to the source and regenerates the document. You can also just say "let me review it".
+
+Plans are unchanged: they go through the plugin's `PermissionRequest` hook, as above.
 
 Without the plugin, `callout install` adds the same hook to `~/.claude/settings.json` (it edits only that entry and keeps a backup), and `callout uninstall` removes it.
 

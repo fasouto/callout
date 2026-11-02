@@ -1,5 +1,6 @@
 {
-  "description": "Opens each finished plan in Callout. Approving there approves the plan; feedback sends it back for revision.",
+  "description": "Opens each finished plan in Callout. Approving there approves the plan; feedback sends it back for revision. The hooks module adds /callout for Claude's replies and the review_document tool for documents.",
+  "modules": ["./mod/register.ts"],
   "hooks": {
     "PermissionRequest": [
       {

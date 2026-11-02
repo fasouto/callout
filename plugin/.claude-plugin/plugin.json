@@ -1,7 +1,7 @@
 {
   "name": "callout",
   "displayName": "Callout",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Review Claude's plans, replies and documents in the Callout macOS app and send structured feedback back.",
   "author": {
     "name": "Fabio Souto"
