@@ -40,6 +40,8 @@ targets:
     postBuildScripts:
       # A copy phase would look for a product named after the target, CalloutCLI,
       # and quietly copy nothing. The tool is signed like the app, before the app.
+      # Dev builds skip the secure timestamp so they work offline; release.sh
+      # sets OTHER_CODE_SIGN_FLAGS=--timestamp, which notarization requires.
       - name: Embed the command-line tool
         basedOnDependencyAnalysis: true
         inputFiles:
@@ -50,7 +52,7 @@ targets:
           helpers="$TARGET_BUILD_DIR/$WRAPPER_NAME/Contents/Helpers"
           mkdir -p "$helpers"
           cp -f "$BUILT_PRODUCTS_DIR/callout" "$helpers/callout"
-          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime --timestamp=none "$helpers/callout"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime "${OTHER_CODE_SIGN_FLAGS:---timestamp=none}" "$helpers/callout"
     info:
       path: App/Info.plist
       properties:
