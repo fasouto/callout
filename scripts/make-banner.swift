@@ -132,7 +132,7 @@ func drawBanner() {
     background.setFill()
     NSRect(origin: .zero, size: size).fill()
 
-    drawIcon(center: NSPoint(x: 1100, y: 205), side: 400, degrees: 7)
+    drawIcon(center: NSPoint(x: 1105, y: 200), side: 350, degrees: 7)
 
     let left: CGFloat = 88
     let nameFont = serif(132, weight: .black)
