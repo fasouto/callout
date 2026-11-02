@@ -620,7 +620,9 @@ enum TextStyler {
 
         func close() {
             guard let quote = lastQuote else { return }
-            let spacing = (result.attribute(.paragraphStyle, at: quote.range.location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? 0
+            // The document's last paragraph has no space below it to stop short of.
+            let isLast = NSMaxRange(quote.range) == string.length
+            let spacing = isLast ? 0 : (result.attribute(.paragraphStyle, at: quote.range.location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? 0
             result.addAttribute(.calloutBlock, value: BlockDecoration.quote(depth: quote.depth, trim: spacing), range: quote.range)
             lastQuote = nil
         }
