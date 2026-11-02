@@ -11,6 +11,10 @@ private struct Step {
     enum Action {
         case rest
         case drag(String)
+        /// Moves onto a button of the bar above the selection and clicks it with real mouse events.
+        case clickBar(MarkKind)
+        /// A bare click just after the phrase, leaving a caret there.
+        case click(after: String)
         case press(letter: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags)
         case typeInField(String)
         case typeOnSelection(String)
@@ -22,7 +26,7 @@ private struct Step {
     var caption: Caption?
     var hold: Double
     /// Seconds each typed character stays on screen.
-    var perCharacter = 0.09
+    var perCharacter = 0.075
 
     init(_ action: Action, caption: Caption? = nil, hold: Double) {
         self.action = action
@@ -41,47 +45,54 @@ private let demoFolder = ProcessInfo.processInfo.environment["CALLOUT_DEMO_DIR"]
 private let captionSeconds = 1.3
 
 private let storyboard: [Step] = [
-    Step(.rest, hold: 1.2),
+    Step(.rest, hold: 1.3),
 
     Step(.drag("leverage"), hold: 0.7),
     Step(.press(letter: "r", keyCode: 15, modifiers: .option), caption: Caption(keys: "⌥R", label: "Replace"), hold: 0.5),
     Step(.typeInField("use"), hold: 0.6),
     Step(.finishWriting, hold: 0.8),
 
-    Step(.drag("very robust "), hold: 0.7),
-    Step(.press(letter: "d", keyCode: 2, modifiers: .option), caption: Caption(keys: "⌥D", label: "Delete"), hold: 1.2),
+    Step(.drag("robust, battle-tested "), hold: 0.7),
+    Step(.clickBar(.delete), hold: 1.0),
 
     Step(.drag("token bucket"), hold: 0.7),
     Step(.typeOnSelection("Why not a sliding window?"), caption: Caption(keys: "Type", label: "Comment"), hold: 0.6),
     Step(.finishWriting, hold: 0.8),
 
-    Step(.drag("Return 429 with a Retry-After header"), hold: 0.7),
-    Step(.press(letter: "k", keyCode: 40, modifiers: .option), caption: Caption(keys: "⌥K", label: "Keep"), hold: 1.2),
+    Step(.drag("Return 429 Too Many Requests with a Retry-After header"), hold: 0.7),
+    Step(.press(letter: "k", keyCode: 40, modifiers: .option), caption: Caption(keys: "⌥K", label: "Keep"), hold: 1.0),
+
+    Step(.click(after: "Websockets"), hold: 0.5),
+    Step(.typeOnSelection(" and server-sent events"), caption: Caption(keys: "Type", label: "Add words"), hold: 0.6),
+    Step(.finishWriting, hold: 0.4),
+    Step(.click(after: "for now."), hold: 0.6),
 
     Step(.press(letter: "o", keyCode: 31, modifiers: .command), caption: Caption(keys: "⌘O", label: "Overall comment"), hold: 0.6),
-    Step(.typeInField("Too complex, simplify."), hold: 0.6),
+    Step(.typeInField("Ship the 429 first; the alerts can wait."), hold: 0.6),
     Step(.finishWriting, hold: 0.4),
-    Step(.pointAtSendFeedback, hold: 2.2),
+    Step(.pointAtSendFeedback, hold: 1.8),
 ]
 
 private let fps = 30.0
 
-/// Shorter than the app's own test plan, so the page fits a narrow window without scrolling.
+/// Long enough to need a few kinds of mark, short enough to fit the window without scrolling.
 private let demoPlan = """
-# Plan: add rate limiting
+# Plan: rate limiting for the public API
 
-The API has **no limits** today, so a single client can exhaust the pool.
+The public API has no limits today, so one client can use up the database pool and slow every other customer down. This plan adds a limit for each API key.
 
-1. Add a `RateLimiter` middleware
-   - token bucket, *per API key*
-2. Return `429` with a `Retry-After` header
+1. Add a `RateLimiter` middleware in front of every route
+   - a token bucket per API key, kept in Redis so every worker shares it
+   - 100 requests a minute by default, set per plan
+2. Return `429 Too Many Requests` with a `Retry-After` header
+3. Log each rejected request, and alert when one key is rejected more than 1,000 times an hour
 
-> Note: this does not cover websockets.
+We will leverage a robust, battle-tested library for the bucket instead of writing our own.
 
-We will leverage a very robust approach here.
+> Websockets are out of scope for now.
 """
 
-private let windowSize = NSSize(width: 820, height: 400)
+private let windowSize = NSSize(width: 820, height: 620)
 
 private enum Shape { case arrow, iBeam }
 
@@ -136,6 +147,18 @@ extension OnTheMainThread {
                 case .drag(let phrase):
                     await settle(window)
                     try drag(over: (textView.string as NSString).range(of: phrase), textView: textView, window: window, recorder: &recorder)
+                case .clickBar(let kind):
+                    await settle(window)
+                    try clickBar(kind, textView: textView, window: window, recorder: &recorder)
+                case .click(after: let phrase):
+                    await settle(window)
+                    let end = (textView.string as NSString).range(of: phrase)
+                    let rect = window.convertFromScreen(textView.firstRect(
+                        forCharacterRange: NSRange(location: end.location + end.length - 1, length: 1), actualRange: nil
+                    ))
+                    try glide(to: NSPoint(x: rect.maxX, y: rect.midY), textView: textView, window: window, recorder: &recorder)
+                    window.makeFirstResponder(textView)
+                    textView.setSelectedRange(NSRange(location: end.location + end.length, length: 0))
                 case .pointAtSendFeedback:
                     await settle(window)
                     try glide(to: NSPoint(x: sendFeedback.midX, y: sendFeedback.midY), textView: textView, window: window, recorder: &recorder)
@@ -162,14 +185,22 @@ extension OnTheMainThread {
                         try recorder.frame(of: window, seconds: step.perCharacter)
                     }
                 case .finishWriting:
-                    session.endEditing()
+                    // Return ends words typed in the page and a note in the margin; Esc leaves the overall comment.
+                    if window.firstResponder === textView {
+                        try Self.keyDown("\r", keyCode: 36, modifiers: [], window: window, textView: textView)
+                    } else {
+                        session.endEditing()
+                    }
                 }
                 await settle(window)
                 try recorder.frame(of: window, seconds: step.hold)
             }
             try recorder.finish()
-            #expect(session.marks.map(\.kind) == [.replace, .delete, .comment, .keep])
-            #expect(session.generalComment == "Too complex, simplify.")
+            #expect(session.marks.map(\.kind) == [.replace, .delete, .comment, .keep, .insert])
+            #expect(session.generalComment == "Ship the 429 first; the alerts can wait.")
+            let sent = try session.editedText()
+            #expect(sent.contains("We will use a library for the bucket instead of writing our own."))
+            #expect(sent.contains("Websockets and server-sent events are out of scope for now."))
         }
 
         /// Glides to the first character, presses, and drags to the last while the selection
@@ -178,6 +209,7 @@ extension OnTheMainThread {
             func rect(_ index: Int) -> NSRect {
                 window.convertFromScreen(textView.firstRect(forCharacterRange: NSRange(location: index, length: 1), actualRange: nil))
             }
+            recorder.barAllowed = false
             let start = rect(range.location)
             try glide(to: NSPoint(x: start.minX, y: start.midY), textView: textView, window: window, recorder: &recorder)
             window.makeFirstResponder(textView)
@@ -192,19 +224,56 @@ extension OnTheMainThread {
                 recorder.pointer?.position = NSPoint(x: end.maxX, y: end.midY)
                 try recorder.frame(of: window, seconds: 1 / fps)
             }
+            recorder.barAllowed = true
+        }
+
+        /// Glides onto the bar's button and presses it with the mouse events a click sends.
+        private func clickBar(_ kind: MarkKind, textView: NSView, window: NSWindow, recorder: inout Recorder) throws {
+            let panel = try #require(window.childWindows?.first { $0.isVisible })
+            let bar = try #require(panel.contentView?.snapshotBitmap())
+            let button = try #require(Self.centre(ofRedIn: bar, panel: panel))
+            let target = window.convertFromScreen(NSRect(origin: button, size: .zero)).origin
+            try glide(to: target, textView: textView, window: window, recorder: &recorder)
+            try recorder.frame(of: window, seconds: 0.5)
+            let spot = panel.convertPoint(fromScreen: window.convertToScreen(NSRect(origin: target, size: .zero)).origin)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try #require(NSEvent.mouseEvent(
+                    with: type, location: spot, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+                ))
+                panel.sendEvent(event)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            }
+        }
+
+        /// Where the Strike it out button is, on screen. An off-screen panel has no accessibility
+        /// tree to ask, and the strike glyph is the only red in the bar.
+        private static func centre(ofRedIn bar: NSBitmapImageRep, panel: NSWindow) -> NSPoint? {
+            var xs = [Int](), ys = [Int]()
+            for y in 0..<bar.pixelsHigh {
+                for x in 0..<bar.pixelsWide {
+                    guard let c = bar.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), c.alphaComponent > 0.8,
+                          c.redComponent > 0.8, c.greenComponent < 0.4, c.blueComponent < 0.4 else { continue }
+                    xs.append(x); ys.append(y)
+                }
+            }
+            guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { return nil }
+            let inPanel = NSPoint(x: Double(x0 + x1) / 4, y: Double(bar.pixelsHigh) / 2 - Double(y0 + y1) / 4)
+            return NSPoint(x: panel.frame.minX + inPanel.x, y: panel.frame.minY + inPanel.y)
         }
 
         private func glide(to target: NSPoint, textView: NSView, window: NSWindow, recorder: inout Recorder) throws {
-            guard var pointer = recorder.pointer, let shot = window.contentView?.snapshotBitmap() else { return }
+            guard var pointer = recorder.pointer, let shot = recorder.snapshot(of: window) else { return }
             let from = pointer.position
             let text = textView.convert(textView.bounds, to: nil)
+            let bar = window.childWindows?.first(where: \.isVisible).map { window.convertFromScreen($0.frame) } ?? .zero
             let distance = hypot(target.x - from.x, target.y - from.y)
             let frames = Int((0.3 + min(0.2, distance / 2500)) * fps)
             pointer.visible = true
             for k in 1...frames {
                 let t = Self.ease(Double(k) / Double(frames))
                 pointer.position = NSPoint(x: from.x + (target.x - from.x) * t, y: from.y + (target.y - from.y) * t)
-                pointer.shape = text.contains(pointer.position) ? .iBeam : .arrow
+                pointer.shape = text.contains(pointer.position) && !bar.contains(pointer.position) ? .iBeam : .arrow
                 recorder.pointer = pointer
                 try recorder.frame(shot, seconds: 1 / fps)
             }
@@ -272,6 +341,8 @@ extension OnTheMainThread {
 private struct Recorder {
     let directory: URL
     var pointer: Pointer?
+    /// False while a drag is still going, since the app shows its bar once the mouse is up.
+    var barAllowed = false
     private var listing = "ffconcat version 1.0\n"
     private var count = 0
     private var held: (file: String, picture: Data, seconds: Double)?
@@ -289,8 +360,29 @@ private struct Recorder {
 
     /// The window as it is now, shown for `seconds`: with the caption while it lasts, then without.
     mutating func frame(of window: NSWindow, seconds: Double) throws {
-        guard let shot = window.contentView?.snapshotBitmap() else { return }
+        guard let shot = snapshot(of: window) else { return }
         try frame(shot, seconds: seconds)
+    }
+
+    /// The window's content with the app's bar of marks drawn over it, which lives in a panel of its own.
+    func snapshot(of window: NSWindow) -> NSBitmapImageRep? {
+        guard let shot = window.contentView?.snapshotBitmap() else { return nil }
+        guard barAllowed, let panel = window.childWindows?.first(where: \.isVisible),
+              let bar = panel.contentView?.snapshotBitmap() else { return shot }
+        let spot = window.convertFromScreen(panel.frame)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let context = NSGraphicsContext(bitmapImageRep: shot) else { return shot }
+        NSGraphicsContext.current = context
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        shadow.shadowOffset = NSSize(width: 0, height: -6)
+        shadow.shadowBlurRadius = 18
+        shadow.set()
+        // The rep's size is in points, and the panel's corners are transparent in the real thing.
+        NSBezierPath(roundedRect: spot, xRadius: spot.height / 2, yRadius: spot.height / 2).addClip()
+        bar.draw(in: spot)
+        return shot
     }
 
     mutating func frame(_ shot: NSBitmapImageRep, seconds: Double) throws {
