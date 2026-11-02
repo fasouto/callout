@@ -349,6 +349,35 @@ extension OnTheMainThread {
             #expect(harness.session.generalComment == "Too complex, simplify.")
         }
 
+        private func writeSnapshots(of harness: Harness, named name: String) {
+            guard let folder = ProcessInfo.processInfo.environment["CALLOUT_SNAPSHOT_DIR"],
+                  let view = harness.window.contentView else { return }
+            for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                harness.window.appearance = NSAppearance(named: appearance)
+                spin(harness.window)
+                let url = URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png")
+                try? view.snapshotBitmap()?.representation(using: .png, properties: [:])?.write(to: url)
+            }
+            harness.window.appearance = nil
+        }
+
+        @Test func commandReturnSendsWhileWritingTheOverallComment() async throws {
+            var outcomes: [ReviewOutcome] = []
+            let harness = await makeHarness { outcomes.append($0) }
+            harness.session.focusOverallComment()
+            await settle(harness)
+            try type("Too complex, simplify.", in: harness)
+            await settle(harness)
+            writeSnapshots(of: harness, named: "overall-send-hint")
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: KeyCode.return
+            ))
+            #expect(harness.window.performKeyEquivalent(with: event))
+            #expect(outcomes == [.feedback])
+            #expect(harness.session.generalComment == "Too complex, simplify.")
+        }
+
         @Test func backspaceStrikesTheSelectionAndTakesTheStrikeBack() async throws {
             let harness = await makeHarness()
             let session = harness.session

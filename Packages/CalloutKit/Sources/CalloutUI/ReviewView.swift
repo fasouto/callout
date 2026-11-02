@@ -183,6 +183,17 @@ private struct ActionBar: View {
                 KeyCap("⌘O")
                     .help("Press ⌘O to write here")
             }
+            if writingOverall, !session.generalComment.isEmpty, session.allows.feedback {
+                HStack(spacing: 5) {
+                    Text(session.feedbackAction.prefix { $0 != " " })
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    KeyCap("⌘↩")
+                }
+                .fixedSize()
+                .accessibilityHidden(true)
+                .help("Press ⌘↩ to \(session.feedbackAction.lowercased())")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
