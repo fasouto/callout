@@ -2,7 +2,7 @@
 
 Callout is a native macOS menu-bar app for correcting text an AI wrote. You strike out, replace, insert, comment and mark what is good. The result goes back to the AI as feedback, or to you as the corrected text.
 
-![A plan marked up in the review window: a word replaced, words struck out, a comment, a line kept, and an overall comment, with the key for each shown below the window](docs/demo.gif)
+![A plan marked up in the review window: a word replaced, words struck out with the bar that appears over a selection, a comment, a line kept, words added at the caret, and an overall comment, with the key for each shown below the window](docs/demo.gif)
 
 It has two parts:
 
