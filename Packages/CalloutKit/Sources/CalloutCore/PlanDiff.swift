@@ -164,7 +164,8 @@ public enum PlanDiff {
 
         func flush() {
             if !pendingRemoval.allSatisfy(\.isWhitespace) {
-                changes.removed.append(.init(offset: pendingAddition?.start ?? offset, text: pendingRemoval, isWholeLine: false))
+                let position = pendingAddition?.start ?? offset
+                changes.removed.append(.init(offset: position, text: placed(pendingRemoval, at: position - lineStart, in: after), isWholeLine: false))
             }
             if let span = pendingAddition { changes.added.append(span) }
             pendingRemoval = ""
@@ -206,5 +207,16 @@ public enum PlanDiff {
             return leading + trailing >= span.length ? nil : TextSpan(span.start + leading, span.end - trailing)
         }
         return changes
+    }
+
+    /// The removed words as they read at `offset` in the new line. Which of several
+    /// equal spaces the comparison keeps is the standard library's choice, so a
+    /// removal can start with a space right after one the line keeps. That space
+    /// moves after the words, or goes when they already end with one.
+    private static func placed(_ removal: String, at offset: Int, in line: String) -> String {
+        guard removal.first?.isWhitespace == true, line.slice(TextSpan(0, offset))?.last?.isWhitespace ?? true else { return removal }
+        let space = removal.prefix(while: \.isWhitespace)
+        let words = removal.dropFirst(space.count)
+        return words.last?.isWhitespace == true ? String(words) : String(words + space)
     }
 }
