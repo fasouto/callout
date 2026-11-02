@@ -56,7 +56,7 @@ private let storyboard: [Step] = [
     Step(.select("Return 429 with a Retry-After header"), hold: 0.7),
     Step(.press(letter: "k", keyCode: 40, modifiers: .option), caption: Caption(keys: "⌥K", label: "Keep"), hold: 1.2),
 
-    Step(.press(letter: "o", keyCode: 31, modifiers: .option), caption: Caption(keys: "⌥O", label: "Overall comment"), hold: 0.6),
+    Step(.press(letter: "o", keyCode: 31, modifiers: .command), caption: Caption(keys: "⌘O", label: "Overall comment"), hold: 0.6),
     Step(.typeInField("Too complex, simplify."), hold: 0.6),
     Step(.finishWriting, hold: 2.2),
 ]
@@ -154,7 +154,8 @@ extension OnTheMainThread {
                 with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: window.windowNumber,
                 context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
             ))
-            textView.keyDown(with: event)
+            // A Command key is the window's shortcut, as ⌘O is the overall comment's button; the rest are the text view's.
+            if modifiers.contains(.command) { _ = window.performKeyEquivalent(with: event) } else { textView.keyDown(with: event) }
         }
 
         private static func insert(_ text: String, in window: NSWindow) throws {
