@@ -1,4 +1,4 @@
-// Draws the README's banner: the name on a highlighter stripe, the tagline
+// Draws the README's banner: the name marked with a highlighter, the tagline
 // corrected the way Callout marks text, and the app icon.
 //
 //     swift scripts/make-banner.swift [output.png] [dark]
@@ -28,7 +28,8 @@ func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor 
     NSColor(srgbRed: r, green: g, blue: b, alpha: a)
 }
 
-let background = rgb(0.075, 0.078, 0.09)
+let background = rgb(0.984, 0.982, 0.975)
+let ink = rgb(0.10, 0.10, 0.11)
 let highlighter = rgb(1.0, 0.87, 0.25)
 let pen = rgb(0.91, 0.30, 0.25)
 let green = rgb(0.20, 0.78, 0.35)
@@ -62,16 +63,41 @@ func penLine(from a: NSPoint, to b: NSPoint, color: NSColor, width lineWidth: CG
     path.stroke()
 }
 
-/// A highlighter stroke, slightly off square like the one in the icon.
-func marker(_ rect: NSRect, color: NSColor, tilt: CGFloat) {
-    let path = NSBezierPath()
-    path.move(to: NSPoint(x: rect.minX, y: rect.minY - tilt))
-    path.line(to: NSPoint(x: rect.maxX, y: rect.minY + tilt))
-    path.line(to: NSPoint(x: rect.maxX + 1, y: rect.maxY + tilt))
-    path.line(to: NSPoint(x: rect.minX - 1, y: rect.maxY - tilt))
-    path.close()
-    color.setFill()
-    path.fill()
+/// A highlighter pen's stroke: the slanted ends of a chisel tip, edges that
+/// waver a little, and darker bands where the pen went over it again.
+func highlighterStroke(_ rect: NSRect, color: NSColor, degrees: CGFloat) {
+    // A fixed wobble, so the banner comes out the same on every run.
+    func wobble(_ x: CGFloat, _ seed: CGFloat) -> CGFloat {
+        sin(x / 37 + seed) * 1.6 + sin(x / 11 + seed * 2.3) * 0.7
+    }
+    func pass(_ r: NSRect, alpha: CGFloat, seed: CGFloat) {
+        let slant = r.height * 0.22
+        let steps = 48
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: r.minX + slant, y: r.minY + wobble(r.minX, seed)))
+        for i in 1...steps {
+            let x = r.minX + slant + (r.width - slant) * CGFloat(i) / CGFloat(steps)
+            path.line(to: NSPoint(x: x, y: r.minY + wobble(x, seed)))
+        }
+        for i in 0...steps {
+            let x = r.maxX - slant - (r.width - slant) * CGFloat(i) / CGFloat(steps)
+            path.line(to: NSPoint(x: x, y: r.maxY + wobble(x, seed + 1.3)))
+        }
+        path.close()
+        color.withAlphaComponent(alpha).setFill()
+        path.fill()
+    }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current?.compositingOperation = .multiply
+    let transform = NSAffineTransform()
+    transform.translateX(by: rect.midX, yBy: rect.midY)
+    transform.rotate(byDegrees: degrees)
+    transform.translateX(by: -rect.midX, yBy: -rect.midY)
+    transform.concat()
+    pass(rect, alpha: 0.8, seed: 0.4)
+    pass(NSRect(x: rect.minX + rect.width * 0.06, y: rect.minY + rect.height * 0.1, width: rect.width * 0.88, height: rect.height * 0.3), alpha: 0.22, seed: 2.1)
+    pass(NSRect(x: rect.minX + rect.width * 0.02, y: rect.minY + rect.height * 0.64, width: rect.width * 0.9, height: rect.height * 0.24), alpha: 0.16, seed: 3.7)
+    NSGraphicsContext.restoreGraphicsState()
 }
 
 /// Lays runs out in one line, struck or underlined as marked.
@@ -111,15 +137,16 @@ func drawBanner() {
     let left: CGFloat = 88
     let nameFont = serif(132, weight: .black)
     let nameWidth = NSAttributedString(string: "Callout", attributes: [.font: nameFont]).size().width - 6
-    marker(NSRect(x: left - 18, y: 168, width: nameWidth + 40, height: 130), color: highlighter, tilt: 1.5)
-    draw("Callout", nameFont, background, x: left, baseline: 188, kern: -1)
+    // Over the letters' middle, the way a pen marks a word: the tall letters rise above it.
+    highlighterStroke(NSRect(x: left - 20, y: 172, width: nameWidth + 42, height: 92), color: highlighter, degrees: -1.2)
+    draw("Callout", nameFont, ink, x: left, baseline: 188, kern: -1)
 
-    let grey = rgb(0.80, 0.80, 0.83)
+    let grey = rgb(0.30, 0.30, 0.33)
     line([
         Run(text: "Mark up what AI writes, the way a teacher ", color: grey),
-        Run(text: "corrects", color: rgb(0.52, 0.52, 0.55), mark: .strike),
+        Run(text: "corrects", color: rgb(0.56, 0.56, 0.58), mark: .strike),
         Run(text: " ", color: grey),
-        Run(text: "marks an essay.", color: .white, mark: .underline),
+        Run(text: "marks an essay.", color: ink, mark: .underline),
     ], font: serif(30, italic: true), x: left + 2, baseline: 104)
 }
 
@@ -141,10 +168,10 @@ NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
     drawBanner()
     NSGraphicsContext.restoreGraphicsState()
 
-    // A faint edge, so the dark banner still shows its shape on GitHub's dark page.
+    // A faint edge, so the pale banner still shows its shape on GitHub's white page.
     let edge = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
     edge.lineWidth = 1
-    rgb(1, 1, 1, 0.14).setStroke()
+    rgb(0, 0, 0, 0.10).setStroke()
     edge.stroke()
 }
 NSGraphicsContext.restoreGraphicsState()
