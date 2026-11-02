@@ -15,11 +15,13 @@ extension OnTheMainThread {
             let window: NSWindow
         }
 
-        private func makeHarness(finish: @escaping (ReviewOutcome) -> Void = { _ in }) async -> Harness {
+        private func makeHarness(
+            modes: [ReviewMode] = [.feedback, .applyEdits], finish: @escaping (ReviewOutcome) -> Void = { _ in }
+        ) async -> Harness {
             _ = NSApplication.shared
             let request = ReviewRequest(
                 content: .text("We will leverage a very robust approach here.", format: .markdown), origin: .planHook,
-                metadata: ReviewMetadata(title: "Plan"), reply: .clipboard, modes: [.feedback, .applyEdits]
+                metadata: ReviewMetadata(title: "Plan"), reply: .clipboard, modes: modes
             )
             let session = ReviewSession(request: request)
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
@@ -376,6 +378,77 @@ extension OnTheMainThread {
             #expect(harness.window.performKeyEquivalent(with: event))
             #expect(outcomes == [.feedback])
             #expect(harness.session.generalComment == "Too complex, simplify.")
+        }
+
+        enum Keyboard: CaseIterable { case document, overallComment, note }
+
+        /// Puts the keyboard where a reviewer can be when they answer, with something written there.
+        private func putKeyboard(in place: Keyboard, _ harness: Harness) async throws {
+            switch place {
+            case .document:
+                #expect(harness.window.firstResponder is AnnotationTextView)
+            case .overallComment:
+                harness.session.focusOverallComment()
+                await settle(harness)
+                #expect(fieldInFocus(harness) != nil && !(fieldInFocus(harness) is NoteTextField))
+                try type("Simpler.", in: harness)
+            case .note:
+                harness.session.addMarkToWrite(.comment, span: TextSpan(19, 30))
+                await settle(harness)
+                #expect(fieldInFocus(harness) is NoteTextField)
+                try type("Why?", in: harness)
+            }
+            await settle(harness)
+        }
+
+        /// Presses Return with modifiers, as AppKit offers a key equivalent: to the
+        /// window, before the view with the keyboard sees the key.
+        private func pressReturn(_ modifiers: NSEvent.ModifierFlags, in harness: Harness) throws {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: harness.window.windowNumber,
+                context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: KeyCode.return
+            ))
+            _ = harness.window.performKeyEquivalent(with: event)
+        }
+
+        @Test(arguments: Keyboard.allCases)
+        func commandReturnSendsAndCommandShiftReturnApprovesOrAppliesTheEdits(from place: Keyboard) async throws {
+            for (modes, answer) in [([ReviewMode.feedback, .approve], ReviewOutcome.approve), ([.feedback, .applyEdits], .applyEdits)] {
+                var outcomes: [ReviewOutcome] = []
+                let harness = await makeHarness(modes: modes) { outcomes.append($0) }
+                try #require(harness.session.addMark(.delete, span: TextSpan(8, 17)))
+                try await putKeyboard(in: place, harness)
+
+                try pressReturn(.command, in: harness)
+                #expect(outcomes == [.feedback], "⌘↩ with \(modes)")
+                try pressReturn([.command, .shift], in: harness)
+                #expect(outcomes == [.feedback, answer], "⌘⇧↩ with \(modes)")
+            }
+        }
+
+        /// With nothing marked, ⌘↩ meant for Send Feedback must not approve the plan;
+        /// with only a comment, ⌘⇧↩ meant for Apply Edits must not send it.
+        @Test(arguments: [Keyboard.document, .overallComment])
+        func aReturnChordWhoseButtonIsOffDoesNothing(from place: Keyboard) async throws {
+            var outcomes: [ReviewOutcome] = []
+            let plan = await makeHarness(modes: [.feedback, .approve]) { outcomes.append($0) }
+            if place == .overallComment {
+                plan.session.focusOverallComment()
+                await settle(plan)
+            }
+            try pressReturn(.command, in: plan)
+            #expect(outcomes.isEmpty, "⌘↩ with nothing to send")
+            try pressReturn([.command, .shift], in: plan)
+            #expect(outcomes == [.approve])
+
+            outcomes.removeAll()
+            let document = await makeHarness(modes: [.feedback, .applyEdits]) { outcomes.append($0) }
+            try #require(document.session.addMark(.comment, span: TextSpan(19, 30), note: "Why?"))
+            try await putKeyboard(in: place, document)
+            try pressReturn([.command, .shift], in: document)
+            #expect(outcomes.isEmpty, "⌘⇧↩ with no edits to apply")
+            try pressReturn(.command, in: document)
+            #expect(outcomes == [.feedback])
         }
 
         @Test func backspaceStrikesTheSelectionAndTakesTheStrikeBack() async throws {
