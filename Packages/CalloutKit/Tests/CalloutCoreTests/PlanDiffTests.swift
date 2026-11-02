@@ -8,6 +8,13 @@ struct PlanDiffTests {
         changes.added.compactMap { new.slice($0) }
     }
 
+    /// The new text with each removal put back where it was, as the page shows it.
+    private func reading(_ changes: PlanChanges, in new: String) -> String {
+        let text = NSMutableString(string: new)
+        for removal in changes.removed.reversed() { text.insert(removal.text, at: removal.offset) }
+        return text as String
+    }
+
     @Test func identicalVersionsHaveNoChanges() {
         let text = "# Plan\n\n1. One\n2. Two\n"
         #expect(PlanDiff.changes(from: text, to: text).isEmpty)
@@ -38,6 +45,7 @@ struct PlanDiffTests {
         #expect(changes.removed.allSatisfy { !$0.isWholeLine })
         // Each removal sits where its replacement now is.
         #expect(changes.removed.map(\.offset) == [span(of: "use", in: new).start, span(of: "simple", in: new).start])
+        #expect(reading(changes, in: new) == "We will leverageuse a very robust simple approach here.")
     }
 
     @Test func wordsRemovedWithoutReplacementSitAtTheGap() {
