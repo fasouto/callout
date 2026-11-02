@@ -43,11 +43,12 @@ extension OnTheMainThread {
         }
 
         private func makeHarness(
-            reply: ReplyChannel = .clipboard, finish: @escaping (ReviewOutcome) -> Void = { _ in }
+            source: String = Self.source, drawsAsKey: Bool = false, reply: ReplyChannel = .clipboard,
+            finish: @escaping (ReviewOutcome) -> Void = { _ in }
         ) throws -> Harness {
             _ = NSApplication.shared
             let request = ReviewRequest(
-                content: .text(Self.source, format: .markdown),
+                content: .text(source, format: .markdown),
                 origin: .planHook,
                 metadata: ReviewMetadata(title: "Plan"),
                 reply: reply,
@@ -59,6 +60,7 @@ extension OnTheMainThread {
                 styleMask: [.titled, .resizable], backing: .buffered, defer: false
             )
             window.isReleasedWhenClosed = false
+            window.drawsAsKey = drawsAsKey
             window.contentView = NSHostingView(rootView: ReviewView(session: session, finish: finish))
             settle(window)
             let textView = try #require(findTextView(in: window.contentView))
@@ -205,6 +207,46 @@ extension OnTheMainThread {
             // Moving on leaves it as it is.
             harness.textView.setSelectedRange(NSRange(location: 0, length: 0))
             #expect(session.marks.map(\.kind) == [.replace])
+        }
+
+        @Test func theLastBlockStaysOnThePageAfterAReplacementIsTypedInTheOneBefore() throws {
+            let harness = try makeHarness(source: """
+            # Plan: rate limiting
+
+            The public API has no limits today, so one client can use up the database pool and slow every other customer down.
+
+            1. Add a `RateLimiter` middleware in front of every route
+            2. Return `429 Too Many Requests` with a `Retry-After` header
+
+            We will leverage a robust, battle-tested library for the bucket instead of writing our own, since it has seen more traffic than ours ever will.
+
+            > Websockets are out of scope for now.
+            """, drawsAsKey: true)
+            let textView = harness.textView
+            textView.usesVimKeys = false
+            let last = "Websockets are out of scope for now."
+            let storage = try #require(textView.textStorage)
+            let opened = storage.attributes(at: (textView.string as NSString).range(of: last).location, effectiveRange: nil)
+
+            // The run loop turns between keys, as it does for someone typing.
+            select("leverage", in: harness)
+            settle(harness.window)
+            try mark("r", keyCode: 15, in: harness)
+            settle(harness.window)
+            for letter in ["u", "s", "e"] {
+                textView.insertText(letter, replacementRange: NSRange(location: NSNotFound, length: 0))
+                settle(harness.window)
+            }
+            try press("\r", keyCode: KeyCode.return, in: harness)
+            settle(harness.window)
+
+            let range = (textView.string as NSString).range(of: last)
+            let shown = storage.attributes(at: range.location, effectiveRange: nil)
+            #expect(shown[.font] as? NSFont == opened[.font] as? NSFont)
+            #expect(shown[.foregroundColor] as? NSColor == opened[.foregroundColor] as? NSColor)
+            // Text below the bottom of the text view is cut off.
+            let line = try #require(textView.rect(forCharacterRange: range))
+            #expect(line.maxY <= textView.bounds.maxY)
         }
 
         @Test func aReplacementLeftEmptyBecomesADeletion() throws {
