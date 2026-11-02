@@ -49,6 +49,8 @@ That builds the app, launches it and opens a sample plan for review. `scripts/ru
 
 Both scripts sign with your Apple Development certificate when the Mac has one (add your Apple ID in Xcode's Settings → Accounts, then Manage Certificates → + → Apple Development). macOS then keeps the Accessibility permission from one build to the next. Without a certificate it signs ad hoc, and each new build has to be allowed again.
 
+`scripts/release.sh` builds the download: `build/release/Callout-<version>.dmg`, for Apple silicon and Intel, signed with a Developer ID certificate, notarized by Apple and stapled, so it opens without a warning on any Mac. It needs that certificate (Manage Certificates → + → Developer ID Application, in the paid program) and a `notarytool` keychain profile named `callout-notary`; it says how to make each one if it is missing.
+
 To work on it in Xcode, run `xcodegen generate && open Callout.xcodeproj`, select your team under Signing & Capabilities, and run the `Callout` scheme (`⌘R`). To build it under your own name, change `me.fabiosouto` in `project.yml` (`bundleIdPrefix` and each `PRODUCT_BUNDLE_IDENTIFIER`) and in `CalloutPaths.bundleIdentifier` to a prefix you own.
 
 ## Using it
@@ -148,7 +150,7 @@ In the app bundle the tool is at `Callout.app/Contents/Helpers/callout`.
 The plugin is in `plugin/`, and this repository is its marketplace:
 
 ```
-/plugin marketplace add <owner>/<this repository>
+/plugin marketplace add fasouto/callout
 /plugin install callout@callout
 ```
 
@@ -181,18 +183,18 @@ Without the plugin, `callout install` adds the same hook to `~/.claude/settings.
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    run and install the app, allow it in the sandbox, draw the icon, banner and screenshots, check the plan hook
+scripts/                    run, install and release the app, allow it in the sandbox, draw the icon, banner and screenshots, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
-Packages/CalloutKit/      Swift package with everything else
-  Sources/CalloutCore/    contract, marks, formatter, apply-edits, markdown source mapping
-  Sources/CalloutIPC/     the socket protocol between the app and the tool
-  Sources/CalloutStore/   the SQLite database: plan versions, history, saved comments (GRDB)
+Packages/CalloutKit/        Swift package with everything else
+  Sources/CalloutCore/      contract, marks, formatter, apply-edits, markdown source mapping
+  Sources/CalloutIPC/       the socket protocol between the app and the tool
+  Sources/CalloutStore/     the SQLite database: plan versions, history, saved comments (GRDB)
   Sources/ClaudeCodeAdapter/ everything specific to Claude Code: hook formats, settings.json
-  Sources/CalloutCLIKit/  the command-line tool's commands
-  Sources/CalloutUI/      the app: menu-bar item, review window, text view
-  Sources/CalloutApp/     runs the app unbundled, for development without Xcode
-  Sources/callout/        the command-line tool built by SwiftPM
+  Sources/CalloutCLIKit/    the command-line tool's commands
+  Sources/CalloutUI/        the app: menu-bar item, review window, text view
+  Sources/CalloutApp/       runs the app unbundled, for development without Xcode
+  Sources/callout/          the command-line tool built by SwiftPM
 ```
 
 ## License

@@ -42,13 +42,15 @@ extension OnTheMainThread {
             let textView: AnnotationTextView
         }
 
-        private func makeHarness(finish: @escaping (ReviewOutcome) -> Void = { _ in }) throws -> Harness {
+        private func makeHarness(
+            reply: ReplyChannel = .clipboard, finish: @escaping (ReviewOutcome) -> Void = { _ in }
+        ) throws -> Harness {
             _ = NSApplication.shared
             let request = ReviewRequest(
                 content: .text(Self.source, format: .markdown),
                 origin: .planHook,
                 metadata: ReviewMetadata(title: "Plan"),
-                reply: .clipboard,
+                reply: reply,
                 modes: [.feedback, .applyEdits]
             )
             let session = ReviewSession(request: request)
@@ -662,7 +664,8 @@ extension OnTheMainThread {
         }
 
         @Test func marksChangeWhatIsShown() throws {
-            let harness = try makeHarness()
+            // Its picture heads the README, so it answers Claude: Send Feedback, not Copy Feedback.
+            let harness = try makeHarness(reply: .stdout)
             let session = harness.session
 
             session.addMark(.delete, span: sourceSpan(of: "very robust "))
