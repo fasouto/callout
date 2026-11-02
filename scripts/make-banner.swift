@@ -106,7 +106,7 @@ func drawBanner() {
     background.setFill()
     NSRect(origin: .zero, size: size).fill()
 
-    drawIcon(center: NSPoint(x: 1124, y: 205), side: 330, degrees: 7)
+    drawIcon(center: NSPoint(x: 1100, y: 205), side: 400, degrees: 7)
 
     let left: CGFloat = 88
     let nameFont = serif(132, weight: .black)
@@ -116,11 +116,11 @@ func drawBanner() {
 
     let grey = rgb(0.80, 0.80, 0.83)
     line([
-        Run(text: "Mark up what Claude writes, the way a teacher ", color: grey),
+        Run(text: "Mark up what AI writes, the way a teacher ", color: grey),
         Run(text: "corrects", color: rgb(0.52, 0.52, 0.55), mark: .strike),
         Run(text: " ", color: grey),
         Run(text: "marks an essay.", color: .white, mark: .underline),
-    ], font: serif(29.5, italic: true), x: left + 2, baseline: 104)
+    ], font: serif(30, italic: true), x: left + 2, baseline: 104)
 }
 
 let bitmap = NSBitmapImageRep(

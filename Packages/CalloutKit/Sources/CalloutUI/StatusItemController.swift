@@ -109,7 +109,7 @@ enum AboutPanel {
         centred.alignment = .center
         centred.paragraphSpacing = 6
         let text = NSMutableAttributedString(
-            string: "Mark up what Claude writes, the way a teacher marks an essay.\n",
+            string: "Mark up what AI writes, the way a teacher marks an essay.\n",
             attributes: [.font: Theme.serif(13, italic: true), .foregroundColor: NSColor.labelColor, .paragraphStyle: centred]
         )
         text.append(NSAttributedString(

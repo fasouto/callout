@@ -1,4 +1,4 @@
-![Callout: mark up what Claude writes, the way a teacher marks an essay](docs/banner.png)
+![Callout: mark up what AI writes, the way a teacher marks an essay](docs/banner.png)
 
 Callout is a native macOS menu-bar app for correcting text an AI wrote. You strike out, replace, insert, comment and mark what is good. The result goes back to the AI as feedback, or to you as the corrected text.
 
