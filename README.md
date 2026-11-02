@@ -2,10 +2,7 @@
 
 Callout is a native macOS menu-bar app for correcting text an AI wrote. You strike out, replace, insert, comment and mark what is good. The result goes back to the AI as feedback, or to you as the corrected text.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/review-window-dark.png">
-  <img src="docs/review-window.png" alt="The review window: a page with marks, and notes in the margin beside the lines they refer to">
-</picture>
+![A plan marked up in the review window: a word replaced, words struck out, a comment, a line kept, and an overall comment, with the key for each shown below the window](docs/demo.gif)
 
 It has two parts:
 
@@ -32,7 +29,7 @@ This runs the app without an app bundle. You get the menu-bar icon and the revie
 
 `swift build` also builds the command-line tool at `.build/debug/callout`. When the app isn't running, the tool starts the development app next to it.
 
-Two environment variables make the tests do more. `CALLOUT_SNAPSHOT_DIR=<folder>` makes them write a picture of every window, in light and in dark, and `scripts/screenshots.sh` uses that to redraw the screenshots on this page. `CALLOUT_CORPUS=<a Claude Code transcript, a .jsonl file>` makes them put every text in that transcript through the renderer and onto a page, so the tests check the app against real replies as well as sentences written for a test.
+Three environment variables make the tests do more. `CALLOUT_SNAPSHOT_DIR=<folder>` makes them write a picture of every window, in light and in dark, and `scripts/screenshots.sh` uses that to redraw the screenshots on this page. `CALLOUT_DEMO_DIR=<folder>` makes one test replay a review and write the frames of the video at the top, and `scripts/make-demo.sh` turns them into `docs/demo.gif` and `docs/demo.mp4` with ffmpeg. `CALLOUT_CORPUS=<a Claude Code transcript, a .jsonl file>` makes them put every text in that transcript through the renderer and onto a page, so the tests check the app against real replies as well as sentences written for a test.
 
 ### With Xcode
 
@@ -181,7 +178,7 @@ Plans don't use the tool. They go through the plugin's `PermissionRequest` hook.
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    run, install and release the app, allow it in the sandbox, draw the icon, banner and screenshots, check the plan hook
+scripts/                    run, install and release the app, allow it in the sandbox, draw the icon, banner, screenshots and demo video, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/CalloutKit/        Swift package with everything else
