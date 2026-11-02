@@ -36,6 +36,11 @@ enum Line {
         ]]])
     }
 
+    /// What Claude Code writes when a plugin sends a message as the user.
+    static func pluginMessage(_ text: String) -> String {
+        json(["type": "user", "isSidechain": false, "origin": ["kind": "plugin"], "message": ["role": "user", "content": text]])
+    }
+
     static func meta(_ text: String) -> String {
         json(["type": "user", "isSidechain": false, "isMeta": true, "message": ["role": "user", "content": [["type": "text", "text": text]]]])
     }
@@ -167,20 +172,33 @@ struct RepliesTests {
         ) == "Second draft, with your corrections.")
     }
 
-    @Test func withoutTheCommandTheCurrentTurnIsLeftOut() {
-        // Claude ran the tool itself in answer to "let me correct that".
-        #expect(reply(
+    @Test func withoutTheCommandTheNewestReplyIsReplyOne() {
+        // Nothing is running when the tool is called after a turn has finished.
+        let found = replies(
             Line.prompt("Explain the trade-offs"),
             Line.assistant("There are two trade-offs."),
-            Line.prompt("let me correct that"),
-            Line.assistant("Opening it."),
-            Line.toolUse()
-        ) == "There are two trade-offs.")
+            Line.prompt("And the cost?"),
+            Line.assistant("It is cheap.")
+        )
+        #expect(found.map(\.text) == ["There are two trade-offs.", "It is cheap."])
+        #expect(found.last?.question == "And the cost?")
+    }
+
+    @Test func aPluginMessageOpensATurnWithoutAQuestion() {
+        let found = replies(
+            Line.prompt("Draft a message"),
+            Line.assistant("First draft."),
+            Line.pluginMessage("## Feedback on Claude's reply\n\n### General\nShorter."),
+            Line.assistant("Second draft, shorter.")
+        )
+        #expect(found.map(\.text) == ["First draft.", "Second draft, shorter."])
+        #expect(found.last?.question == nil)
     }
 
     @Test func nothingToReview() {
         #expect(reply(Line.command("callout")) == nil)
         #expect(reply(Line.prompt("hello"), Line.command("callout")) == nil)
+        #expect(reply(Line.prompt("hello")) == nil)
         #expect(reply() == nil)
     }
 

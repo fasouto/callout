@@ -48,8 +48,8 @@ public enum Transcript {
 
     // MARK: - Reading the replies
 
-    /// Claude's finished replies before the command that asked for this review,
-    /// oldest first, without the replies that only talk about running a review.
+    /// Claude's finished replies before the command that asked for this review (all of
+    /// them when there is no command), oldest first, without the replies that only talk about running a review.
     public static func replies(inTranscriptAt path: String, command: String = "callout") -> [Reply] {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
         return replies(in: text, command: command)
@@ -58,10 +58,9 @@ public enum Transcript {
     static func replies(in transcript: String, command: String = "callout") -> [Reply] {
         let turns = turns(in: transcript)
 
-        // Everything from the command on belongs to the turn that is running now.
-        let boundary = turns.lastIndex { $0.opener.isCommand(command) }
-            ?? turns.lastIndex { $0.opener.isPrompt }
-            ?? turns.count
+        // A command's own turn is the one running now, and everything from it on is left out.
+        // Without a command, nothing is running, so every turn counts.
+        let boundary = turns.lastIndex { $0.opener.isCommand(command) } ?? turns.count
 
         return turns[..<boundary].compactMap { turn in
             // A turn with no text, such as an unanswered prompt or /model, is not a reply.
@@ -78,10 +77,8 @@ public enum Transcript {
         case command(name: String, arguments: String)
         /// A background task finished, or an agent working for Claude reported back.
         case notification
-
-        var isPrompt: Bool {
-            if case .prompt = self { return true } else { return false }
-        }
+        /// A message a plugin wrote as the user. It opens a turn, but is not what the user said.
+        case plugin
 
         func isCommand(_ wanted: String) -> Bool {
             guard case .command(let name, _) = self else { return false }
@@ -100,7 +97,7 @@ public enum Transcript {
                 return lines.first { !$0.isEmpty }.map(\.cutForTitle)
             case .command(let name, let arguments):
                 return "/\(name) \(arguments)".collapsingWhitespace.cutForTitle
-            case .notification:
+            case .notification, .plugin:
                 return nil
             }
         }
@@ -147,6 +144,8 @@ public enum Transcript {
                 guard opener.isCommand(command) else { return false }
                 // The tool says the review is open before the feedback, on another stream.
                 return !toolResults.contains { $0.split(whereSeparator: \.isNewline).contains { $0.hasPrefix("## Feedback") } }
+            case .plugin:
+                return false
             case .notification:
                 // A whole line, as the tool printed it or a file viewer numbered it: a diff
                 // or a source file that only quotes the phrase is other work.
@@ -205,6 +204,7 @@ public enum Transcript {
 
             // An agent's report is marked as injected context, and is still the start of a turn.
             if origin == "task-notification" || origin == "peer" || text.hasPrefix("<task-notification>") { return [.opener(.notification)] }
+            if origin == "plugin" { return [.opener(.plugin)] }
             // Injected context and compaction summaries are not the user speaking.
             if object["isMeta"] as? Bool == true || object["isCompactSummary"] as? Bool == true { return [] }
 
