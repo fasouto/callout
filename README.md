@@ -11,6 +11,21 @@ It has two parts:
 
 Status: early development, with everything a first version needs. You can review text and PDFs from Claude Code (plans and what changed between their versions, replies, generated documents) and from any other app (a hotkey, the Services menu, drag and drop, the Share menu). Callout also keeps saved comments and a searchable history. It works in light and dark mode, with VoiceOver, Reduce Motion and Increase Contrast.
 
+## Installing
+
+Callout runs on macOS 14 or later, on Apple silicon and Intel.
+
+1. Download the DMG from the [latest release](https://github.com/fasouto/callout/releases/latest).
+2. Open it and drag Callout to Applications. Apple notarized the app, so it opens without a warning.
+3. In Claude Code, add the plugin:
+
+   ```
+   /plugin marketplace add fasouto/callout
+   /plugin install callout@callout
+   ```
+
+The app doesn't update itself yet. To hear about new versions, choose Watch → Custom → Releases at the top of this page.
+
 ## Building
 
 Requirements: macOS 14 or later, Apple silicon.
