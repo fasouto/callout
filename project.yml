@@ -62,7 +62,7 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         # Menu-bar app: no Dock icon.
         LSUIElement: true
-        NSHumanReadableCopyright: Free software under the GNU General Public License, version 3.
+        NSHumanReadableCopyright: © 2026 Fabio Souto Moure. Free software under the MIT License.
         LSApplicationCategoryType: public.app-category.productivity
         # "Annotate with Callout" in other apps' Services menus.
         NSServices:

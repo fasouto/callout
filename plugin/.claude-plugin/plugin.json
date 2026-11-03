@@ -6,6 +6,6 @@
   "author": {
     "name": "Fabio Souto"
   },
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "keywords": ["review", "annotate", "plan", "feedback", "macos"]
 }
