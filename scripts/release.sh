@@ -37,6 +37,8 @@ fi
 
 command -v xcodegen >/dev/null || { echo "xcodegen is missing. Install it with: brew install xcodegen" >&2; exit 1; }
 
+scripts/make-acknowledgements.sh --check
+
 # Submits a file, waits, and on anything but Accepted prints Apple's log.
 notarize() {
   result=$(mktemp)
@@ -68,6 +70,8 @@ xcodebuild -project Callout.xcodeproj -scheme Callout -configuration Release \
   | grep -E '^\*\* BUILD|error:' || true
 
 [ -d "$app" ] || { echo "The build did not produce $app" >&2; exit 1; }
+cmp -s App/Acknowledgements.txt "$app/Contents/Resources/Acknowledgements.txt" \
+  || { echo "The app is missing App/Acknowledgements.txt, which the libraries' licences require." >&2; exit 1; }
 
 codesign --verify --deep --strict "$app"
 for part in "$app" "$app/Contents/Helpers/callout" "$app"/Contents/PlugIns/*.appex; do

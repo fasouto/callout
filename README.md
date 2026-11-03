@@ -193,7 +193,7 @@ Plans don't use the tool. They go through the plugin's `PermissionRequest` hook.
 ```
 project.yml                 XcodeGen spec for the app bundle
 ShareExtension/             the Share menu entry
-scripts/                    run, install and release the app, allow it in the sandbox, draw the icon, banner, screenshots and demo video, check the plan hook
+scripts/                    run, install and release the app, allow it in the sandbox, draw the icon, banner, screenshots and demo video, list the libraries' licences, check the plan hook
 plugin/                     the Claude Code plugin; .claude-plugin/ makes this repo its marketplace
 App/, CLI/                  entry points of the two Xcode targets
 Packages/CalloutKit/        Swift package with everything else
@@ -209,4 +209,4 @@ Packages/CalloutKit/        Swift package with everything else
 
 ## License
 
-GPLv3. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). [App/Acknowledgements.txt](App/Acknowledgements.txt) holds the licences of the libraries Callout is built with, and the About panel shows it.

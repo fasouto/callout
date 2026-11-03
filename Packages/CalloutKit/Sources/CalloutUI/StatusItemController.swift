@@ -103,8 +103,13 @@ enum AboutPanel {
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Callout", .credits: credits])
     }
 
-    /// What the panel says under the version.
-    static let credits: NSAttributedString = {
+    static let credits = credits(acknowledgements: Bundle.main
+        .url(forResource: "Acknowledgements", withExtension: "txt")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) })
+
+    /// What the panel says under the version, then the licences of the libraries
+    /// the app is built with, which they require in every copy.
+    static func credits(acknowledgements: String?) -> NSAttributedString {
         let centred = NSMutableParagraphStyle()
         centred.alignment = .center
         centred.paragraphSpacing = 6
@@ -117,8 +122,14 @@ enum AboutPanel {
             string: "Nothing you review leaves this Mac except what you send back.",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: centred]
         ))
+        if let acknowledgements {
+            text.append(NSAttributedString(
+                string: "\n\n" + acknowledgements,
+                attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]
+            ))
+        }
         return text
-    }()
+    }
 }
 
 /// The app icon in miniature: the tile in outline, with rows of text and the
